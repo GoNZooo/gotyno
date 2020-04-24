@@ -2,21 +2,7 @@ const std = @import("std");
 const debug = std.debug;
 const testing = std.testing;
 
-pub const BasicStruct = struct {
-    u: u32,
-    i: i64,
-    f: f64,
-    s: []const u8,
-    bools: []bool,
-    hobbies: []const []const u8,
-    lotto_numbers: [][]u32,
-    points: []Point,
-};
-
-const Point = struct {
-    x: i32,
-    y: i32,
-};
+const types = @import("./types.zig");
 
 pub fn typeToString(comptime t: type) []const u8 {
     const type_info = @typeInfo(t);
@@ -75,7 +61,7 @@ fn tsIfyType(comptime t: type) []const u8 {
 }
 
 test "outputs basic interface type for zig struct" {
-    const typescript_type_output = typeToString(BasicStruct);
+    const typescript_type_output = typeToString(types.BasicStruct);
     const expected =
         \\interface BasicStruct {
         \\  u: number;
