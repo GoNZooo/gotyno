@@ -4,7 +4,7 @@ const testing = std.testing;
 
 const types = @import("./types.zig");
 
-pub fn typeToString(comptime t: type) []const u8 {
+pub fn typedefinitionToString(comptime t: type) []const u8 {
     const type_info = @typeInfo(t);
     return switch (type_info) {
         .Struct => |d| output: {
@@ -69,7 +69,7 @@ fn purescriptifyType(comptime t: type, comptime nesting: u32) []const u8 {
 }
 
 test "outputs basic newtype record type for zig struct" {
-    const type_output = typeToString(types.BasicStruct);
+    const type_output = typedefinitionToString(types.BasicStruct);
     const expected =
         \\newtype BasicStruct
         \\  = BasicStruct

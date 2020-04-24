@@ -4,7 +4,7 @@ const testing = std.testing;
 
 const types = @import("./types.zig");
 
-pub fn typeToString(comptime t: type) []const u8 {
+pub fn typedefinitionToString(comptime t: type) []const u8 {
     const type_info = @typeInfo(t);
     return switch (type_info) {
         .Struct => |d| output: {
@@ -61,7 +61,7 @@ fn typescriptifyType(comptime t: type) []const u8 {
 }
 
 test "outputs basic interface type for zig struct" {
-    const type_output = typeToString(types.BasicStruct);
+    const type_output = typedefinitionToString(types.BasicStruct);
     const expected =
         \\interface BasicStruct {
         \\  u: number;
