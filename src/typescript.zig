@@ -1,9 +1,6 @@
 const std = @import("std");
 const debug = std.debug;
 const testing = std.testing;
-const builtin = @import("builtin");
-
-const TypeInfo = builtin.TypeInfo;
 
 pub const BasicStruct = struct {
     u: u32,
