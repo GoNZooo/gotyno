@@ -6,7 +6,7 @@ const test_files = [_][]const u8{"typescript"};
 
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
-    const exe = b.addExecutable("type-parser", "src/main.zig");
+    const exe = b.addExecutable("type-translator", "src/main.zig");
     exe.setBuildMode(mode);
     exe.install();
 

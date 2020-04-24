@@ -1,7 +1,7 @@
 const std = @import("std");
-pub const typescript = @import("./typescript/dump.zig");
+pub const typescript = @import("./typescript.zig");
 
 pub fn main() anyerror!void {
-    _ = typescript.typeToString(typescript.BasicStruct);
-    std.debug.warn("All your base are belong to us.\n", .{});
+    const basic_struct_output = typescript.typeToString(typescript.BasicStruct);
+    std.debug.warn("{}\n", .{basic_struct_output});
 }
