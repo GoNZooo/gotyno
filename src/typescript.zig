@@ -13,6 +13,12 @@ pub const BasicStruct = struct {
     bools: []bool,
     hobbies: []const []const u8,
     lotto_numbers: [][]u32,
+    points: []Point,
+};
+
+const Point = struct {
+    x: i32,
+    y: i32,
 };
 
 pub fn typeToString(comptime t: type) []const u8 {
@@ -74,6 +80,7 @@ fn tsIfyType(comptime t: type) []const u8 {
             u8 => "string",
             else => "Array<" ++ tsIfyType(p.child) ++ ">",
         },
+        .Struct => @typeName(t),
         else => |x| @compileLog(x),
     };
 }
@@ -89,6 +96,7 @@ test "outputs basic interface type for zig struct" {
         \\  bools: Array<boolean>;
         \\  hobbies: Array<string>;
         \\  lotto_numbers: Array<Array<number>>;
+        \\  points: Array<Point>;
         \\}
     ;
     testing.expectEqualSlices(u8, typescript_type_output, expected);
