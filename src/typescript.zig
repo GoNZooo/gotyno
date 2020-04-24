@@ -33,7 +33,7 @@ pub fn typeToString(comptime t: type) []const u8 {
                 .field_type = undefined,
                 .default_value = undefined,
             }} ** d.fields.len;
-            type_output = type_output ++ "interface " ++ type_name ++ " {\n";
+            type_output = "interface " ++ type_name ++ " {\n";
             inline for (d.fields) |field, i| {
                 type_output =
                     type_output ++
