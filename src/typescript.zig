@@ -12,6 +12,7 @@ pub const BasicStruct = struct {
     s: []const u8,
     bools: []bool,
     hobbies: []const []const u8,
+    lotto_numbers: [][]u32,
 };
 
 pub fn typeToString(comptime t: type) []const u8 {
@@ -87,6 +88,7 @@ test "outputs basic interface type for zig struct" {
         \\  s: string;
         \\  bools: Array<boolean>;
         \\  hobbies: Array<string>;
+        \\  lotto_numbers: Array<Array<number>>;
         \\}
     ;
     testing.expectEqualSlices(u8, typescript_type_output, expected);
