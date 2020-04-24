@@ -27,19 +27,12 @@ pub fn typeToString(comptime t: type) []const u8 {
         .Struct => |d| output: {
             const type_name = @typeName(t);
             comptime var type_output: []const u8 = "";
-            comptime var fs = [_]TypeInfo.StructField{.{
-                .name = undefined,
-                .offset = undefined,
-                .field_type = undefined,
-                .default_value = undefined,
-            }} ** d.fields.len;
             type_output = "interface " ++ type_name ++ " {\n";
             inline for (d.fields) |field, i| {
                 type_output =
                     type_output ++
                     "  " ++ field.name ++ ": " ++ tsIfyType(field.field_type) ++
                     ";\n";
-                fs[i] = field;
             }
             type_output = type_output ++ "}";
 
