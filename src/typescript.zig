@@ -13,7 +13,7 @@ pub fn typeToString(comptime t: type) []const u8 {
             inline for (d.fields) |field, i| {
                 type_output =
                     type_output ++
-                    "  " ++ field.name ++ ": " ++ tsIfyType(field.field_type) ++
+                    "  " ++ field.name ++ ": " ++ typescriptifyType(field.field_type) ++
                     ";\n";
             }
             type_output = type_output ++ "}";
@@ -47,13 +47,13 @@ pub fn typeToString(comptime t: type) []const u8 {
     };
 }
 
-fn tsIfyType(comptime t: type) []const u8 {
+fn typescriptifyType(comptime t: type) []const u8 {
     return switch (@typeInfo(t)) {
         .Int, .Float => "number",
         .Bool => "boolean",
         .Pointer => |p| switch (p.child) {
             u8 => "string",
-            else => "Array<" ++ tsIfyType(p.child) ++ ">",
+            else => "Array<" ++ typescriptifyType(p.child) ++ ">",
         },
         .Struct => @typeName(t),
         else => |x| @compileLog(x),
@@ -61,7 +61,7 @@ fn tsIfyType(comptime t: type) []const u8 {
 }
 
 test "outputs basic interface type for zig struct" {
-    const typescript_type_output = typeToString(types.BasicStruct);
+    const type_output = typeToString(types.BasicStruct);
     const expected =
         \\interface BasicStruct {
         \\  u: number;
@@ -74,5 +74,5 @@ test "outputs basic interface type for zig struct" {
         \\  points: Array<Point>;
         \\}
     ;
-    testing.expectEqualSlices(u8, typescript_type_output, expected);
+    testing.expectEqualSlices(u8, type_output, expected);
 }
