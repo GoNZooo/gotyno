@@ -23,6 +23,17 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
 
             break :output type_output;
         },
+        .Union => |d| output: {
+            const name = @typeName(t);
+            const field1 = d.fields[0];
+            comptime var type_output: []const u8 = "data " ++ name ++ "\n  = " ++
+                field1.name ++ " " ++ haskellifyType(field1.field_type);
+            inline for (d.fields[1..]) |field| {
+                type_output = type_output ++ "\n  | " ++ field.name ++ " " ++
+                    haskellifyType(field.field_type);
+            }
+            break :output type_output;
+        },
         .Type => |d| @compileError("unknown type"),
         .Void => |d| @compileError("unknown type"),
         .Bool => |d| @compileError("unknown type"),
@@ -36,7 +47,6 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
         .BoundFn => |d| @compileError("unknown type"),
         .ErrorSet => |d| @compileError("unknown type"),
         .ErrorUnion => |d| @compileError("unknown type"),
-        .Union => |d| @compileError("unknown type"),
         .Optional => |d| @compileError("unknown type"),
         .Null => |d| @compileError("unknown type"),
         .Undefined => |d| @compileError("unknown type"),
@@ -80,6 +90,16 @@ test "outputs basic record type for zig struct" {
         \\  , lotto_numbers :: [[Int]]
         \\  , points :: [Point]
         \\  }
+    ;
+    testing.expectEqualSlices(u8, type_output, expected);
+}
+
+test "outputs basic sum type for zig tagged union" {
+    const type_output = typedefinitionToString(types.BasicUnion);
+    const expected =
+        \\data BasicUnion
+        \\  = Struct BasicStruct
+        \\  | Coordinates Point
     ;
     testing.expectEqualSlices(u8, type_output, expected);
 }
