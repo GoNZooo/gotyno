@@ -12,6 +12,7 @@ pub const BasicStruct = struct {
 pub const BasicUnion = union(enum) {
     Struct: BasicStruct,
     Coordinates: Point,
+    NoPayload,
 };
 
 const Point = struct {

@@ -93,7 +93,8 @@ test "outputs basic enum type for zig tagged union" {
     const expected =
         \\type BasicUnion =
         \\  Struct
-        \\  | Coordinates;
+        \\  | Coordinates
+        \\  | NoPayload;
     ;
     testing.expectEqualSlices(u8, type_output, expected);
 }
