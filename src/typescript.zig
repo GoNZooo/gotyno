@@ -12,10 +12,13 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
             comptime var type_output: []const u8 = "interface " ++ type_name ++ " {\n" ++
                 "  type: \"" ++ type_name ++ "\";\n";
             inline for (d.fields) |field, i| {
-                type_output =
-                    type_output ++
-                    "  " ++ field.name ++ ": " ++ typescriptifyType(field.field_type) ++
-                    ";\n";
+                comptime const maybe_tsified_type = typescriptifyType(field.field_type);
+                if (maybe_tsified_type) |tsified_type| {
+                    type_output =
+                        type_output ++
+                        "  " ++ field.name ++ ": " ++ tsified_type ++
+                        ";\n";
+                }
             }
             type_output = type_output ++ "}";
 
@@ -24,12 +27,20 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
         .Union => |d| output: {
             const name = @typeName(t);
             const field1 = d.fields[0];
-            comptime var output: []const u8 = "type " ++ name ++ " =\n  " ++ field1.name;
-            inline for (d.fields[1..]) |field| {
-                output = output ++ "\n  | " ++ field.name;
+            comptime const maybe_tsified_type = typescriptifyType(field1.field_type);
+            if (maybe_tsified_type) |tsified_type| {
+                comptime var output: []const u8 = "type " ++ name ++ " =\n  " ++
+                    tsified_type;
+                inline for (d.fields[1..]) |field| {
+                    comptime const maybe_tsified_field_type = typescriptifyType(field.field_type);
+                    if (maybe_tsified_field_type) |tsified_field_type| {
+                        output = output ++ "\n  | " ++ tsified_field_type;
+                    }
+                }
+                output = output ++ ";";
+                break :output output;
             }
-            output = output ++ ";";
-            break :output output;
+            break :output "broken";
         },
         .Type => |d| @compileError("unknown type"),
         .Void => |d| @compileError("unknown type"),
@@ -57,15 +68,21 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
     };
 }
 
-fn typescriptifyType(comptime t: type) []const u8 {
+fn typescriptifyType(comptime t: type) ?[]const u8 {
     return switch (@typeInfo(t)) {
         .Int, .Float => "number",
         .Bool => "boolean",
         .Pointer => |p| switch (p.child) {
             u8 => "string",
-            else => "Array<" ++ typescriptifyType(p.child) ++ ">",
+            else => output: {
+                const maybe_tsified_type = typescriptifyType(p.child);
+                if (maybe_tsified_type) |tsified_type| {
+                    break :output "Array<" ++ tsified_type ++ ">";
+                }
+            },
         },
         .Struct => @typeName(t),
+        .Void => null,
         else => |x| @compileLog(x),
     };
 }
@@ -92,9 +109,8 @@ test "outputs basic enum type for zig tagged union" {
     const type_output = typedefinitionToString(types.BasicUnion);
     const expected =
         \\type BasicUnion =
-        \\  Struct
-        \\  | Coordinates
-        \\  | NoPayload;
+        \\  BasicStruct
+        \\  | Point;
     ;
     testing.expectEqualSlices(u8, type_output, expected);
 }
