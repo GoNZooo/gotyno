@@ -21,6 +21,16 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
 
             break :output type_output;
         },
+        .Union => |d| output: {
+            const name = @typeName(t);
+            const field1 = d.fields[0];
+            comptime var output: []const u8 = "type " ++ name ++ " =\n  " ++ field1.name;
+            inline for (d.fields[1..]) |field| {
+                output = output ++ "\n  | " ++ field.name;
+            }
+            output = output ++ ";";
+            break :output output;
+        },
         .Type => |d| @compileError("unknown type"),
         .Void => |d| @compileError("unknown type"),
         .Bool => |d| @compileError("unknown type"),
@@ -34,7 +44,6 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
         .BoundFn => |d| @compileError("unknown type"),
         .ErrorSet => |d| @compileError("unknown type"),
         .ErrorUnion => |d| @compileError("unknown type"),
-        .Union => |d| @compileError("unknown type"),
         .Optional => |d| @compileError("unknown type"),
         .Null => |d| @compileError("unknown type"),
         .Undefined => |d| @compileError("unknown type"),
@@ -75,6 +84,16 @@ test "outputs basic interface type for zig struct" {
         \\  lotto_numbers: Array<Array<number>>;
         \\  points: Array<Point>;
         \\}
+    ;
+    testing.expectEqualSlices(u8, type_output, expected);
+}
+
+test "outputs basic enum type for zig tagged union" {
+    const type_output = typedefinitionToString(types.BasicUnion);
+    const expected =
+        \\type BasicUnion =
+        \\  Struct
+        \\  | Coordinates;
     ;
     testing.expectEqualSlices(u8, type_output, expected);
 }
