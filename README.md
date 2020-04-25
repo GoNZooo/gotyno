@@ -38,6 +38,7 @@ Running the executable in this repo will yield:
 
 ```typescript
 // TypeScript:
+
 interface BasicStruct {
   type: "BasicStruct";
   u: number;
@@ -49,6 +50,13 @@ interface BasicStruct {
   lotto_numbers: Array<Array<number>>;
   points: Array<Point>;
 }
+
+interface Point {
+  type: "Point";
+  x: number;
+  y: number;
+}
+
 type BasicUnion =
   BasicStruct
   | Point;
@@ -56,6 +64,7 @@ type BasicUnion =
 
 ```purescript
 -- PureScript:
+
 newtype BasicStruct
   = BasicStruct
   { u :: Int
@@ -67,6 +76,13 @@ newtype BasicStruct
   , lotto_numbers :: Array (Array Int)
   , points :: Array Point
   }
+
+newtype Point
+  = Point
+  { x :: Int
+  , y :: Int
+  }
+
 data BasicUnion
   = Struct BasicStruct
   | Coordinates Point
@@ -75,6 +91,7 @@ data BasicUnion
 
 ```haskell
 -- Haskell:
+
 data BasicStruct
   = BasicStruct
   { u :: Int
@@ -86,6 +103,13 @@ data BasicStruct
   , lotto_numbers :: [[Int]]
   , points :: [Point]
   }
+
+data Point
+  = Point
+  { x :: Int
+  , y :: Int
+  }
+
 data BasicUnion
   = Struct BasicStruct
   | Coordinates Point

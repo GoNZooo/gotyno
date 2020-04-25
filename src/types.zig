@@ -15,7 +15,7 @@ pub const BasicUnion = union(enum) {
     NoPayload,
 };
 
-const Point = struct {
+pub const Point = struct {
     x: i32,
     y: i32,
 };
