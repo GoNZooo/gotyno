@@ -9,6 +9,11 @@ pub const BasicStruct = struct {
     points: []Point,
 };
 
+pub const BasicUnion = union(enum) {
+    Struct: BasicStruct,
+    Coordinates: Point,
+};
+
 const Point = struct {
     x: i32,
     y: i32,
