@@ -9,7 +9,8 @@ pub fn typedefinitionToString(comptime t: type) []const u8 {
     return switch (type_info) {
         .Struct => |d| output: {
             const type_name = @typeName(t);
-            comptime var type_output: []const u8 = "interface " ++ type_name ++ " {\n";
+            comptime var type_output: []const u8 = "interface " ++ type_name ++ " {\n" ++
+                "  type: \"" ++ type_name ++ "\";\n";
             inline for (d.fields) |field, i| {
                 type_output =
                     type_output ++
@@ -64,6 +65,7 @@ test "outputs basic interface type for zig struct" {
     const type_output = typedefinitionToString(types.BasicStruct);
     const expected =
         \\interface BasicStruct {
+        \\  type: "BasicStruct";
         \\  u: number;
         \\  i: number;
         \\  f: number;
