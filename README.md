@@ -36,8 +36,8 @@ const Point = struct {
 
 Running the executable in this repo will yield:
 
-```
-TypeScript:
+```typescript
+// TypeScript:
 interface BasicStruct {
   type: "BasicStruct";
   u: number;
@@ -52,8 +52,10 @@ interface BasicStruct {
 type BasicUnion =
   BasicStruct
   | Point;
+```
 
-PureScript:
+```purescript
+-- PureScript:
 newtype BasicStruct
   = BasicStruct
   { u :: Int
@@ -69,8 +71,10 @@ data BasicUnion
   = Struct BasicStruct
   | Coordinates Point
   | NoPayload
+```
 
-Haskell:
+```haskell
+-- Haskell:
 data BasicStruct
   = BasicStruct
   { u :: Int
