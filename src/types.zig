@@ -35,3 +35,76 @@ pub fn Maybe(comptime T: type) type {
         Just: T,
     };
 }
+
+pub fn Either(comptime L: type, comptime R: type) type {
+    return union(enum) {
+        Left: L,
+        Right: R,
+    };
+}
+
+pub fn GenericThree(comptime T: type, comptime U: type, comptime V: type) type {
+    return struct {
+        v1: U,
+        v2: T,
+        v3: V,
+        v4: U,
+        v5: V,
+        v6: T,
+        dead_weight: bool,
+    };
+}
+
+pub fn GenericFour(
+    comptime T: type,
+    comptime U: type,
+    comptime V: type,
+    comptime X: type,
+) type {
+    return struct {
+        v1: U,
+        v2: T,
+        v3: V,
+        v4: U,
+        v5: V,
+        v6: X,
+        dead_weight: bool,
+    };
+}
+
+pub fn GenericFive(
+    comptime T: type,
+    comptime U: type,
+    comptime V: type,
+    comptime X: type,
+    comptime Y: type,
+) type {
+    return struct {
+        v1: U,
+        v2: T,
+        v3: V,
+        v4: U,
+        v5: Y,
+        v6: X,
+        dead_weight: bool,
+    };
+}
+
+pub fn GenericSix(
+    comptime T: type,
+    comptime U: type,
+    comptime V: type,
+    comptime X: type,
+    comptime Y: type,
+    comptime Z: type,
+) type {
+    return struct {
+        v1: U,
+        v2: T,
+        v3: V,
+        v4: Z,
+        v5: Y,
+        v6: X,
+        dead_weight: bool,
+    };
+}
