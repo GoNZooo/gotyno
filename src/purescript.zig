@@ -304,9 +304,7 @@ fn purescriptifyType(
         },
         .Struct => [_]u8{' '} ** spaces ++ structName(t),
         .Void => "",
-        .Type => |d| [_]u8{' '} ** spaces ++ switch (d) {
-            else => "wut",
-        },
+        .Union => [_]u8{' '} ** spaces ++ @typeName(t),
         else => |x| @compileLog(x),
     };
 }
@@ -385,6 +383,25 @@ test "outputs basic union type for Either" {
     ;
     testing.expectEqualSlices(u8, type_output, expected);
 }
+
+// this doesn't pass yet; uses smartly formatted `Maybe(T)` syntax, etc.
+
+// test "outputs basic embedded maybe correctly" {
+//     const type_output = typeDeclarationToString(
+//         types.EmbedsSimpleMaybe,
+//         "EmbedsSimpleMaybe",
+//         0,
+//     );
+//     debug.warn("\n{}\n", .{type_output});
+//     const expected =
+//         \\newtype EmbedsSimpleMaybe
+//         \\  = EmbedsSimpleMaybe
+//         \\  { name :: String
+//         \\  , age :: Maybe Int
+//         \\  }
+//     ;
+//     testing.expectEqualSlices(u8, type_output, expected);
+// }
 
 test "outputs basic newtype record for structure generic over 3 parameters" {
     const type_output = typeDeclarationToString(types.GenericThree, "GenericThree", 3);

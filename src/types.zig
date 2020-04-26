@@ -43,6 +43,11 @@ pub fn Either(comptime L: type, comptime R: type) type {
     };
 }
 
+pub const EmbedsSimpleMaybe = struct {
+    name: []const u8,
+    age: Maybe(u8),
+};
+
 pub fn GenericThree(comptime T: type, comptime U: type, comptime V: type) type {
     return struct {
         v1: U,
