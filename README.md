@@ -4,6 +4,17 @@ The thesis is this: It's neat to write a type in one language and have it
 automatically defined as per that spec in another language, with some leniency
 with regards to idioms, etc.
 
+## Way forward
+
+Likely it'll make more sense to not interpret types from any one language'
+internal structures and instead just parse either a ready-made language
+(whatever pleases oneself, I guess?) or a basic format that is tailored for
+the essentials of what one wants to do.
+
+This is all obviously reinventing the wheel, which I'm fine with. More likely
+than anything else is that I'll just write a parser in Zig for a custom format
+and use that.
+
 ## Example
 
 In the repo you'll find (in `types.zig`) some basic types. These can be
