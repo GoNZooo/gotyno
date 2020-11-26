@@ -34,14 +34,23 @@ pub const Token = union(enum) {
     }
 };
 
-pub fn tokenize(allocator: *mem.Allocator, buffer: []const u8) !ArrayList(Token) {
+pub const TokenizeOptions = struct {
+    print: bool = false,
+};
+
+pub fn tokenize(
+    allocator: *mem.Allocator,
+    buffer: []const u8,
+    options: TokenizeOptions,
+) !ArrayList(Token) {
     var tokens = ArrayList(Token).init(allocator);
     var token_iterator = mem.tokenize(buffer, " ");
-    while (token_iterator.next()) |token| {
+    var i: usize = 0;
+    while (token_iterator.next()) |token| : (i += 1) {
         if (isKeyword(token)) {
             try tokens.append(Token{ .keyword = token });
         }
-        debug.print("token: {}\n", .{token});
+        if (options.print) debug.print("token {}: {}\n", .{ i, token });
     }
 
     return tokens;
@@ -57,7 +66,7 @@ fn isEqualString(a: []const u8, b: []const u8) bool {
 
 test "`tokenize`" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, person_example);
+    const tokens = try tokenize(&allocator.allocator, person_example, .{ .print = true });
     const expected_tokens = [_]Token{.{ .keyword = "struct" }};
     expectEqualTokenSlices(&expected_tokens, tokens.items);
 }
