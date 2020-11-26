@@ -74,7 +74,6 @@ pub const Token = union(enum) {
                 var remainder: isize = n;
                 var digits: usize = 1;
                 while (remainder > 10) : (remainder = @mod(remainder, 10)) {
-                    debug.print("remainder={}\n", .{remainder});
                     digits += 1;
                 }
 
@@ -194,7 +193,7 @@ const person_example =
     \\    age: U8;
     \\    efficiency: F32;
     \\    on_vacation: Boolean;
-    \\    last_five_comments: [5]String;
+    \\    last_five_comments: [11]String;
     \\}
 ;
 
