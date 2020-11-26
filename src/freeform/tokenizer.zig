@@ -59,7 +59,7 @@ test "`tokenize`" {
     var allocator = TestingAllocator{};
     const tokens = try tokenize(&allocator.allocator, person_example);
     const expected_tokens = [_]Token{.{ .keyword = "struct" }};
-    testing.expect(tokens.items[0].equal(expected_tokens[0]));
+    expectEqualTokenSlices(&expected_tokens, tokens.items);
 }
 
 const person_example =
@@ -72,3 +72,26 @@ const person_example =
     \\    last_five_comments: [5]string;
     \\}
 ;
+
+fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
+    if (a.len != b.len) {
+        debug.print("Differing token slice lengths: {} != {}\n", .{ a.len, b.len });
+
+        @panic("test failure");
+    } else if (indexOfDifferentToken(a, b)) |different_index| {
+        debug.print(
+            "Index {} different between token slices:\n\tExpected: {}\n\tGot: {}\n",
+            .{ different_index, a[different_index], b[different_index] },
+        );
+
+        @panic("test failure");
+    }
+}
+
+fn indexOfDifferentToken(a: []const Token, b: []const Token) ?usize {
+    for (a) |t, i| {
+        if (!t.equal(b[i])) return i;
+    }
+
+    return null;
+}
