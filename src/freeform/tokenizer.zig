@@ -29,6 +29,7 @@ pub const Token = union(enum) {
     name: []const u8,
     symbol: []const u8,
     number: isize,
+    // @TODO: add `string: []const u8`
 
     pub fn equal(self: Self, t: Self) bool {
         return switch (self) {
