@@ -84,16 +84,12 @@ const person_example =
 
 fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
     if (a.len != b.len) {
-        debug.print("Differing token slice lengths: {} != {}\n", .{ a.len, b.len });
-
-        @panic("test failure");
+        testPanic("Differing token slice lengths: {} != {}\n", .{ a.len, b.len });
     } else if (indexOfDifferentToken(a, b)) |different_index| {
-        debug.print(
+        testPanic(
             "Index {} different between token slices:\n\tExpected: {}\n\tGot: {}\n",
             .{ different_index, a[different_index], b[different_index] },
         );
-
-        @panic("test failure");
     }
 }
 
@@ -103,4 +99,10 @@ fn indexOfDifferentToken(a: []const Token, b: []const Token) ?usize {
     }
 
     return null;
+}
+
+fn testPanic(comptime format: []const u8, arguments: anytype) noreturn {
+    debug.print(format, arguments);
+
+    @panic("test failure");
 }
