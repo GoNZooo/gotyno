@@ -42,9 +42,20 @@ const project_example =
     \\}
 ;
 
+const Struct = struct {
+    name: []const u8,
+    fields: []Field,
+};
+
 const Field = struct {
     name: []const u8,
     specification: FieldSpecification,
+};
+
+const SliceSpecification = union(enum) {
+    nested_slice: SliceSpecification,
+    nested_array: ArraySpecification,
+    simple: []const u8,
 };
 
 const Literal = union(enum) {
@@ -77,12 +88,6 @@ const TypeSpecification = union(enum) {
     embedded_type: []const u8,
     slice: SliceSpecification,
     array: ArraySpecification,
-};
-
-const SliceSpecification = union(enum) {
-    nested_slice: SliceSpecification,
-    nested_array: ArraySpecification,
-    simple: []const u8,
 };
 
 const FieldSpecification = union(enum) {
