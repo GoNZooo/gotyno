@@ -18,18 +18,68 @@ pub const Token = union(enum) {
 
     left_brace,
     right_brace,
+    left_bracket,
+    right_bracket,
     quotation_mark,
     semicolon,
+    colon,
+    newline,
+    space,
     keyword: []const u8,
+    name: []const u8,
+    symbol: []const u8,
+    number: isize,
 
     pub fn equal(self: Self, t: Self) bool {
         return switch (self) {
+            // for these we only really need to check that the tag matches
             .left_brace,
             .right_brace,
+            .left_bracket,
+            .right_bracket,
             .quotation_mark,
             .semicolon,
+            .colon,
+            .newline,
+            .space,
             => meta.activeTag(self) == meta.activeTag(t),
+
+            // keywords/symbols have to also match
             .keyword => |k| meta.activeTag(t) == .keyword and isEqualString(k, t.keyword),
+            .symbol => |s| meta.activeTag(t) == .symbol and isEqualString(s, t.symbol),
+            .name => |s| meta.activeTag(t) == .name and
+                isEqualString(s, t.name),
+            .number => |n| meta.activeTag(t) == .number and n == t.number,
+        };
+    }
+
+    pub fn size(self: Self) usize {
+        return switch (self) {
+            // one-character tokens
+            .left_brace,
+            .right_brace,
+            .left_bracket,
+            .right_bracket,
+            .quotation_mark,
+            .semicolon,
+            .colon,
+            .newline,
+            .space,
+            => 1,
+
+            .keyword => |k| k.len,
+            .symbol => |s| s.len,
+            .name => |s| s.len,
+            .number => |n| size: {
+                var remainder: isize = n;
+                var digits: usize = 1;
+                while (remainder > 10) : (remainder = @mod(remainder, 10)) {
+                    debug.print("remainder={}\n", .{remainder});
+                    digits += 1;
+                }
+
+                break :size digits;
+            },
         };
     }
 };
@@ -44,16 +94,82 @@ pub fn tokenize(
     options: TokenizeOptions,
 ) !ArrayList(Token) {
     var tokens = ArrayList(Token).init(allocator);
-    var token_iterator = mem.tokenize(buffer, " ");
+    var token_iterator = tokenIterator(buffer);
     var i: usize = 0;
-    while (token_iterator.next()) |token| : (i += 1) {
-        if (isKeyword(token)) {
-            try tokens.append(Token{ .keyword = token });
-        }
+    while (try token_iterator.next()) |token| : (i += 1) {
+        try tokens.append(token);
         if (options.print) debug.print("token {}: {}\n", .{ i, token });
     }
 
     return tokens;
+}
+
+const TokenIterator = struct {
+    const Self = @This();
+    const delimiters = ";:\" \t\n{}[]";
+
+    buffer: []const u8,
+    i: usize,
+    line: usize,
+    column: usize,
+
+    pub fn next(self: *Self) !?Token {
+        if (self.i >= self.buffer.len) return null;
+
+        const c = self.buffer[self.i];
+        const token = switch (c) {
+            '"' => Token.quotation_mark,
+            '{' => Token.left_brace,
+            '}' => Token.right_brace,
+            '[' => Token.left_bracket,
+            ']' => Token.right_bracket,
+            ';' => Token.semicolon,
+            ':' => Token.colon,
+            ' ' => Token.space,
+            '\n' => token: {
+                self.line += 1;
+                break :token Token.newline;
+            },
+            'A'...'Z' => token: {
+                if (mem.indexOfAny(u8, self.buffer[self.i..], delimiters)) |delimiter_index| {
+                    break :token Token{
+                        .name = self.buffer[self.i..(self.i + delimiter_index)],
+                    };
+                } else {
+                    @panic("unexpected endless pascal symbol");
+                }
+            },
+            'a'...'z' => token: {
+                if (mem.indexOfAny(u8, self.buffer[self.i..], delimiters)) |delimiter_index| {
+                    break :token Token{ .symbol = self.buffer[self.i..(self.i + delimiter_index)] };
+                } else {
+                    @panic("unexpected endless pascal symbol");
+                }
+            },
+            '0'...'9' => token: {
+                if (mem.indexOfAny(u8, self.buffer[self.i..], delimiters)) |delimiter_index| {
+                    const number = try fmt.parseInt(
+                        isize,
+                        self.buffer[self.i..(self.i + delimiter_index)],
+                        10,
+                    );
+                    break :token Token{ .number = number };
+                } else {
+                    @panic("unexpected endless pascal symbol");
+                }
+            },
+            else => debug.panic("unknown token at {}:{}: {c}\n", .{ self.line, self.column, c }),
+        };
+
+        self.i += token.size();
+        self.column = if (meta.activeTag(token) != Token.newline) self.column + token.size() else 0;
+
+        return token;
+    }
+};
+
+fn tokenIterator(buffer: []const u8) TokenIterator {
+    return TokenIterator{ .buffer = buffer, .i = 0, .line = 0, .column = 0 };
 }
 
 fn isKeyword(token: []const u8) bool {
@@ -74,11 +190,11 @@ test "`tokenize`" {
 const person_example =
     \\struct Person {
     \\    type: "Person";
-    \\    name: string;
-    \\    age: u8;
-    \\    efficiency: f32;
-    \\    on_vacation: boolean;
-    \\    last_five_comments: [5]string;
+    \\    name: String;
+    \\    age: U8;
+    \\    efficiency: F32;
+    \\    on_vacation: Boolean;
+    \\    last_five_comments: [5]String;
     \\}
 ;
 
