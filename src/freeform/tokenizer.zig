@@ -288,11 +288,11 @@ const expected_person_struct_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
-    .{ .symbol = "last_five_comments" },
+    .{ .symbol = "last_fifteen_comments" },
     Token.colon,
     Token.space,
     Token.left_bracket,
-    .{ .unsigned_integer = 11 },
+    .{ .unsigned_integer = 15 },
     Token.right_bracket,
     .{ .name = "String" },
     Token.semicolon,
@@ -308,7 +308,7 @@ const person_example =
     \\    efficiency: F32;
     \\    on_vacation: Boolean;
     \\    hobbies: []String;
-    \\    last_five_comments: [11]String;
+    \\    last_fifteen_comments: [15]String;
     \\}
 ;
 
