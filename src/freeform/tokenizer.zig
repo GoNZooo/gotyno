@@ -299,12 +299,15 @@ const person_example =
 ;
 
 fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
-    if (a.len != b.len) {
-        testPanic("Differing token slice lengths: {} != {}\n", .{ a.len, b.len });
-    } else if (indexOfDifferentToken(a, b)) |different_index| {
+    if (indexOfDifferentToken(a, b)) |different_index| {
         testPanic(
             "Index {} different between token slices:\n\tExpected: {}\n\tGot: {}\n",
             .{ different_index, a[different_index], b[different_index] },
+        );
+    } else if (a.len != b.len) {
+        testPanic(
+            "Slices are of different lengths:\n\tExpected: {}\n\tGot: {}\n",
+            .{ a.len, b.len },
         );
     }
 }
