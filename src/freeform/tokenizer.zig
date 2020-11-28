@@ -423,7 +423,7 @@ const expected_list_union_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
-    .{ .name = "Null" },
+    .{ .name = "Empty" },
     Token.semicolon,
     Token.newline,
     Token.space,
@@ -443,7 +443,7 @@ const expected_list_union_tokens = [_]Token{
 
 const list_example =
     \\union <T> List {
-    \\    Null;
+    \\    Empty;
     \\    Cons: *List<T>;
     \\}
 ;
