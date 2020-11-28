@@ -209,9 +209,9 @@ fn isEqualString(a: []const u8, b: []const u8) bool {
     return mem.eql(u8, a, b);
 }
 
-test "`tokenize`" {
+test "Tokenize person struct" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, person_example, .{ .print = true });
+    const tokens = try tokenize(&allocator.allocator, person_example, .{});
     expectEqualTokenSlices(&expected_person_struct_tokens, tokens.items);
 }
 
