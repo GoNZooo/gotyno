@@ -228,6 +228,7 @@ const person_example =
     \\    age: U8;
     \\    efficiency: F32;
     \\    on_vacation: Boolean;
+    \\    hobbies: []String;
     \\    last_five_comments: [11]String;
     \\}
 ;
