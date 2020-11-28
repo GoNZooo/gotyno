@@ -150,38 +150,40 @@ const TokenIterator = struct {
                 self.line += 1;
                 break :token Token.newline;
             },
+
             'A'...'Z' => token: {
                 if (mem.indexOfAny(u8, self.buffer[self.i..], delimiters)) |delimiter_index| {
-                    break :token Token{
-                        .name = self.buffer[self.i..(self.i + delimiter_index)],
-                    };
+                    const name_end = self.i + delimiter_index;
+                    break :token Token{ .name = self.buffer[self.i..name_end] };
                 } else {
                     @panic("unexpected endless pascal symbol");
                 }
             },
+
             'a'...'z' => token: {
                 if (mem.indexOfAny(u8, self.buffer[self.i..], delimiters)) |delimiter_index| {
-                    break :token Token{ .symbol = self.buffer[self.i..(self.i + delimiter_index)] };
+                    const symbol_end = self.i + delimiter_index;
+                    break :token Token{ .symbol = self.buffer[self.i..symbol_end] };
                 } else {
                     @panic("unexpected endless pascal symbol");
                 }
             },
+
             '0'...'9' => token: {
                 if (mem.indexOfAny(u8, self.buffer[self.i..], delimiters)) |delimiter_index| {
-                    const number = try fmt.parseInt(
-                        isize,
-                        self.buffer[self.i..(self.i + delimiter_index)],
-                        10,
-                    );
+                    const number_end = self.i + delimiter_index;
+                    const number = try fmt.parseInt(isize, self.buffer[self.i..number_end], 10);
                     break :token Token{ .number = number };
                 } else {
                     @panic("unexpected endless pascal symbol");
                 }
             },
+
             '"' => token: {
                 const string_start = self.i + 1;
                 if (mem.indexOf(u8, self.buffer[string_start..], "\"")) |quote_index| {
-                    break :token Token{ .string = self.buffer[string_start..(string_start + quote_index)] };
+                    const string_end = string_start + quote_index;
+                    break :token Token{ .string = self.buffer[string_start..string_end] };
                 } else {
                     @panic("unexpected endless string");
                 }
