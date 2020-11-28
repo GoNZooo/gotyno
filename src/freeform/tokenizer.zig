@@ -86,7 +86,7 @@ pub const Token = union(enum) {
 
 pub const TokenizeOptions = struct {
     print: bool = false,
-    skip_multiple_spaces: bool = true,
+    collapsed_space_size: ?u32 = 2,
 };
 
 pub fn tokenize(
@@ -98,10 +98,20 @@ pub fn tokenize(
     var token_iterator = tokenIterator(buffer);
     var token_index: usize = 0;
     var last_token: Token = Token.space;
+    var spaces: u32 = 0;
+    const collapse_spaces = options.collapsed_space_size != null;
+
     while (try token_iterator.next()) |token| {
-        if (options.skip_multiple_spaces and last_token == Token.space and token == Token.space) {
+        if (collapse_spaces and
+            spaces >= options.collapsed_space_size.? and
+            token == Token.space)
+        {
             // skipping token because we currently have several continuous spaces
         } else {
+            switch (token) {
+                .space => spaces += 1,
+                else => spaces = 0,
+            }
             try tokens.append(token);
             if (options.print) debug.print("token {}: {}\n", .{ token_index, token });
             token_index += 1;
