@@ -24,7 +24,6 @@ pub const Token = union(enum) {
     colon,
     newline,
     space,
-    keyword: []const u8,
     name: []const u8,
     symbol: []const u8,
     unsigned_integer: usize,
@@ -44,7 +43,6 @@ pub const Token = union(enum) {
             => meta.activeTag(self) == meta.activeTag(t),
 
             // keywords/symbols have to also match
-            .keyword => |k| meta.activeTag(t) == .keyword and isEqualString(k, t.keyword),
             .symbol => |s| meta.activeTag(t) == .symbol and isEqualString(s, t.symbol),
             .name => |s| meta.activeTag(t) == .name and
                 isEqualString(s, t.name),
@@ -67,7 +65,6 @@ pub const Token = union(enum) {
             .space,
             => 1,
 
-            .keyword => |k| k.len,
             .symbol => |s| s.len,
             .name => |n| n.len,
             // +2 because of the quotes
