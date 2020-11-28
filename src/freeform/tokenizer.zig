@@ -215,9 +215,11 @@ fn isEqualString(a: []const u8, b: []const u8) bool {
 test "`tokenize`" {
     var allocator = TestingAllocator{};
     const tokens = try tokenize(&allocator.allocator, person_example, .{ .print = true });
-    const expected_tokens = [_]Token{.{ .keyword = "struct" }};
-    expectEqualTokenSlices(&expected_tokens, tokens.items);
+    expectEqualTokenSlices(&expected_person_struct_tokens, tokens.items);
 }
+
+// @TODO: make this  token array match expected output for the `Person` example
+const expected_person_struct_tokens = [_]Token{.{ .keyword = "struct" }};
 
 const person_example =
     \\struct Person {
