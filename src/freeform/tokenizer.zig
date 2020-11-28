@@ -247,6 +247,12 @@ test "Tokenize `Either` union" {
     expectEqualTokenSlices(&expected_either_union_tokens, tokens.items);
 }
 
+test "Tokenize `List` union" {
+    var allocator = TestingAllocator{};
+    const tokens = try tokenize(&allocator.allocator, list_example, .{});
+    expectEqualTokenSlices(&expected_list_union_tokens, tokens.items);
+}
+
 const expected_person_struct_tokens = [_]Token{
     .{ .symbol = "struct" },
     Token.space,
@@ -401,6 +407,44 @@ const either_example =
     \\union <E, T> Either {
     \\    Left: E;
     \\    Right: T;
+    \\}
+;
+
+const expected_list_union_tokens = [_]Token{
+    .{ .symbol = "union" },
+    Token.space,
+    Token.left_angle,
+    .{ .name = "T" },
+    Token.right_angle,
+    Token.space,
+    .{ .name = "List" },
+    Token.space,
+    Token.left_brace,
+    Token.newline,
+    Token.space,
+    Token.space,
+    .{ .name = "Null" },
+    Token.semicolon,
+    Token.newline,
+    Token.space,
+    Token.space,
+    .{ .name = "Cons" },
+    Token.colon,
+    Token.space,
+    Token.asterisk,
+    .{ .name = "List" },
+    Token.left_angle,
+    .{ .name = "T" },
+    Token.right_angle,
+    Token.semicolon,
+    Token.newline,
+    Token.right_brace,
+};
+
+const list_example =
+    \\union <T> List {
+    \\    Null;
+    \\    Cons: *List<T>;
     \\}
 ;
 
