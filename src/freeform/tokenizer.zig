@@ -27,7 +27,7 @@ pub const Token = union(enum) {
     keyword: []const u8,
     name: []const u8,
     symbol: []const u8,
-    number: isize,
+    unsigned_integer: usize,
     string: []const u8,
 
     pub fn equal(self: Self, t: Self) bool {
@@ -48,7 +48,8 @@ pub const Token = union(enum) {
             .symbol => |s| meta.activeTag(t) == .symbol and isEqualString(s, t.symbol),
             .name => |s| meta.activeTag(t) == .name and
                 isEqualString(s, t.name),
-            .number => |n| meta.activeTag(t) == .number and n == t.number,
+            .unsigned_integer => |n| meta.activeTag(t) == .unsigned_integer and
+                n == t.unsigned_integer,
             .string => |s| meta.activeTag(t) == .string and mem.eql(u8, s, t.string),
         };
     }
@@ -71,8 +72,8 @@ pub const Token = union(enum) {
             .name => |n| n.len,
             // +2 because of the quotes
             .string => |s| s.len + 2,
-            .number => |n| size: {
-                var remainder: isize = n;
+            .unsigned_integer => |n| size: {
+                var remainder: usize = n;
                 var digits: usize = 1;
                 while (remainder > 10) : (remainder = @mod(remainder, 10)) {
                     digits += 1;
@@ -168,9 +169,13 @@ const TokenIterator = struct {
 
             '0'...'9' => token: {
                 if (mem.indexOfAny(u8, self.buffer[self.i..], delimiters)) |delimiter_index| {
-                    const number_end = self.i + delimiter_index;
-                    const number = try fmt.parseInt(isize, self.buffer[self.i..number_end], 10);
-                    break :token Token{ .number = number };
+                    const unsigned_integer_end = self.i + delimiter_index;
+                    const unsigned_integer = try fmt.parseInt(
+                        usize,
+                        self.buffer[self.i..unsigned_integer_end],
+                        10,
+                    );
+                    break :token Token{ .unsigned_integer = unsigned_integer };
                 } else {
                     @panic("unexpected endless pascal symbol");
                 }
