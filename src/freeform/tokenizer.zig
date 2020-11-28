@@ -27,6 +27,8 @@ pub const Token = union(enum) {
     colon,
     newline,
     space,
+    question_mark,
+    asterisk,
     name: []const u8,
     symbol: []const u8,
     unsigned_integer: usize,
@@ -46,6 +48,8 @@ pub const Token = union(enum) {
             .colon,
             .newline,
             .space,
+            .question_mark,
+            .asterisk,
             => meta.activeTag(self) == meta.activeTag(t),
 
             // keywords/symbols have to also match
@@ -72,6 +76,8 @@ pub const Token = union(enum) {
             .comma,
             .newline,
             .space,
+            .question_mark,
+            .asterisk,
             => 1,
 
             .symbol => |s| s.len,
@@ -152,6 +158,8 @@ const TokenIterator = struct {
             ';' => Token.semicolon,
             ',' => Token.comma,
             ':' => Token.colon,
+            '?' => Token.question_mark,
+            '*' => Token.asterisk,
             ' ' => Token.space,
             '\n' => token: {
                 self.line += 1;
