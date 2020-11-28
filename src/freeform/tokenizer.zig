@@ -215,7 +215,6 @@ test "Tokenize person struct" {
     expectEqualTokenSlices(&expected_person_struct_tokens, tokens.items);
 }
 
-// @TODO: make this  token array match expected output for the `Person` example
 const expected_person_struct_tokens = [_]Token{
     .{ .symbol = "struct" },
     Token.space,
