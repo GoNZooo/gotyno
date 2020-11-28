@@ -29,7 +29,7 @@ pub const Token = union(enum) {
     name: []const u8,
     symbol: []const u8,
     number: isize,
-    // @TODO: add `string: []const u8`
+    string: []const u8,
 
     pub fn equal(self: Self, t: Self) bool {
         return switch (self) {
@@ -51,6 +51,7 @@ pub const Token = union(enum) {
             .name => |s| meta.activeTag(t) == .name and
                 isEqualString(s, t.name),
             .number => |n| meta.activeTag(t) == .number and n == t.number,
+            .string => |s| meta.activeTag(t) == .string and mem.eql(u8, s, t.string),
         };
     }
 
@@ -70,7 +71,9 @@ pub const Token = union(enum) {
 
             .keyword => |k| k.len,
             .symbol => |s| s.len,
-            .name => |s| s.len,
+            .name => |n| n.len,
+            // +2 because of the quotes
+            .string => |s| s.len + 2,
             .number => |n| size: {
                 var remainder: isize = n;
                 var digits: usize = 1;
@@ -136,7 +139,6 @@ const TokenIterator = struct {
 
         const c = self.buffer[self.i];
         const token = switch (c) {
-            '"' => Token.quotation_mark,
             '{' => Token.left_brace,
             '}' => Token.right_brace,
             '[' => Token.left_bracket,
@@ -174,6 +176,14 @@ const TokenIterator = struct {
                     break :token Token{ .number = number };
                 } else {
                     @panic("unexpected endless pascal symbol");
+                }
+            },
+            '"' => token: {
+                const string_start = self.i + 1;
+                if (mem.indexOf(u8, self.buffer[string_start..], "\"")) |quote_index| {
+                    break :token Token{ .string = self.buffer[string_start..(string_start + quote_index)] };
+                } else {
+                    @panic("unexpected endless string");
                 }
             },
             else => debug.panic("unknown token at {}:{}: {c}\n", .{ self.line, self.column, c }),
