@@ -23,6 +23,7 @@ pub const Token = union(enum) {
     left_angle,
     right_angle,
     semicolon,
+    comma,
     colon,
     newline,
     space,
@@ -41,6 +42,7 @@ pub const Token = union(enum) {
             .left_angle,
             .right_angle,
             .semicolon,
+            .comma,
             .colon,
             .newline,
             .space,
@@ -67,6 +69,7 @@ pub const Token = union(enum) {
             .right_angle,
             .semicolon,
             .colon,
+            .comma,
             .newline,
             .space,
             => 1,
@@ -128,7 +131,7 @@ pub fn tokenize(
 
 const TokenIterator = struct {
     const Self = @This();
-    const delimiters = ";:\" \t\n{}[]<>";
+    const delimiters = ";:\" \t\n{}[]<>,";
 
     buffer: []const u8,
     i: usize,
@@ -147,6 +150,7 @@ const TokenIterator = struct {
             '<' => Token.left_angle,
             '>' => Token.right_angle,
             ';' => Token.semicolon,
+            ',' => Token.comma,
             ':' => Token.colon,
             ' ' => Token.space,
             '\n' => token: {
@@ -227,6 +231,12 @@ test "Tokenize `Maybe` union" {
     var allocator = TestingAllocator{};
     const tokens = try tokenize(&allocator.allocator, maybe_example, .{});
     expectEqualTokenSlices(&expected_maybe_union_tokens, tokens.items);
+}
+
+test "Tokenize `Either` union" {
+    var allocator = TestingAllocator{};
+    const tokens = try tokenize(&allocator.allocator, either_example, .{});
+    expectEqualTokenSlices(&expected_either_union_tokens, tokens.items);
 }
 
 const expected_person_struct_tokens = [_]Token{
@@ -343,6 +353,46 @@ const maybe_example =
     \\union <T> Maybe {
     \\    Just: T;
     \\    Nothing;
+    \\}
+;
+
+const expected_either_union_tokens = [_]Token{
+    .{ .symbol = "union" },
+    Token.space,
+    Token.left_angle,
+    .{ .name = "E" },
+    Token.comma,
+    Token.space,
+    .{ .name = "T" },
+    Token.right_angle,
+    Token.space,
+    .{ .name = "Either" },
+    Token.space,
+    Token.left_brace,
+    Token.newline,
+    Token.space,
+    Token.space,
+    .{ .name = "Left" },
+    Token.colon,
+    Token.space,
+    .{ .name = "E" },
+    Token.semicolon,
+    Token.newline,
+    Token.space,
+    Token.space,
+    .{ .name = "Right" },
+    Token.colon,
+    Token.space,
+    .{ .name = "T" },
+    Token.semicolon,
+    Token.newline,
+    Token.right_brace,
+};
+
+const either_example =
+    \\union <E, T> Either {
+    \\    Left: E;
+    \\    Right: T;
     \\}
 ;
 
