@@ -20,6 +20,8 @@ pub const Token = union(enum) {
     right_brace,
     left_bracket,
     right_bracket,
+    left_angle,
+    right_angle,
     semicolon,
     colon,
     newline,
@@ -36,6 +38,8 @@ pub const Token = union(enum) {
             .right_brace,
             .left_bracket,
             .right_bracket,
+            .left_angle,
+            .right_angle,
             .semicolon,
             .colon,
             .newline,
@@ -59,6 +63,8 @@ pub const Token = union(enum) {
             .right_brace,
             .left_bracket,
             .right_bracket,
+            .left_angle,
+            .right_angle,
             .semicolon,
             .colon,
             .newline,
@@ -122,7 +128,7 @@ pub fn tokenize(
 
 const TokenIterator = struct {
     const Self = @This();
-    const delimiters = ";:\" \t\n{}[]";
+    const delimiters = ";:\" \t\n{}[]<>";
 
     buffer: []const u8,
     i: usize,
@@ -138,6 +144,8 @@ const TokenIterator = struct {
             '}' => Token.right_brace,
             '[' => Token.left_bracket,
             ']' => Token.right_bracket,
+            '<' => Token.left_angle,
+            '>' => Token.right_angle,
             ';' => Token.semicolon,
             ':' => Token.colon,
             ' ' => Token.space,
@@ -213,6 +221,12 @@ test "Tokenize person struct" {
     var allocator = TestingAllocator{};
     const tokens = try tokenize(&allocator.allocator, person_example, .{});
     expectEqualTokenSlices(&expected_person_struct_tokens, tokens.items);
+}
+
+test "Tokenize `Maybe` union" {
+    var allocator = TestingAllocator{};
+    const tokens = try tokenize(&allocator.allocator, maybe_example, .{});
+    expectEqualTokenSlices(&expected_maybe_union_tokens, tokens.items);
 }
 
 const expected_person_struct_tokens = [_]Token{
@@ -295,6 +309,40 @@ const person_example =
     \\    on_vacation: Boolean;
     \\    hobbies: []String;
     \\    last_five_comments: [11]String;
+    \\}
+;
+
+const expected_maybe_union_tokens = [_]Token{
+    .{ .symbol = "union" },
+    Token.space,
+    Token.left_angle,
+    .{ .name = "T" },
+    Token.right_angle,
+    Token.space,
+    .{ .name = "Maybe" },
+    Token.space,
+    Token.left_brace,
+    Token.newline,
+    Token.space,
+    Token.space,
+    .{ .name = "Just" },
+    Token.colon,
+    Token.space,
+    .{ .name = "T" },
+    Token.semicolon,
+    Token.newline,
+    Token.space,
+    Token.space,
+    .{ .name = "Nothing" },
+    Token.semicolon,
+    Token.newline,
+    Token.right_brace,
+};
+
+const maybe_example =
+    \\union <T> Maybe {
+    \\    Just: T;
+    \\    Nothing;
     \\}
 ;
 
