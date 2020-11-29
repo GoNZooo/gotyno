@@ -33,7 +33,22 @@ pub const Definition = union(enum) {
     }
 };
 
-pub const Structure = struct {
+pub const Structure = union(enum) {
+    const Self = @This();
+
+    plain: PlainStructure,
+    // generic: GenericStructure,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        switch (self) {
+            .plain => |plain| {
+                return meta.activeTag(other) == .plain and self.plain.isEqual(other.plain);
+            },
+        }
+    }
+};
+
+pub const PlainStructure = struct {
     const Self = @This();
 
     name: []const u8,
@@ -57,7 +72,7 @@ pub const GenericStructure = struct {
 
     name: []const u8,
     fields: []Field,
-    open_names: []OpenName,
+    open_names: []const []const u8,
 };
 
 pub const Field = struct {
@@ -169,11 +184,33 @@ pub const DefinitionIterator = struct {
 
     pub fn parseStructureDefinition(self: *Self) !Structure {
         var tokens = &self.token_iterator;
-        var fields = ArrayList(Field).init(self.allocator);
         const definition_name = (try tokens.expect(Token.name)).name;
 
         _ = try tokens.expect(Token.space);
-        _ = try tokens.expect(Token.left_brace);
+
+        const left_angle_or_left_brace = try tokens.expectOneOf(
+            &[_]TokenTag{ .left_angle, .left_brace },
+        );
+
+        return switch (left_angle_or_left_brace) {
+            .left_brace => Structure{
+                .plain = try self.parsePlainStructureDefinition(definition_name),
+            },
+            // @TODO: re-route this to generic structure parsing
+            .left_angle => Structure{
+                .plain = try self.parsePlainStructureDefinition(definition_name),
+            },
+            else => debug.panic("aoe", .{}),
+        };
+    }
+
+    pub fn parsePlainStructureDefinition(
+        self: *Self,
+        definition_name: []const u8,
+    ) !PlainStructure {
+        var fields = ArrayList(Field).init(self.allocator);
+        const tokens = &self.token_iterator;
+
         _ = try tokens.expect(Token.newline);
         var done_parsing_fields = false;
         while (!done_parsing_fields) {
@@ -191,7 +228,7 @@ pub const DefinitionIterator = struct {
         }
         _ = try tokens.expect(Token.right_brace);
 
-        return Structure{
+        return PlainStructure{
             .name = try self.allocator.dupe(u8, definition_name),
             .fields = fields.items,
         };
@@ -294,23 +331,25 @@ test "parsing `Person` struct" {
     var comments_array_type = Type{ .name = "String" };
     const expected_definitions = [_]Definition{.{
         .structure = Structure{
-            .name = "Person",
-            .fields = &[_]Field{
-                .{ .name = "type", .@"type" = Type{ .string = "Person" } },
-                .{ .name = "name", .@"type" = Type{ .name = "String" } },
-                .{ .name = "age", .@"type" = Type{ .name = "U8" } },
-                .{ .name = "efficiency", .@"type" = Type{ .name = "F32" } },
-                .{ .name = "on_vacation", .@"type" = Type{ .name = "Boolean" } },
-                .{
-                    .name = "hobbies",
-                    .@"type" = Type{ .slice = Slice{ .@"type" = &hobbies_slice_type } },
-                },
-                .{
-                    .name = "last_fifteen_comments",
-                    .@"type" = Type{
-                        .array = Array{
-                            .size = 15,
-                            .@"type" = &comments_array_type,
+            .plain = PlainStructure{
+                .name = "Person",
+                .fields = &[_]Field{
+                    .{ .name = "type", .@"type" = Type{ .string = "Person" } },
+                    .{ .name = "name", .@"type" = Type{ .name = "String" } },
+                    .{ .name = "age", .@"type" = Type{ .name = "U8" } },
+                    .{ .name = "efficiency", .@"type" = Type{ .name = "F32" } },
+                    .{ .name = "on_vacation", .@"type" = Type{ .name = "Boolean" } },
+                    .{
+                        .name = "hobbies",
+                        .@"type" = Type{ .slice = Slice{ .@"type" = &hobbies_slice_type } },
+                    },
+                    .{
+                        .name = "last_fifteen_comments",
+                        .@"type" = Type{
+                            .array = Array{
+                                .size = 15,
+                                .@"type" = &comments_array_type,
+                            },
                         },
                     },
                 },
@@ -328,12 +367,12 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
         if (!a.isEqual(bs[i])) {
             const b = bs[i];
             debug.print("Definition at index {} different\n", .{i});
-            debug.print("\tNames: {} & {}\n", .{ a.structure.name, b.structure.name });
-            for (a.structure.fields) |f, fi| {
-                if (!f.isEqual(b.structure.fields[fi])) {
+            debug.print("\tNames: {} & {}\n", .{ a.structure.plain.name, b.structure.plain.name });
+            for (a.structure.plain.fields) |f, fi| {
+                if (!f.isEqual(b.structure.plain.fields[fi])) {
                     testing_utilities.testPanic(
                         "Different field at index {}:\n\tExpected: {}\n\tGot: {}\n",
-                        .{ fi, f, b.structure.fields[fi] },
+                        .{ fi, f, b.structure.plain.fields[fi] },
                     );
                 }
             }
