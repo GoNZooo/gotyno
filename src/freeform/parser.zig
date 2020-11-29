@@ -156,7 +156,7 @@ pub const DefinitionIterator = struct {
                     if (mem.eql(u8, s, "struct")) {
                         _ = try self.token_iterator.expect(Token.space);
 
-                        return Definition{ .structure = try self.parseStructDefinition() };
+                        return Definition{ .structure = try self.parseStructureDefinition() };
                     }
                 },
                 else => {},
@@ -166,7 +166,7 @@ pub const DefinitionIterator = struct {
         return null;
     }
 
-    pub fn parseStructDefinition(self: *Self) !Structure {
+    pub fn parseStructureDefinition(self: *Self) !Structure {
         var tokens = &self.token_iterator;
         var fields = ArrayList(Field).init(self.allocator);
         const definition_name = (try tokens.expect(Token.name)).name;
