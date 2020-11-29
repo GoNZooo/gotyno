@@ -7,7 +7,7 @@ const fmt = std.fmt;
 
 const type_examples = @import("./type_examples.zig");
 
-pub const Definitions = union(enum) {
+pub const Definition = union(enum) {
     structure: Structure,
     @"union": Union,
 };
