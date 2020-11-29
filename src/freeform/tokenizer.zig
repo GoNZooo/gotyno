@@ -127,7 +127,7 @@ pub fn tokenize(
     return tokens;
 }
 
-const TokenIterator = struct {
+pub const TokenIterator = struct {
     const Self = @This();
     const delimiters = ";:\" \t\n{}[]<>,";
 
