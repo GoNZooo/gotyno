@@ -267,12 +267,12 @@ fn isEqualString(a: []const u8, b: []const u8) bool {
 
 test "Tokenize `Person` struct" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, type_examples.person_struct, .{});
+    const tokens = try tokenize(&allocator.allocator, type_examples.person_structure, .{});
     expectEqualTokenSlices(&expected_person_struct_tokens, tokens.items);
 }
 
 test "`expect` for `Person` struct" {
-    try testTokenIteratorExpect(type_examples.person_struct, &expected_person_struct_tokens);
+    try testTokenIteratorExpect(type_examples.person_structure, &expected_person_struct_tokens);
 }
 
 test "Tokenize `Maybe` union" {

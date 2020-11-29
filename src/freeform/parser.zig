@@ -183,7 +183,7 @@ pub const DefinitionIterator = struct {
                 }
             }
             if (!done_parsing_fields) {
-                if (try self.parseStructField()) |field| {
+                if (try self.parseStructureField()) |field| {
                     try fields.append(field);
                 }
             }
@@ -196,7 +196,7 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    pub fn parseStructField(self: *Self) !?Field {
+    pub fn parseStructureField(self: *Self) !?Field {
         var tokens = &self.token_iterator;
         _ = try tokens.skipMany(Token.space, 4);
         const field_name = (try tokens.expect(Token.symbol)).symbol;
@@ -316,7 +316,7 @@ test "parsing `Person` struct" {
             },
         },
     }};
-    const parsed_definition = try parse(&allocator.allocator, type_examples.person_struct);
+    const parsed_definition = try parse(&allocator.allocator, type_examples.person_structure);
     switch (parsed_definition) {
         .success => |parsed| expectEqualDefinitions(&expected_definitions, parsed.definitions),
     }

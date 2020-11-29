@@ -1,4 +1,4 @@
-pub const person_struct =
+pub const person_structure =
     \\struct Person {
     \\    type: "Person";
     \\    name: String;
