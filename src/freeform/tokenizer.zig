@@ -10,6 +10,7 @@ const fs = std.fs;
 const meta = std.meta;
 
 const type_examples = @import("./type_examples.zig");
+const testing_utilities = @import("./testing_utilities.zig");
 
 const ArrayList = std.ArrayList;
 
@@ -117,7 +118,7 @@ pub fn tokenize(
     var token_index: usize = 0;
     var last_token: Token = Token.space;
 
-    while (try token_iterator.next()) |token| {
+    while (try token_iterator.next(.{})) |token| {
         try tokens.append(token);
         if (options.print) debug.print("token {}: {}\n", .{ token_index, token });
         token_index += 1;
@@ -136,7 +137,11 @@ pub const TokenIterator = struct {
     line: usize,
     column: usize,
 
-    pub fn next(self: *Self) !?Token {
+    pub const NextOptions = struct {
+        peek: bool = false,
+    };
+
+    pub fn next(self: *Self, options: NextOptions) !?Token {
         if (self.i >= self.buffer.len) return null;
 
         const c = self.buffer[self.i];
@@ -154,7 +159,7 @@ pub const TokenIterator = struct {
             '*' => Token.asterisk,
             ' ' => Token.space,
             '\n' => token: {
-                self.line += 1;
+                if (!options.peek) self.line += 1;
                 break :token Token.newline;
             },
 
@@ -202,8 +207,10 @@ pub const TokenIterator = struct {
             else => debug.panic("unknown token at {}:{}: {c}\n", .{ self.line, self.column, c }),
         };
 
-        self.i += token.size();
-        self.column = if (meta.activeTag(token) != Token.newline) self.column + token.size() else 0;
+        if (!options.peek) {
+            self.i += token.size();
+            self.column = if (meta.activeTag(token) != Token.newline) self.column + token.size() else 0;
+        }
 
         return token;
     }
@@ -218,33 +225,35 @@ pub const TokenIterator = struct {
         got: ?Token,
     };
 
-    pub fn expect(self: *Self, expected_token: @TagType(Token)) !ExpectResult {
-        const token = try self.next();
+    pub fn expect(self: *Self, expected_token: @TagType(Token)) !Token {
+        const token = try self.next(.{});
 
         if (token) |t| {
-            if (meta.activeTag(t) == expected_token) return ExpectResult{ .success = t };
+            if (meta.activeTag(t) == expected_token) return t;
 
-            return ExpectResult{
-                .failure = ExpectError{
-                    .expected = expected_token,
-                    .got = token,
-                },
-            };
-        } else if (token == null) {
-            return ExpectResult{
-                .failure = ExpectError{
-                    .expected = expected_token,
-                    .got = null,
-                },
-            };
+            debug.panic(
+                "Unexpected token:\n\tExpected: {}\n\tGot: {}\n",
+                .{ expected_token, t },
+            );
         } else {
-            return ExpectResult{
-                .failure = ExpectError{
-                    .expected = expected_token,
-                    .got = token,
-                },
-            };
+            debug.panic("Unexpected end of token stream when expecting: {}\n", .{expected_token});
         }
+    }
+
+    pub const SkipManyResult = union(enum) {
+        success,
+        failure: ExpectError,
+    };
+
+    pub fn skipMany(self: *Self, token_type: @TagType(Token), n: usize) !void {
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            _ = try self.expect(token_type);
+        }
+    }
+
+    pub fn peek(self: *Self) !?Token {
+        return try self.next(.{ .peek = true });
     }
 };
 
@@ -486,12 +495,12 @@ const expected_list_union_tokens = [_]Token{
 
 fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
     if (indexOfDifferentToken(a, b)) |different_index| {
-        testPanic(
+        testing_utilities.testPanic(
             "Index {} different between token slices:\n\tExpected: {}\n\tGot: {}\n",
             .{ different_index, a[different_index], b[different_index] },
         );
     } else if (a.len != b.len) {
-        testPanic(
+        testing_utilities.testPanic(
             "Slices are of different lengths:\n\tExpected: {}\n\tGot: {}\n",
             .{ a.len, b.len },
         );
@@ -501,13 +510,7 @@ fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
 fn testTokenIteratorExpect(buffer: []const u8, expected_tokens: []const Token) !void {
     var token_iterator = tokenIterator(buffer);
     for (expected_tokens) |expected_token| {
-        const expect_result = try token_iterator.expect(expected_token);
-        switch (expect_result) {
-            .success => {},
-            .failure => |f| {
-                testPanic("Failed expect :: Expected: {}\tGot: {}", .{ f.expected, f.got });
-            },
-        }
+        _ = try token_iterator.expect(expected_token);
     }
 }
 
@@ -517,10 +520,4 @@ fn indexOfDifferentToken(a: []const Token, b: []const Token) ?usize {
     }
 
     return null;
-}
-
-fn testPanic(comptime format: []const u8, arguments: anytype) noreturn {
-    debug.print(format, arguments);
-
-    @panic("test failure");
 }

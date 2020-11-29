@@ -2,7 +2,14 @@ const std = @import("std");
 const Builder = std.build.Builder;
 const Mode = std.builtin.Mode;
 
-const test_files = [_][]const u8{ "typescript", "purescript", "haskell" };
+const test_files = [_][]const u8{
+    // "typescript",
+    // "purescript",
+    // "haskell",
+    "freeform",
+    "freeform/tokenizer",
+    "freeform/parser",
+};
 
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
