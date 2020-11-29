@@ -232,10 +232,23 @@ pub const TokenIterator = struct {
         }
     }
 
-    pub const SkipManyResult = union(enum) {
-        success,
-        failure: ExpectError,
-    };
+    pub fn expectOneOf(self: *Self, token_tags: []const TokenTag) !Token {
+        debug.assert(token_tags.len > 0);
+
+        if (try self.next(.{})) |token| {
+            for (token_tags) |t| {
+                if (meta.activeTag(token) == t) return token;
+            }
+
+            debug.print("Unexpected token:\n\tExpected one of: {}", .{token_tags[0]});
+            for (token_tags[1..]) |t| debug.print(", {}", .{t});
+            debug.panic("\n\tGot: {}\n", .{token});
+        } else {
+            debug.print("Unexpected end of token stream when expecting: {}", .{token_tags[0]});
+            for (token_tags[1..]) |t| debug.print(", {}", .{t});
+            debug.panic("\n", .{});
+        }
+    }
 
     pub fn skipMany(self: *Self, token_type: TokenTag, n: usize) !void {
         var i: usize = 0;
