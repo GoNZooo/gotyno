@@ -113,24 +113,11 @@ pub fn tokenize(
     var token_iterator = tokenIterator(buffer);
     var token_index: usize = 0;
     var last_token: Token = Token.space;
-    var spaces: u32 = 0;
-    const collapse_spaces = options.collapsed_space_size != null;
 
     while (try token_iterator.next()) |token| {
-        if (collapse_spaces and
-            spaces >= options.collapsed_space_size.? and
-            token == Token.space)
-        {
-            // skipping token because we currently have several continuous spaces
-        } else {
-            switch (token) {
-                .space => spaces += 1,
-                else => spaces = 0,
-            }
-            try tokens.append(token);
-            if (options.print) debug.print("token {}: {}\n", .{ token_index, token });
-            token_index += 1;
-        }
+        try tokens.append(token);
+        if (options.print) debug.print("token {}: {}\n", .{ token_index, token });
+        token_index += 1;
         last_token = token;
     }
 
@@ -264,12 +251,16 @@ const expected_person_struct_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
+    Token.space,
+    Token.space,
     .{ .symbol = "type" },
     Token.colon,
     Token.space,
     .{ .string = "Person" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
     Token.space,
     Token.space,
     .{ .symbol = "name" },
@@ -280,12 +271,16 @@ const expected_person_struct_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
+    Token.space,
+    Token.space,
     .{ .symbol = "age" },
     Token.colon,
     Token.space,
     .{ .name = "U8" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
     Token.space,
     Token.space,
     .{ .symbol = "efficiency" },
@@ -296,12 +291,16 @@ const expected_person_struct_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
+    Token.space,
+    Token.space,
     .{ .symbol = "on_vacation" },
     Token.colon,
     Token.space,
     .{ .name = "Boolean" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
     Token.space,
     Token.space,
     .{ .symbol = "hobbies" },
@@ -312,6 +311,8 @@ const expected_person_struct_tokens = [_]Token{
     .{ .name = "String" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
     Token.space,
     Token.space,
     .{ .symbol = "last_fifteen_comments" },
@@ -339,12 +340,16 @@ const expected_maybe_union_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
+    Token.space,
+    Token.space,
     .{ .name = "Just" },
     Token.colon,
     Token.space,
     .{ .name = "T" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
     Token.space,
     Token.space,
     .{ .name = "Nothing" },
@@ -369,12 +374,16 @@ const expected_either_union_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
+    Token.space,
+    Token.space,
     .{ .name = "Left" },
     Token.colon,
     Token.space,
     .{ .name = "E" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
     Token.space,
     Token.space,
     .{ .name = "Right" },
@@ -399,9 +408,13 @@ const expected_list_union_tokens = [_]Token{
     Token.newline,
     Token.space,
     Token.space,
+    Token.space,
+    Token.space,
     .{ .name = "Empty" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
     Token.space,
     Token.space,
     .{ .name = "Cons" },
