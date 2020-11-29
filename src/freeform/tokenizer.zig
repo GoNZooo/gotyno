@@ -9,6 +9,8 @@ const io = std.io;
 const fs = std.fs;
 const meta = std.meta;
 
+const type_examples = @import("./type_examples.zig");
+
 const ArrayList = std.ArrayList;
 
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
@@ -231,25 +233,25 @@ fn isEqualString(a: []const u8, b: []const u8) bool {
 
 test "Tokenize person struct" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, person_example, .{});
+    const tokens = try tokenize(&allocator.allocator, type_examples.person_struct, .{});
     expectEqualTokenSlices(&expected_person_struct_tokens, tokens.items);
 }
 
 test "Tokenize `Maybe` union" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, maybe_example, .{});
+    const tokens = try tokenize(&allocator.allocator, type_examples.maybe_union, .{});
     expectEqualTokenSlices(&expected_maybe_union_tokens, tokens.items);
 }
 
 test "Tokenize `Either` union" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, either_example, .{});
+    const tokens = try tokenize(&allocator.allocator, type_examples.either_union, .{});
     expectEqualTokenSlices(&expected_either_union_tokens, tokens.items);
 }
 
 test "Tokenize `List` union" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, list_example, .{});
+    const tokens = try tokenize(&allocator.allocator, type_examples.list_union, .{});
     expectEqualTokenSlices(&expected_list_union_tokens, tokens.items);
 }
 
@@ -324,18 +326,6 @@ const expected_person_struct_tokens = [_]Token{
     Token.right_brace,
 };
 
-const person_example =
-    \\struct Person {
-    \\    type: "Person";
-    \\    name: String;
-    \\    age: U8;
-    \\    efficiency: F32;
-    \\    on_vacation: Boolean;
-    \\    hobbies: []String;
-    \\    last_fifteen_comments: [15]String;
-    \\}
-;
-
 const expected_maybe_union_tokens = [_]Token{
     .{ .symbol = "union" },
     Token.space,
@@ -362,13 +352,6 @@ const expected_maybe_union_tokens = [_]Token{
     Token.newline,
     Token.right_brace,
 };
-
-const maybe_example =
-    \\union <T> Maybe {
-    \\    Just: T;
-    \\    Nothing;
-    \\}
-;
 
 const expected_either_union_tokens = [_]Token{
     .{ .symbol = "union" },
@@ -403,13 +386,6 @@ const expected_either_union_tokens = [_]Token{
     Token.right_brace,
 };
 
-const either_example =
-    \\union <E, T> Either {
-    \\    Left: E;
-    \\    Right: T;
-    \\}
-;
-
 const expected_list_union_tokens = [_]Token{
     .{ .symbol = "union" },
     Token.space,
@@ -440,13 +416,6 @@ const expected_list_union_tokens = [_]Token{
     Token.newline,
     Token.right_brace,
 };
-
-const list_example =
-    \\union <T> List {
-    \\    Empty;
-    \\    Cons: *List<T>;
-    \\}
-;
 
 fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
     if (indexOfDifferentToken(a, b)) |different_index| {
