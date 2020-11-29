@@ -11,6 +11,7 @@ const type_examples = @import("./type_examples.zig");
 const testing_utilities = @import("./testing_utilities.zig");
 
 const Token = tokenizer.Token;
+const TokenTag = tokenizer.TokenTag;
 const TokenIterator = tokenizer.TokenIterator;
 const ArrayList = std.ArrayList;
 

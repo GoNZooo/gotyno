@@ -16,6 +16,8 @@ const ArrayList = std.ArrayList;
 
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
 
+pub const TokenTag = @TagType(Token);
+
 pub const Token = union(enum) {
     const Self = @This();
 
@@ -215,17 +217,7 @@ pub const TokenIterator = struct {
         return token;
     }
 
-    pub const ExpectResult = union(enum) {
-        success: Token,
-        failure: ExpectError,
-    };
-
-    pub const ExpectError = struct {
-        expected: @TagType(Token),
-        got: ?Token,
-    };
-
-    pub fn expect(self: *Self, expected_token: @TagType(Token)) !Token {
+    pub fn expect(self: *Self, expected_token: TokenTag) !Token {
         const token = try self.next(.{});
 
         if (token) |t| {
@@ -245,7 +237,7 @@ pub const TokenIterator = struct {
         failure: ExpectError,
     };
 
-    pub fn skipMany(self: *Self, token_type: @TagType(Token), n: usize) !void {
+    pub fn skipMany(self: *Self, token_type: TokenTag, n: usize) !void {
         var i: usize = 0;
         while (i < n) : (i += 1) {
             _ = try self.expect(token_type);
