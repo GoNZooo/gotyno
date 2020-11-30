@@ -403,9 +403,7 @@ test "Parsing invalid normal structure" {
             error.OutOfMemory,
             error.Overflow,
             error.InvalidCharacter,
-            => {
-                testing_utilities.testPanic("Unexpected error in test: {}\n", .{e});
-            },
+            => unreachable,
             error.UnexpectedToken => {
                 switch (expect_error) {
                     .oneOf => |one_of| {
