@@ -200,7 +200,10 @@ pub const DefinitionIterator = struct {
             .left_angle => Structure{
                 .plain = try self.parsePlainStructureDefinition(definition_name),
             },
-            else => debug.panic("aoe", .{}),
+            else => debug.panic(
+                "Invalid follow-up token after `struct` keyword: {}\n",
+                .{left_angle_or_left_brace},
+            ),
         };
     }
 
