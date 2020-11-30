@@ -11,21 +11,21 @@ pub const person_structure =
 ;
 
 pub const maybe_union =
-    \\union <T> Maybe {
+    \\union Maybe <T>{
     \\    Just: T;
     \\    Nothing;
     \\}
 ;
 
 pub const either_union =
-    \\union <E, T> Either {
+    \\union Either <E, T>{
     \\    Left: E;
     \\    Right: T;
     \\}
 ;
 
 pub const list_union =
-    \\union <T> List {
+    \\union List <T>{
     \\    Empty;
     \\    Cons: *List<T>;
     \\}

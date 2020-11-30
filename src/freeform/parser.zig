@@ -12,6 +12,7 @@ const testing_utilities = @import("./testing_utilities.zig");
 
 const Token = tokenizer.Token;
 const TokenTag = tokenizer.TokenTag;
+const ExpectError = tokenizer.ExpectError;
 const TokenIterator = tokenizer.TokenIterator;
 const ArrayList = std.ArrayList;
 
@@ -144,9 +145,14 @@ pub const ParseSuccess = struct {
 
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
 
-pub fn parse(allocator: *mem.Allocator, buffer: []const u8) !ParseResult {
+pub fn parse(
+    allocator: *mem.Allocator,
+    error_allocator: *mem.Allocator,
+    buffer: []const u8,
+    expect_error: *ExpectError,
+) !ParseResult {
     var definitions = ArrayList(Definition).init(allocator);
-    var definition_iterator = definitionIterator(allocator, buffer);
+    var definition_iterator = definitionIterator(allocator, buffer, expect_error);
     while (try definition_iterator.next()) |definition| {
         try definitions.append(definition);
     }
@@ -164,13 +170,14 @@ pub const DefinitionIterator = struct {
 
     token_iterator: TokenIterator,
     allocator: *mem.Allocator,
+    expect_error: *ExpectError,
 
     pub fn next(self: *Self) !?Definition {
         while (try self.token_iterator.next(.{})) |token| {
             switch (token) {
                 .symbol => |s| {
                     if (mem.eql(u8, s, "struct")) {
-                        _ = try self.token_iterator.expect(Token.space);
+                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
 
                         return Definition{ .structure = try self.parseStructureDefinition() };
                     }
@@ -184,12 +191,13 @@ pub const DefinitionIterator = struct {
 
     pub fn parseStructureDefinition(self: *Self) !Structure {
         var tokens = &self.token_iterator;
-        const definition_name = (try tokens.expect(Token.name)).name;
+        const definition_name = (try tokens.expect(Token.name, self.expect_error)).name;
 
-        _ = try tokens.expect(Token.space);
+        _ = try tokens.expect(Token.space, self.expect_error);
 
         const left_angle_or_left_brace = try tokens.expectOneOf(
             &[_]TokenTag{ .left_angle, .left_brace },
+            self.expect_error,
         );
 
         return switch (left_angle_or_left_brace) {
@@ -214,7 +222,7 @@ pub const DefinitionIterator = struct {
         var fields = ArrayList(Field).init(self.allocator);
         const tokens = &self.token_iterator;
 
-        _ = try tokens.expect(Token.newline);
+        _ = try tokens.expect(Token.newline, self.expect_error);
         var done_parsing_fields = false;
         while (!done_parsing_fields) {
             if (try tokens.peek()) |t| {
@@ -229,7 +237,7 @@ pub const DefinitionIterator = struct {
                 }
             }
         }
-        _ = try tokens.expect(Token.right_brace);
+        _ = try tokens.expect(Token.right_brace, self.expect_error);
 
         return PlainStructure{
             .name = try self.allocator.dupe(u8, definition_name),
@@ -239,10 +247,10 @@ pub const DefinitionIterator = struct {
 
     pub fn parseStructureField(self: *Self) !?Field {
         var tokens = &self.token_iterator;
-        _ = try tokens.skipMany(Token.space, 4);
-        const field_name = (try tokens.expect(Token.symbol)).symbol;
-        _ = try tokens.expect(Token.colon);
-        _ = try tokens.expect(Token.space);
+        _ = try tokens.skipMany(Token.space, 4, self.expect_error);
+        const field_name = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+        _ = try tokens.expect(Token.colon, self.expect_error);
+        _ = try tokens.expect(Token.space, self.expect_error);
 
         const maybe_field_value = try tokens.next(.{});
         if (maybe_field_value) |field_value| {
@@ -256,7 +264,9 @@ pub const DefinitionIterator = struct {
                         switch (brackets_or_numbers) {
                             .right_bracket => {
                                 var slice_type = try self.allocator.create(Type);
-                                slice_type.* = Type{ .name = (try tokens.expect(Token.name)).name };
+                                slice_type.* = Type{
+                                    .name = (try tokens.expect(Token.name, self.expect_error)).name,
+                                };
 
                                 break :field Field{
                                     .@"type" = Type{ .slice = Slice{ .@"type" = slice_type } },
@@ -264,9 +274,9 @@ pub const DefinitionIterator = struct {
                                 };
                             },
                             .unsigned_integer => |ui| {
-                                _ = try tokens.expect(Token.right_bracket);
+                                _ = try tokens.expect(Token.right_bracket, self.expect_error);
                                 var array_type = try self.allocator.create(Type);
-                                const array_type_name = (try tokens.expect(Token.name)).name;
+                                const array_type_name = (try tokens.expect(Token.name, self.expect_error)).name;
                                 array_type.* = Type{ .name = array_type_name };
                                 break :field Field{
                                     .@"type" = Type{
@@ -312,8 +322,8 @@ pub const DefinitionIterator = struct {
                     );
                 },
             };
-            _ = try tokens.expect(Token.semicolon);
-            _ = try tokens.expect(Token.newline);
+            _ = try tokens.expect(Token.semicolon, self.expect_error);
+            _ = try tokens.expect(Token.newline, self.expect_error);
 
             return field;
         } else {
@@ -322,13 +332,21 @@ pub const DefinitionIterator = struct {
     }
 };
 
-pub fn definitionIterator(allocator: *mem.Allocator, buffer: []const u8) DefinitionIterator {
-    var token_iterator = tokenizer.tokenIterator(buffer);
+pub fn definitionIterator(
+    allocator: *mem.Allocator,
+    buffer: []const u8,
+    expect_error: *ExpectError,
+) DefinitionIterator {
+    var token_iterator = tokenizer.TokenIterator.init(buffer);
 
-    return DefinitionIterator{ .token_iterator = token_iterator, .allocator = allocator };
+    return DefinitionIterator{
+        .token_iterator = token_iterator,
+        .allocator = allocator,
+        .expect_error = expect_error,
+    };
 }
 
-test "parsing `Person` struct" {
+test "parsing `Person` structure" {
     var allocator = TestingAllocator{};
     var hobbies_slice_type = Type{ .name = "String" };
     var comments_array_type = Type{ .name = "String" };
@@ -359,10 +377,45 @@ test "parsing `Person` struct" {
             },
         },
     }};
-    const parsed_definition = try parse(&allocator.allocator, type_examples.person_structure);
-    switch (parsed_definition) {
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.person_structure,
+        &expect_error,
+    );
+    switch (parsed_definitions) {
         .success => |parsed| expectEqualDefinitions(&expected_definitions, parsed.definitions),
     }
+}
+
+test "Parsing invalid normal structure" {
+    var allocator = TestingAllocator{};
+    var expect_error: ExpectError = undefined;
+    _ = parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        "struct Container T{",
+        &expect_error,
+    ) catch |e| {
+        switch (e) {
+            error.UnexpectedEndOfTokenStream,
+            error.OutOfMemory,
+            error.Overflow,
+            error.InvalidCharacter,
+            => {
+                testing_utilities.testPanic("Unexpected error in test: {}\n", .{e});
+            },
+            error.ExpectedTokenNotFound => {
+                testing.expectEqualSlices(
+                    TokenTag,
+                    &[_]TokenTag{ .left_angle, .left_brace },
+                    expect_error.expectations,
+                );
+                testing.expect(expect_error.got.isEqual(Token{ .name = "T" }));
+            },
+        }
+    };
 }
 
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {

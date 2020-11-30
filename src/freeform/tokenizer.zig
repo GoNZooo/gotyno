@@ -39,7 +39,7 @@ pub const Token = union(enum) {
     unsigned_integer: usize,
     string: []const u8,
 
-    pub fn equal(self: Self, t: Self) bool {
+    pub fn isEqual(self: Self, t: Self) bool {
         return switch (self) {
             // for these we only really need to check that the tag matches
             .left_brace,
@@ -102,21 +102,18 @@ pub const Token = union(enum) {
     }
 };
 
-pub fn tokenIterator(buffer: []const u8) TokenIterator {
-    return TokenIterator{ .buffer = buffer, .i = 0, .line = 0, .column = 0 };
-}
-
 pub const TokenizeOptions = struct {
     print: bool = false,
 };
 
 pub fn tokenize(
     allocator: *mem.Allocator,
+    error_allocator: *mem.Allocator,
     buffer: []const u8,
     options: TokenizeOptions,
 ) !ArrayList(Token) {
     var tokens = ArrayList(Token).init(allocator);
-    var token_iterator = tokenIterator(buffer);
+    var token_iterator = TokenIterator.init(buffer);
     var token_index: usize = 0;
     var last_token: Token = Token.space;
 
@@ -130,6 +127,11 @@ pub fn tokenize(
     return tokens;
 }
 
+pub const ExpectError = struct {
+    expectations: []const TokenTag,
+    got: Token,
+};
+
 pub const TokenIterator = struct {
     const Self = @This();
     const delimiters = ";:\" \t\n{}[]<>,";
@@ -142,6 +144,15 @@ pub const TokenIterator = struct {
     pub const NextOptions = struct {
         peek: bool = false,
     };
+
+    pub fn init(buffer: []const u8) Self {
+        return Self{
+            .buffer = buffer,
+            .i = 0,
+            .line = 0,
+            .column = 0,
+        };
+    }
 
     pub fn next(self: *Self, options: NextOptions) !?Token {
         if (self.i >= self.buffer.len) return null;
@@ -217,22 +228,23 @@ pub const TokenIterator = struct {
         return token;
     }
 
-    pub fn expect(self: *Self, expected_token: TokenTag) !Token {
+    pub fn expect(self: *Self, expected_token: TokenTag, parse_error: *ExpectError) !Token {
         const token = try self.next(.{});
 
         if (token) |t| {
             if (meta.activeTag(t) == expected_token) return t;
 
-            debug.panic(
-                "Unexpected token:\n\tExpected: {}\n\tGot: {}\n",
-                .{ expected_token, t },
-            );
+            return error.ExpectedTokenNotFound;
         } else {
-            debug.panic("Unexpected end of token stream when expecting: {}\n", .{expected_token});
+            return error.UnexpectedEndOfTokenStream;
         }
     }
 
-    pub fn expectOneOf(self: *Self, token_tags: []const TokenTag) !Token {
+    pub fn expectOneOf(
+        self: *Self,
+        comptime token_tags: []const TokenTag,
+        expect_error: *ExpectError,
+    ) !Token {
         debug.assert(token_tags.len > 0);
 
         if (try self.next(.{})) |token| {
@@ -240,20 +252,25 @@ pub const TokenIterator = struct {
                 if (meta.activeTag(token) == t) return token;
             }
 
-            debug.print("Unexpected token:\n\tExpected one of: {}", .{token_tags[0]});
-            for (token_tags[1..]) |t| debug.print(", {}", .{t});
-            debug.panic("\n\tGot: {}\n", .{token});
+            expect_error.* = ExpectError{
+                .expectations = token_tags,
+                .got = token,
+            };
+            return error.ExpectedTokenNotFound;
         } else {
-            debug.print("Unexpected end of token stream when expecting: {}", .{token_tags[0]});
-            for (token_tags[1..]) |t| debug.print(", {}", .{t});
-            debug.panic("\n", .{});
+            return error.UnexpectedEndOfTokenStream;
         }
     }
 
-    pub fn skipMany(self: *Self, token_type: TokenTag, n: usize) !void {
+    pub fn skipMany(
+        self: *Self,
+        token_type: TokenTag,
+        n: usize,
+        expect_error: *ExpectError,
+    ) !void {
         var i: usize = 0;
         while (i < n) : (i += 1) {
-            _ = try self.expect(token_type);
+            _ = try self.expect(token_type, expect_error);
         }
     }
 
@@ -272,42 +289,82 @@ fn isEqualString(a: []const u8, b: []const u8) bool {
 
 test "Tokenize `Person` struct" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, type_examples.person_structure, .{});
+    const tokens = try tokenize(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.person_structure,
+        .{},
+    );
     expectEqualTokenSlices(&expected_person_struct_tokens, tokens.items);
 }
 
 test "`expect` for `Person` struct" {
-    try testTokenIteratorExpect(type_examples.person_structure, &expected_person_struct_tokens);
+    var allocator = TestingAllocator{};
+    try testTokenIteratorExpect(
+        &allocator.allocator,
+        type_examples.person_structure,
+        &expected_person_struct_tokens,
+    );
 }
 
 test "Tokenize `Maybe` union" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, type_examples.maybe_union, .{});
+    const tokens = try tokenize(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.maybe_union,
+        .{},
+    );
     expectEqualTokenSlices(&expected_maybe_union_tokens, tokens.items);
 }
 
 test "`expect` for `Maybe` union" {
-    try testTokenIteratorExpect(type_examples.maybe_union, &expected_maybe_union_tokens);
+    var allocator = TestingAllocator{};
+    try testTokenIteratorExpect(
+        &allocator.allocator,
+        type_examples.maybe_union,
+        &expected_maybe_union_tokens,
+    );
 }
 
 test "Tokenize `Either` union" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, type_examples.either_union, .{});
+    const tokens = try tokenize(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.either_union,
+        .{},
+    );
     expectEqualTokenSlices(&expected_either_union_tokens, tokens.items);
 }
 
 test "`expect` for `Either` union" {
-    try testTokenIteratorExpect(type_examples.either_union, &expected_either_union_tokens);
+    var allocator = TestingAllocator{};
+    try testTokenIteratorExpect(
+        &allocator.allocator,
+        type_examples.either_union,
+        &expected_either_union_tokens,
+    );
 }
 
 test "Tokenize `List` union" {
     var allocator = TestingAllocator{};
-    const tokens = try tokenize(&allocator.allocator, type_examples.list_union, .{});
+    const tokens = try tokenize(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.list_union,
+        .{},
+    );
     expectEqualTokenSlices(&expected_list_union_tokens, tokens.items);
 }
 
 test "`expect` for `List` union" {
-    try testTokenIteratorExpect(type_examples.list_union, &expected_list_union_tokens);
+    var allocator = TestingAllocator{};
+    try testTokenIteratorExpect(
+        &allocator.allocator,
+        type_examples.list_union,
+        &expected_list_union_tokens,
+    );
 }
 
 const expected_person_struct_tokens = [_]Token{
@@ -398,12 +455,11 @@ const expected_person_struct_tokens = [_]Token{
 const expected_maybe_union_tokens = [_]Token{
     .{ .symbol = "union" },
     Token.space,
+    .{ .name = "Maybe" },
+    Token.space,
     Token.left_angle,
     .{ .name = "T" },
     Token.right_angle,
-    Token.space,
-    .{ .name = "Maybe" },
-    Token.space,
     Token.left_brace,
     Token.newline,
     Token.space,
@@ -429,15 +485,14 @@ const expected_maybe_union_tokens = [_]Token{
 const expected_either_union_tokens = [_]Token{
     .{ .symbol = "union" },
     Token.space,
+    .{ .name = "Either" },
+    Token.space,
     Token.left_angle,
     .{ .name = "E" },
     Token.comma,
     Token.space,
     .{ .name = "T" },
     Token.right_angle,
-    Token.space,
-    .{ .name = "Either" },
-    Token.space,
     Token.left_brace,
     Token.newline,
     Token.space,
@@ -466,12 +521,11 @@ const expected_either_union_tokens = [_]Token{
 const expected_list_union_tokens = [_]Token{
     .{ .symbol = "union" },
     Token.space,
+    .{ .name = "List" },
+    Token.space,
     Token.left_angle,
     .{ .name = "T" },
     Token.right_angle,
-    Token.space,
-    .{ .name = "List" },
-    Token.space,
     Token.left_brace,
     Token.newline,
     Token.space,
@@ -512,16 +566,21 @@ fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
     }
 }
 
-fn testTokenIteratorExpect(buffer: []const u8, expected_tokens: []const Token) !void {
-    var token_iterator = tokenIterator(buffer);
+fn testTokenIteratorExpect(
+    allocator: *mem.Allocator,
+    buffer: []const u8,
+    expected_tokens: []const Token,
+) !void {
+    var token_iterator = TokenIterator.init(buffer);
+    var expect_error: ExpectError = undefined;
     for (expected_tokens) |expected_token| {
-        _ = try token_iterator.expect(expected_token);
+        _ = try token_iterator.expect(expected_token, &expect_error);
     }
 }
 
 fn indexOfDifferentToken(a: []const Token, b: []const Token) ?usize {
     for (a) |t, i| {
-        if (!t.equal(b[i])) return i;
+        if (!t.isEqual(b[i])) return i;
     }
 
     return null;
