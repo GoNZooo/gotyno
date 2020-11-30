@@ -406,13 +406,23 @@ test "Parsing invalid normal structure" {
             => {
                 testing_utilities.testPanic("Unexpected error in test: {}\n", .{e});
             },
-            error.ExpectedTokenNotFound => {
-                testing.expectEqualSlices(
-                    TokenTag,
-                    &[_]TokenTag{ .left_angle, .left_brace },
-                    expect_error.expectations,
-                );
-                testing.expect(expect_error.got.isEqual(Token{ .name = "T" }));
+            error.UnexpectedToken => {
+                switch (expect_error) {
+                    .oneOf => |one_of| {
+                        testing.expectEqualSlices(
+                            TokenTag,
+                            &[_]TokenTag{ .left_angle, .left_brace },
+                            one_of.expectations,
+                        );
+                        testing.expect(one_of.got.isEqual(Token{ .name = "T" }));
+                    },
+                    .token => {
+                        testing_utilities.testPanic(
+                            "Invalid error for expecting one of: {}",
+                            .{expect_error},
+                        );
+                    },
+                }
             },
         }
     };

@@ -127,9 +127,17 @@ pub fn tokenize(
     return tokens;
 }
 
-pub const ExpectError = struct {
-    expectations: []const TokenTag,
-    got: Token,
+pub const ExpectTokenError = struct {
+    expectation: TokenTag, got: Token
+};
+
+pub const ExpectOneOfError = struct {
+    expectations: []const TokenTag, got: Token
+};
+
+pub const ExpectError = union(enum) {
+    token: ExpectTokenError,
+    oneOf: ExpectOneOfError,
 };
 
 pub const TokenIterator = struct {
@@ -228,13 +236,15 @@ pub const TokenIterator = struct {
         return token;
     }
 
-    pub fn expect(self: *Self, expected_token: TokenTag, parse_error: *ExpectError) !Token {
+    pub fn expect(self: *Self, expected_token: TokenTag, expect_error: *ExpectError) !Token {
         const token = try self.next(.{});
 
         if (token) |t| {
             if (meta.activeTag(t) == expected_token) return t;
 
-            return error.ExpectedTokenNotFound;
+            expect_error.* = ExpectError{ .token = .{ .expectation = expected_token, .got = t } };
+
+            return error.UnexpectedToken;
         } else {
             return error.UnexpectedEndOfTokenStream;
         }
@@ -253,10 +263,12 @@ pub const TokenIterator = struct {
             }
 
             expect_error.* = ExpectError{
-                .expectations = token_tags,
-                .got = token,
+                .oneOf = .{
+                    .expectations = token_tags,
+                    .got = token,
+                },
             };
-            return error.ExpectedTokenNotFound;
+            return error.UnexpectedToken;
         } else {
             return error.UnexpectedEndOfTokenStream;
         }
