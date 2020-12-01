@@ -56,8 +56,8 @@ pub const PlainStructure = struct {
     fields: []Field,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        if (mem.eql(u8, self.name, other.name)) {
-            return true;
+        if (!mem.eql(u8, self.name, other.name)) {
+            return false;
         } else {
             for (self.fields) |sf, i| {
                 if (!sf.isEqual(other.fields[i])) return false;
