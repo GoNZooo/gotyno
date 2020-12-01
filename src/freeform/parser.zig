@@ -533,19 +533,81 @@ test "Parsing invalid normal structure" {
 }
 
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
+    const Names = struct {
+        a: []const u8,
+        b: []const u8,
+    };
+
+    const Fields = struct {
+        a: []Field,
+        b: []Field,
+    };
+
+    const FieldsAndNames = struct {
+        names: Names,
+        fields: Fields,
+    };
+
+    for (as) |a, i| {
+        const b = bs[i];
+
+        if (!a.isEqual(b)) {
+            switch (a) {
+                .structure => |structure| {
+                    const fields_and_names = switch (structure) {
+                        .plain => |plain| FieldsAndNames{
+                            .names = Names{ .a = plain.name, .b = b.structure.plain.name },
+                            .fields = Fields{ .a = plain.fields, .b = b.structure.plain.fields },
+                        },
+                        .generic => |generic| FieldsAndNames{
+                            .names = Names{ .a = generic.name, .b = b.structure.generic.name },
+                            .fields = Fields{ .a = generic.fields, .b = b.structure.generic.fields },
+                        },
+                    };
+
+                    debug.print("Definition at index {} different\n", .{i});
+                    if (!mem.eql(u8, fields_and_names.names.a, fields_and_names.names.b)) {
+                        debug.print(
+                            "\tNames: {} != {}\n",
+                            .{ fields_and_names.names.a, fields_and_names.names.b },
+                        );
+                    }
+
+                    expectEqualFields(fields_and_names.fields.a, fields_and_names.fields.b);
+
+                    switch (structure) {
+                        .generic => |generic| {
+                            expectEqualOpenNames(
+                                generic.open_names,
+                                b.structure.generic.open_names,
+                            );
+                        },
+                        .plain => {},
+                    }
+                },
+            }
+        }
+    }
+}
+
+fn expectEqualFields(as: []const Field, bs: []const Field) void {
     for (as) |a, i| {
         if (!a.isEqual(bs[i])) {
-            const b = bs[i];
-            debug.print("Definition at index {} different\n", .{i});
-            debug.print("\tNames: {} & {}\n", .{ a.structure.plain.name, b.structure.plain.name });
-            for (a.structure.plain.fields) |f, fi| {
-                if (!f.isEqual(b.structure.plain.fields[fi])) {
-                    testing_utilities.testPanic(
-                        "Different field at index {}:\n\tExpected: {}\n\tGot: {}\n",
-                        .{ fi, f, b.structure.plain.fields[fi] },
-                    );
-                }
-            }
+            testing_utilities.testPanic(
+                "Different field at index {}:\n\tExpected: {}\n\tGot: {}\n",
+                .{ i, a, bs[i] },
+            );
+        }
+    }
+}
+
+fn expectEqualOpenNames(as: []const []const u8, bs: []const []const u8) void {
+    for (as) |a, i| {
+        if (!mem.eql(u8, a, bs[i])) {
+            testing_utilities.testPanic(
+                "Different open name at index {}:\n\tExpected: {}\n\tGot: {}\n",
+                .{ i, a, bs[i] },
+            );
         }
     }
 }
