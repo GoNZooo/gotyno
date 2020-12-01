@@ -84,7 +84,7 @@ pub const GenericStructure = struct {
             }
 
             for (self.fields) |field, i| {
-                if (!mem.eql(u8, field, other.fields[i])) return false;
+                if (!field.isEqual(other.fields[i])) return false;
             }
 
             return true;
