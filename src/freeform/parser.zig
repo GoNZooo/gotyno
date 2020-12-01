@@ -74,6 +74,22 @@ pub const GenericStructure = struct {
     name: []const u8,
     fields: []Field,
     open_names: []const []const u8,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (!mem.eql(u8, self.name, other.name)) {
+            return false;
+        } else {
+            for (self.open_names) |name, i| {
+                if (!mem.eql(u8, name, other.open_names[i])) return false;
+            }
+
+            for (self.fields) |field, i| {
+                if (!mem.eql(u8, field, other.fields[i])) return false;
+            }
+
+            return true;
+        }
+    }
 };
 
 pub const Field = struct {
