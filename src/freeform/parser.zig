@@ -38,12 +38,15 @@ pub const Structure = union(enum) {
     const Self = @This();
 
     plain: PlainStructure,
-    // generic: GenericStructure,
+    generic: GenericStructure,
 
     pub fn isEqual(self: Self, other: Self) bool {
         switch (self) {
             .plain => |plain| {
                 return meta.activeTag(other) == .plain and plain.isEqual(other.plain);
+            },
+            .generic => |generic| {
+                return meta.activeTag(other) == .generic and generic.isEqual(other.generic);
             },
         }
     }
@@ -222,7 +225,7 @@ pub const DefinitionIterator = struct {
             },
             // @TODO: re-route this to generic structure parsing
             .left_angle => Structure{
-                .plain = try self.parsePlainStructureDefinition(definition_name),
+                .generic = try self.parseGenericStructureDefinition(definition_name),
             },
             else => debug.panic(
                 "Invalid follow-up token after `struct` keyword: {}\n",
@@ -261,7 +264,63 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    pub fn parseStructureField(self: *Self) !?Field {
+    pub fn parseGenericStructureDefinition(
+        self: *Self,
+        definition_name: []const u8,
+    ) !GenericStructure {
+        var fields = ArrayList(Field).init(self.allocator);
+        const tokens = &self.token_iterator;
+        var open_names = ArrayList([]const u8).init(self.allocator);
+
+        const first_name = try tokens.expect(Token.name, self.expect_error);
+        try open_names.append(first_name.name);
+        var open_names_done = false;
+        while (!open_names_done) {
+            const right_angle_or_comma = try tokens.expectOneOf(
+                &[_]TokenTag{ .right_angle, .comma },
+                self.expect_error,
+            );
+            switch (right_angle_or_comma) {
+                .right_angle => open_names_done = true,
+                .comma => try open_names.append(try self.parseAdditionalName()),
+                else => unreachable,
+            }
+        }
+
+        _ = try tokens.expect(Token.left_brace, self.expect_error);
+        _ = try tokens.expect(Token.newline, self.expect_error);
+        var done_parsing_fields = false;
+        while (!done_parsing_fields) {
+            if (try tokens.peek()) |t| {
+                switch (t) {
+                    .right_brace => done_parsing_fields = true,
+                    else => {},
+                }
+            }
+            if (!done_parsing_fields) {
+                if (try self.parseStructureField()) |field| {
+                    try fields.append(field);
+                }
+            }
+        }
+        _ = try tokens.expect(Token.right_brace, self.expect_error);
+
+        return GenericStructure{
+            .name = try self.allocator.dupe(u8, definition_name),
+            .fields = fields.items,
+            .open_names = open_names.items,
+        };
+    }
+
+    fn parseAdditionalName(self: *Self) ![]const u8 {
+        const tokens = &self.token_iterator;
+        _ = try tokens.expect(Token.space, self.expect_error);
+        const name = try tokens.expect(Token.name, self.expect_error);
+
+        return try self.allocator.dupe(u8, name.name);
+    }
+
+    fn parseStructureField(self: *Self) !?Field {
         var tokens = &self.token_iterator;
         _ = try tokens.skipMany(Token.space, 4, self.expect_error);
         const field_name = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
@@ -398,6 +457,33 @@ test "parsing `Person` structure" {
         &allocator.allocator,
         &allocator.allocator,
         type_examples.person_structure,
+        &expect_error,
+    );
+    switch (parsed_definitions) {
+        .success => |parsed| expectEqualDefinitions(&expected_definitions, parsed.definitions),
+    }
+}
+
+test "parsing basic generic structure" {
+    var allocator = TestingAllocator{};
+    var fields = [_]Field{
+        .{ .name = "type", .@"type" = Type{ .string = "Node" } },
+        .{ .name = "data", .@"type" = Type{ .name = "T" } },
+    };
+    const expected_definitions = [_]Definition{.{
+        .structure = Structure{
+            .generic = GenericStructure{
+                .name = "Node",
+                .fields = &fields,
+                .open_names = &[_][]const u8{"T"},
+            },
+        },
+    }};
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.node_structure,
         &expect_error,
     );
     switch (parsed_definitions) {

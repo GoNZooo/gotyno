@@ -10,6 +10,13 @@ pub const person_structure =
     \\}
 ;
 
+pub const node_structure =
+    \\struct Node <T>{
+    \\    type: "Node";
+    \\    data: T;
+    \\}
+;
+
 pub const maybe_union =
     \\union Maybe <T>{
     \\    Just: T;
