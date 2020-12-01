@@ -43,7 +43,7 @@ pub const Structure = union(enum) {
     pub fn isEqual(self: Self, other: Self) bool {
         switch (self) {
             .plain => |plain| {
-                return meta.activeTag(other) == .plain and self.plain.isEqual(other.plain);
+                return meta.activeTag(other) == .plain and plain.isEqual(other.plain);
             },
         }
     }
