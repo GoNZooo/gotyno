@@ -466,10 +466,12 @@ test "parsing `Person` structure" {
 
 test "parsing basic generic structure" {
     var allocator = TestingAllocator{};
+
     var fields = [_]Field{
         .{ .name = "type", .@"type" = Type{ .string = "Node" } },
         .{ .name = "data", .@"type" = Type{ .name = "T" } },
     };
+
     const expected_definitions = [_]Definition{.{
         .structure = Structure{
             .generic = GenericStructure{
@@ -479,6 +481,7 @@ test "parsing basic generic structure" {
             },
         },
     }};
+
     var expect_error: ExpectError = undefined;
     const parsed_definitions = try parse(
         &allocator.allocator,
@@ -486,6 +489,7 @@ test "parsing basic generic structure" {
         type_examples.node_structure,
         &expect_error,
     );
+
     switch (parsed_definitions) {
         .success => |parsed| expectEqualDefinitions(&expected_definitions, parsed.definitions),
     }
