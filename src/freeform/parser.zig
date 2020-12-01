@@ -583,7 +583,7 @@ pub fn definitionIterator(
     };
 }
 
-test "parsing `Person` structure" {
+test "Parsing `Person` structure" {
     var allocator = TestingAllocator{};
     var hobbies_slice_type = Type{ .name = "String" };
     var comments_array_type = Type{ .name = "String" };
@@ -626,7 +626,7 @@ test "parsing `Person` structure" {
     }
 }
 
-test "parsing basic generic structure" {
+test "Parsing basic generic structure" {
     var allocator = TestingAllocator{};
 
     var fields = [_]Field{
@@ -657,7 +657,7 @@ test "parsing basic generic structure" {
     }
 }
 
-test "parsing basic plain union" {
+test "Parsing basic plain union" {
     var allocator = TestingAllocator{};
 
     var channels_slice_type = Type{ .name = "Channel" };
