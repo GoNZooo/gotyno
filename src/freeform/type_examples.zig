@@ -17,6 +17,15 @@ pub const node_structure =
     \\}
 ;
 
+pub const event_union =
+    \\union Event {
+    \\    LogIn: LogInData;
+    \\    LogOut: UserId;
+    \\    JoinChannels: []Channel;
+    \\    SetEmails: [5]Email;
+    \\}
+;
+
 pub const maybe_union =
     \\union Maybe <T>{
     \\    Just: T;
