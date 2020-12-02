@@ -118,7 +118,6 @@ pub const Type = union(enum) {
     name: []const u8,
     array: Array,
     slice: Slice,
-    pointer: Pointer,
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
@@ -127,8 +126,6 @@ pub const Type = union(enum) {
             .name => meta.activeTag(other) == .name and mem.eql(u8, self.name, other.name),
             .array => |array| meta.activeTag(other) == .array and array.isEqual(other.array),
             .slice => |slice| meta.activeTag(other) == .slice and slice.isEqual(other.slice),
-            .pointer => |pointer| meta.activeTag(other) == .pointer and
-                pointer.isEqual(other.pointer),
         };
     }
 };
