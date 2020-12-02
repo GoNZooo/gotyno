@@ -118,6 +118,7 @@ pub const Type = union(enum) {
     name: []const u8,
     array: Array,
     slice: Slice,
+    // @TODO: add `applied_generic` or the like here, as well as proper `Pointer` type (again)
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
