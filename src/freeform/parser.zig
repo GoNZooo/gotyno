@@ -113,17 +113,22 @@ pub const Field = struct {
 pub const Type = union(enum) {
     const Self = @This();
 
+    empty,
     string: []const u8,
     name: []const u8,
     array: Array,
     slice: Slice,
+    pointer: Pointer,
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
+            .empty => meta.activeTag(other) == .empty,
             .string => meta.activeTag(other) == .string and mem.eql(u8, self.string, other.string),
             .name => meta.activeTag(other) == .name and mem.eql(u8, self.name, other.name),
             .array => |array| meta.activeTag(other) == .array and array.isEqual(other.array),
             .slice => |slice| meta.activeTag(other) == .slice and slice.isEqual(other.slice),
+            .pointer => |pointer| meta.activeTag(other) == .pointer and
+                pointer.isEqual(other.pointer),
         };
     }
 };
@@ -153,12 +158,15 @@ pub const Union = union(enum) {
     const Self = @This();
 
     plain: PlainUnion,
-    // generic_union: GenericUnion,
+    generic: GenericUnion,
 
     pub fn isEqual(self: Self, other: Self) bool {
         switch (self) {
             .plain => |plain| {
                 return meta.activeTag(other) == .plain and plain.isEqual(other.plain);
+            },
+            .generic => |generic| {
+                return meta.activeTag(other) == .generic and generic.isEqual(other.generic);
             },
         }
     }
@@ -175,6 +183,28 @@ pub const PlainUnion = struct {
 
         for (self.constructors) |constructor, i| {
             if (!constructor.isEqual(other.constructors[i])) return false;
+        }
+
+        return true;
+    }
+};
+
+pub const GenericUnion = struct {
+    const Self = @This();
+
+    name: []const u8,
+    constructors: []Constructor,
+    open_names: []const []const u8,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (!mem.eql(u8, self.name, other.name)) return false;
+
+        for (self.constructors) |constructor, i| {
+            if (!constructor.isEqual(other.constructors[i])) return false;
+        }
+
+        for (self.open_names) |open_name, i| {
+            if (!mem.eql(u8, open_name, other.open_names[i])) return false;
         }
 
         return true;
@@ -367,9 +397,8 @@ pub const DefinitionIterator = struct {
             .left_brace => Union{
                 .plain = try self.parsePlainUnionDefinition(definition_name),
             },
-            // @TODO: re-route this to generic union parsing
             .left_angle => Union{
-                .plain = try self.parsePlainUnionDefinition(definition_name),
+                .generic = try self.parseGenericUnionDefinition(definition_name),
             },
             else => debug.panic(
                 "Invalid follow-up token after `union` keyword: {}\n",
@@ -406,6 +435,53 @@ pub const DefinitionIterator = struct {
         };
     }
 
+    pub fn parseGenericUnionDefinition(
+        self: *Self,
+        definition_name: []const u8,
+    ) !GenericUnion {
+        var constructors = ArrayList(Constructor).init(self.allocator);
+        var open_names = ArrayList([]const u8).init(self.allocator);
+        const tokens = &self.token_iterator;
+
+        const first_name = try tokens.expect(Token.name, self.expect_error);
+        try open_names.append(first_name.name);
+        var open_names_done = false;
+        while (!open_names_done) {
+            const right_angle_or_comma = try tokens.expectOneOf(
+                &[_]TokenTag{ .right_angle, .comma },
+                self.expect_error,
+            );
+            switch (right_angle_or_comma) {
+                .right_angle => open_names_done = true,
+                .comma => try open_names.append(try self.parseAdditionalName()),
+                else => unreachable,
+            }
+        }
+
+        _ = try tokens.expect(Token.left_brace, self.expect_error);
+        _ = try tokens.expect(Token.newline, self.expect_error);
+
+        var done_parsing_constructors = false;
+        while (!done_parsing_constructors) {
+            if (try tokens.peek()) |t| {
+                switch (t) {
+                    .right_brace => done_parsing_constructors = true,
+                    else => {},
+                }
+            }
+            if (!done_parsing_constructors) {
+                try constructors.append(try self.parseConstructor());
+            }
+        }
+        _ = try tokens.expect(Token.right_brace, self.expect_error);
+
+        return GenericUnion{
+            .name = try self.allocator.dupe(u8, definition_name),
+            .constructors = constructors.items,
+            .open_names = open_names.items,
+        };
+    }
+
     fn parseConstructor(self: *Self) !Constructor {
         const tokens = &self.token_iterator;
 
@@ -413,7 +489,17 @@ pub const DefinitionIterator = struct {
 
         const tag = (try tokens.expect(Token.name, self.expect_error)).name;
 
-        _ = try tokens.expect(Token.colon, self.expect_error);
+        const colon_or_semicolon = try tokens.expectOneOf(
+            &[_]TokenTag{ .colon, .semicolon },
+            self.expect_error,
+        );
+
+        if (colon_or_semicolon == Token.semicolon) {
+            _ = try tokens.expect(Token.newline, self.expect_error);
+
+            return Constructor{ .tag = tag, .parameter = Type.empty };
+        }
+
         _ = try tokens.expect(Token.space, self.expect_error);
 
         const type_token = try tokens.expectOneOf(
@@ -697,6 +783,71 @@ test "Parsing basic plain union" {
     }
 }
 
+test "Parsing `Maybe` union" {
+    var allocator = TestingAllocator{};
+
+    var expected_constructors = [_]Constructor{
+        .{ .tag = "Just", .parameter = Type{ .name = "T" } },
+        .{ .tag = "Nothing", .parameter = Type.empty },
+    };
+
+    const expected_definitions = [_]Definition{.{
+        .@"union" = Union{
+            .generic = GenericUnion{
+                .name = "Maybe",
+                .constructors = &expected_constructors,
+                .open_names = &[_][]const u8{"T"},
+            },
+        },
+    }};
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.maybe_union,
+        &expect_error,
+    );
+
+    switch (parsed_definitions) {
+        .success => |parsed| {
+            expectEqualDefinitions(&expected_definitions, parsed.definitions);
+        },
+    }
+}
+
+test "Parsing `Either` union" {
+    var allocator = TestingAllocator{};
+
+    var expected_constructors = [_]Constructor{
+        .{ .tag = "Left", .parameter = Type{ .name = "E" } },
+        .{ .tag = "Right", .parameter = Type{ .name = "T" } },
+    };
+
+    const expected_definitions = [_]Definition{.{
+        .@"union" = Union{
+            .generic = GenericUnion{
+                .name = "Either",
+                .constructors = &expected_constructors,
+                .open_names = &[_][]const u8{ "E", "T" },
+            },
+        },
+    }};
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.either_union,
+        &expect_error,
+    );
+
+    switch (parsed_definitions) {
+        .success => |parsed| {
+            expectEqualDefinitions(&expected_definitions, parsed.definitions);
+        },
+    }
+}
 test "Parsing invalid normal structure" {
     var allocator = TestingAllocator{};
     var expect_error: ExpectError = undefined;
@@ -801,6 +952,21 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
                                 plain.constructors,
                                 b.@"union".plain.constructors,
                             );
+                        },
+                        .generic => |generic| {
+                            if (!mem.eql(u8, generic.name, b.@"union".generic.name)) {
+                                debug.print(
+                                    "\tNames: {} != {}\n",
+                                    .{ generic.name, b.@"union".generic.name },
+                                );
+                            }
+
+                            expectEqualConstructors(
+                                generic.constructors,
+                                b.@"union".generic.constructors,
+                            );
+
+                            expectEqualOpenNames(generic.open_names, b.@"union".generic.open_names);
                         },
                     }
                 },
