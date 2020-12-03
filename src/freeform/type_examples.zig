@@ -7,6 +7,7 @@ pub const person_structure =
     \\    on_vacation: Boolean;
     \\    hobbies: []String;
     \\    last_fifteen_comments: [15]String;
+    \\    recruiter: *Person;
     \\}
 ;
 

@@ -589,83 +589,72 @@ pub const DefinitionIterator = struct {
         _ = try tokens.expect(Token.colon, self.expect_error);
         _ = try tokens.expect(Token.space, self.expect_error);
 
-        const maybe_field_value = try tokens.next(.{});
-        if (maybe_field_value) |field_value| {
-            const field = switch (field_value) {
-                // valid as field values/types
-                .string => |s| Field{ .@"type" = Type{ .string = s }, .name = field_name },
-                .name => |n| Field{ .@"type" = Type{ .name = n }, .name = field_name },
-                .left_bracket => field: {
-                    const maybe_brackets_or_numbers = try tokens.next(.{});
-                    if (maybe_brackets_or_numbers) |brackets_or_numbers| {
-                        switch (brackets_or_numbers) {
-                            .right_bracket => {
-                                var slice_type = try self.allocator.create(Type);
-                                slice_type.* = Type{
-                                    .name = (try tokens.expect(Token.name, self.expect_error)).name,
-                                };
+        const field_type = try self.parseFieldType();
 
-                                break :field Field{
-                                    .@"type" = Type{ .slice = Slice{ .@"type" = slice_type } },
-                                    .name = field_name,
-                                };
-                            },
-                            .unsigned_integer => |ui| {
-                                _ = try tokens.expect(Token.right_bracket, self.expect_error);
-                                var array_type = try self.allocator.create(Type);
-                                const array_type_name = (try tokens.expect(Token.name, self.expect_error)).name;
-                                array_type.* = Type{ .name = array_type_name };
-                                break :field Field{
-                                    .@"type" = Type{
-                                        .array = Array{ .@"type" = array_type, .size = ui },
-                                    },
-                                    .name = field_name,
-                                };
-                            },
-                            else => {
-                                debug.panic(
-                                    "Unknown slice/array component, expecting closing bracket or unsigned integer plus closing bracket. Got: {}\n",
-                                    .{brackets_or_numbers},
-                                );
-                            },
-                        }
-                    } else {
+        return Field{ .name = field_name, .@"type" = field_type };
+    }
+
+    fn parseFieldType(self: *Self) !Type {
+        const tokens = &self.token_iterator;
+
+        const field_type_start_token = try tokens.expectOneOf(
+            &[_]TokenTag{ .string, .name, .left_bracket, .asterisk },
+            self.expect_error,
+        );
+
+        const field = switch (field_type_start_token) {
+            .string => |s| Type{ .string = s },
+            .name => |n| Type{ .name = n },
+
+            .left_bracket => field_type: {
+                const right_bracket_or_number = try tokens.expectOneOf(
+                    &[_]TokenTag{ .right_bracket, .unsigned_integer },
+                    self.expect_error,
+                );
+
+                switch (right_bracket_or_number) {
+                    .right_bracket => {
+                        var slice_type = try self.allocator.create(Type);
+                        slice_type.* = Type{
+                            .name = (try tokens.expect(Token.name, self.expect_error)).name,
+                        };
+
+                        break :field_type Type{ .slice = Slice{ .@"type" = slice_type } };
+                    },
+                    .unsigned_integer => |ui| {
+                        _ = try tokens.expect(Token.right_bracket, self.expect_error);
+                        var array_type = try self.allocator.create(Type);
+                        const array_type_name = (try tokens.expect(Token.name, self.expect_error)).name;
+                        array_type.* = Type{ .name = array_type_name };
+                        break :field_type Type{ .array = Array{ .@"type" = array_type, .size = ui } };
+                    },
+                    else => {
                         debug.panic(
-                            "Unexpected end of stream, expecting closing bracket or unsigned integer plus closing bracket.",
-                            .{},
+                            "Unknown slice/array component, expecting closing bracket or unsigned integer plus closing bracket. Got: {}\n",
+                            .{right_bracket_or_number},
                         );
-                    }
-                },
+                    },
+                }
+            },
 
-                // invalid
-                .symbol,
-                .unsigned_integer,
-                .left_brace,
-                .right_brace,
-                .right_bracket,
-                .left_angle,
-                .right_angle,
-                .semicolon,
-                .colon,
-                .newline,
-                .question_mark,
-                .asterisk,
-                .space,
-                .comma,
-                => {
-                    debug.panic(
-                        "Unexpected token in place of field value/type: {}",
-                        .{field_value},
-                    );
-                },
-            };
-            _ = try tokens.expect(Token.semicolon, self.expect_error);
-            _ = try tokens.expect(Token.newline, self.expect_error);
+            .asterisk => field_type: {
+                var field_type = try self.allocator.create(Type);
+                const name = (try tokens.expect(Token.name, self.expect_error)).name;
+                field_type.* = Type{ .name = name };
+                break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
+            },
 
-            return field;
-        } else {
-            debug.panic("Unexpected end of stream when expecting field value/type.", .{});
-        }
+            else => {
+                debug.panic(
+                    "Unexpected token in place of field value/type: {}",
+                    .{field_type_start_token},
+                );
+            },
+        };
+        _ = try tokens.expect(Token.semicolon, self.expect_error);
+        _ = try tokens.expect(Token.newline, self.expect_error);
+
+        return field;
     }
 };
 
@@ -687,6 +676,7 @@ test "Parsing `Person` structure" {
     var allocator = TestingAllocator{};
     var hobbies_slice_type = Type{ .name = "String" };
     var comments_array_type = Type{ .name = "String" };
+    var recruiter_pointer_type = Type{ .name = "Person" };
     const expected_definitions = [_]Definition{.{
         .structure = Structure{
             .plain = PlainStructure{
@@ -709,6 +699,10 @@ test "Parsing `Person` structure" {
                                 .@"type" = &comments_array_type,
                             },
                         },
+                    },
+                    .{
+                        .name = "recruiter",
+                        .@"type" = Type{ .pointer = Pointer{ .@"type" = &recruiter_pointer_type } },
                     },
                 },
             },

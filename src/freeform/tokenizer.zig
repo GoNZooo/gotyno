@@ -461,6 +461,17 @@ const expected_person_struct_tokens = [_]Token{
     .{ .name = "String" },
     Token.semicolon,
     Token.newline,
+    Token.space,
+    Token.space,
+    Token.space,
+    Token.space,
+    .{ .symbol = "recruiter" },
+    Token.colon,
+    Token.space,
+    Token.asterisk,
+    .{ .name = "Person" },
+    Token.semicolon,
+    Token.newline,
     Token.right_brace,
 };
 
