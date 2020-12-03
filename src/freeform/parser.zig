@@ -119,7 +119,7 @@ pub const Type = union(enum) {
     array: Array,
     slice: Slice,
     pointer: Pointer,
-    // @TODO: add `applied_generic` or the like here
+    applied_name: AppliedName,
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
@@ -129,6 +129,8 @@ pub const Type = union(enum) {
             .array => |array| meta.activeTag(other) == .array and array.isEqual(other.array),
             .slice => |slice| meta.activeTag(other) == .slice and slice.isEqual(other.slice),
             .pointer => |pointer| meta.activeTag(other) == .pointer and pointer.isEqual(other.pointer),
+            .applied_name => |applied_name| meta.activeTag(other) == .applied_name and
+                applied_name.isEqual(other.applied_name),
         };
     }
 };
@@ -161,6 +163,23 @@ pub const Pointer = struct {
 
     pub fn isEqual(self: Self, other: Self) bool {
         return self.@"type".isEqual(other.@"type".*);
+    }
+};
+
+pub const AppliedName = struct {
+    const Self = @This();
+
+    name: []const u8,
+    open_names: []const []const u8,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (!mem.eql(u8, self.name, other.name)) return false;
+
+        for (self.open_names) |open_name, i| {
+            if (!mem.eql(u8, open_name, other.open_names[i])) return false;
+        }
+
+        return true;
     }
 };
 
@@ -349,14 +368,12 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    pub fn parseGenericStructureDefinition(
-        self: *Self,
-        definition_name: []const u8,
-    ) !GenericStructure {
-        var fields = ArrayList(Field).init(self.allocator);
+    fn parseOpenNames(self: *Self) ![][]const u8 {
         const tokens = &self.token_iterator;
+
         var open_names = ArrayList([]const u8).init(self.allocator);
 
+        const p = try tokens.peek();
         const first_name = try tokens.expect(Token.name, self.expect_error);
         try open_names.append(first_name.name);
         var open_names_done = false;
@@ -371,6 +388,18 @@ pub const DefinitionIterator = struct {
                 else => unreachable,
             }
         }
+
+        return open_names.items;
+    }
+
+    pub fn parseGenericStructureDefinition(
+        self: *Self,
+        definition_name: []const u8,
+    ) !GenericStructure {
+        var fields = ArrayList(Field).init(self.allocator);
+        const tokens = &self.token_iterator;
+
+        const open_names = try self.parseOpenNames();
 
         _ = try tokens.expect(Token.left_brace, self.expect_error);
         _ = try tokens.expect(Token.newline, self.expect_error);
@@ -391,7 +420,7 @@ pub const DefinitionIterator = struct {
         return GenericStructure{
             .name = try self.allocator.dupe(u8, definition_name),
             .fields = fields.items,
-            .open_names = open_names.items,
+            .open_names = open_names,
         };
     }
 
@@ -516,60 +545,7 @@ pub const DefinitionIterator = struct {
 
         _ = try tokens.expect(Token.space, self.expect_error);
 
-        const type_token = try tokens.expectOneOf(
-            &[_]TokenTag{ Token.name, Token.left_bracket },
-            self.expect_error,
-        );
-
-        const parameter = switch (type_token) {
-            .name => |name| Type{ .name = name },
-            .left_bracket => parameter: {
-                const right_bracket_or_unsigned_integer = try tokens.expectOneOf(
-                    &[_]TokenTag{ Token.right_bracket, .unsigned_integer },
-                    self.expect_error,
-                );
-
-                switch (right_bracket_or_unsigned_integer) {
-                    .right_bracket => {
-                        var slice_type = try self.allocator.create(Type);
-                        slice_type.* = Type{
-                            .name = (try tokens.expect(
-                                Token.name,
-                                self.expect_error,
-                            )).name,
-                        };
-
-                        break :parameter Type{ .slice = Slice{ .@"type" = slice_type } };
-                    },
-                    .unsigned_integer => |ui| {
-                        _ = try tokens.expect(Token.right_bracket, self.expect_error);
-                        var array_type = try self.allocator.create(Type);
-                        array_type.* = Type{
-                            .name = (try tokens.expect(
-                                Token.name,
-                                self.expect_error,
-                            )).name,
-                        };
-
-                        break :parameter Type{
-                            .array = Array{ .@"type" = array_type, .size = ui },
-                        };
-                    },
-                    else => {
-                        debug.panic(
-                            "Unexpected token as closing left bracket: {}\n",
-                            .{right_bracket_or_unsigned_integer},
-                        );
-                    },
-                }
-            },
-            else => {
-                debug.panic("unexpected token as parameter for constructor: {}\n", .{type_token});
-            },
-        };
-
-        _ = try tokens.expect(Token.semicolon, self.expect_error);
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        const parameter = try self.parseFieldType();
 
         return Constructor{ .tag = tag, .parameter = parameter };
     }
@@ -594,6 +570,27 @@ pub const DefinitionIterator = struct {
         return Field{ .name = field_name, .@"type" = field_type };
     }
 
+    fn parseMaybeAppliedName(self: *Self, name: []const u8) !?AppliedName {
+        const tokens = &self.token_iterator;
+
+        const maybe_left_angle_token = try tokens.peek();
+        if (maybe_left_angle_token) |maybe_left_angle| {
+            switch (maybe_left_angle) {
+                // we have an applied name
+                .left_angle => {
+                    _ = try tokens.expect(Token.left_angle, self.expect_error);
+                    var names = ArrayList([]const u8).init(self.allocator);
+                    const open_names = try self.parseOpenNames();
+
+                    return AppliedName{ .name = name, .open_names = open_names };
+                },
+                else => {},
+            }
+        }
+
+        return null;
+    }
+
     fn parseFieldType(self: *Self) !Type {
         const tokens = &self.token_iterator;
 
@@ -604,7 +601,13 @@ pub const DefinitionIterator = struct {
 
         const field = switch (field_type_start_token) {
             .string => |s| Type{ .string = s },
-            .name => |n| Type{ .name = n },
+            .name => |name| field_type: {
+                if (try self.parseMaybeAppliedName(name)) |applied_name| {
+                    break :field_type Type{ .applied_name = applied_name };
+                } else {
+                    break :field_type Type{ .name = name };
+                }
+            },
 
             .left_bracket => field_type: {
                 const right_bracket_or_number = try tokens.expectOneOf(
@@ -640,7 +643,11 @@ pub const DefinitionIterator = struct {
             .asterisk => field_type: {
                 var field_type = try self.allocator.create(Type);
                 const name = (try tokens.expect(Token.name, self.expect_error)).name;
-                field_type.* = Type{ .name = name };
+                field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
+                    Type{ .applied_name = applied_name }
+                else
+                    Type{ .name = name };
+
                 break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
             },
 
@@ -651,6 +658,7 @@ pub const DefinitionIterator = struct {
                 );
             },
         };
+        const p = try tokens.peek();
         _ = try tokens.expect(Token.semicolon, self.expect_error);
         _ = try tokens.expect(Token.newline, self.expect_error);
 
@@ -856,6 +864,46 @@ test "Parsing `Either` union" {
         },
     }
 }
+
+test "Parsing `List` union" {
+    var allocator = TestingAllocator{};
+
+    var applied_pointer_type = Type{
+        .applied_name = AppliedName{ .name = "List", .open_names = &[_][]const u8{"T"} },
+    };
+    var expected_constructors = [_]Constructor{
+        .{ .tag = "Empty", .parameter = Type.empty },
+        .{
+            .tag = "Cons",
+            .parameter = Type{ .pointer = Pointer{ .@"type" = &applied_pointer_type } },
+        },
+    };
+
+    const expected_definitions = [_]Definition{.{
+        .@"union" = Union{
+            .generic = GenericUnion{
+                .name = "List",
+                .constructors = &expected_constructors,
+                .open_names = &[_][]const u8{"T"},
+            },
+        },
+    }};
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.list_union,
+        &expect_error,
+    );
+
+    switch (parsed_definitions) {
+        .success => |parsed| {
+            expectEqualDefinitions(&expected_definitions, parsed.definitions);
+        },
+    }
+}
+
 test "Parsing invalid normal structure" {
     var allocator = TestingAllocator{};
     var expect_error: ExpectError = undefined;
