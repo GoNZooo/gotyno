@@ -264,6 +264,10 @@ pub fn parse(
     };
 }
 
+/// `DefinitionIterator` is iterator that attempts to return the next definition in a source, based
+/// on a `TokenIterator` that it holds inside of its instance. It's an unapologetically stateful
+/// thing; most of what is going on in here depends entirely on the order methods are called and it
+/// keeps whatever state it needs in the object itself.
 pub const DefinitionIterator = struct {
     const Self = @This();
 
