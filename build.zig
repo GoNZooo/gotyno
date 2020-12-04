@@ -3,9 +3,7 @@ const Builder = std.build.Builder;
 const Mode = std.builtin.Mode;
 
 const test_files = [_][]const u8{
-    // "typescript",
-    // "purescript",
-    // "haskell",
+    "typescript",
     "freeform",
     "freeform/tokenizer",
     "freeform/parser",
