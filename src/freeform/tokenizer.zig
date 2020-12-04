@@ -128,11 +128,17 @@ pub fn tokenize(
 }
 
 pub const ExpectTokenError = struct {
-    expectation: TokenTag, got: Token
+    expectation: TokenTag,
+    got: Token,
+    line: usize,
+    column: usize,
 };
 
 pub const ExpectOneOfError = struct {
-    expectations: []const TokenTag, got: Token
+    expectations: []const TokenTag,
+    got: Token,
+    line: usize,
+    column: usize,
 };
 
 pub const ExpectError = union(enum) {
@@ -242,7 +248,14 @@ pub const TokenIterator = struct {
         if (token) |t| {
             if (meta.activeTag(t) == expected_token) return t;
 
-            expect_error.* = ExpectError{ .token = .{ .expectation = expected_token, .got = t } };
+            expect_error.* = ExpectError{
+                .token = .{
+                    .expectation = expected_token,
+                    .got = t,
+                    .line = self.line,
+                    .column = self.column,
+                },
+            };
 
             return error.UnexpectedToken;
         } else {
@@ -266,6 +279,8 @@ pub const TokenIterator = struct {
                 .oneOf = .{
                     .expectations = token_tags,
                     .got = token,
+                    .line = self.line,
+                    .column = self.column,
                 },
             };
             return error.UnexpectedToken;
