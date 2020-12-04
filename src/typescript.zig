@@ -148,8 +148,6 @@ fn isNumberType(name: []const u8) bool {
         "I32",
         "I64",
         "I128",
-        "F8",
-        "F16",
         "F32",
         "F64",
         "F128",
