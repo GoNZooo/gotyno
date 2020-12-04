@@ -1,116 +1,196 @@
 const std = @import("std");
 const debug = std.debug;
+const fmt = std.fmt;
+const heap = std.heap;
+const mem = std.mem;
 const testing = std.testing;
 
-const types = @import("./types.zig");
+const freeform = @import("./freeform.zig");
+const type_examples = @import("./freeform/type_examples.zig");
 
-pub fn typedefinitionToString(comptime t: type) []const u8 {
-    const type_info = @typeInfo(t);
-    return switch (type_info) {
-        .Struct => |d| output: {
-            const type_name = @typeName(t);
-            comptime var type_output: []const u8 = "interface " ++ type_name ++ " {\n" ++
-                "  type: \"" ++ type_name ++ "\";\n";
-            inline for (d.fields) |field, i| {
-                comptime const maybe_tsified_type = typescriptifyType(field.field_type);
-                if (maybe_tsified_type) |tsified_type| {
-                    type_output =
-                        type_output ++
-                        "  " ++ field.name ++ ": " ++ tsified_type ++
-                        ";\n";
-                }
-            }
-            type_output = type_output ++ "}";
+const PlainStruct = freeform.parser.PlainStructure;
+const ExpectError = freeform.tokenizer.ExpectError;
 
-            break :output type_output;
-        },
-        .Union => |d| output: {
-            const name = @typeName(t);
-            const field1 = d.fields[0];
-            comptime const maybe_tsified_type = typescriptifyType(field1.field_type);
-            if (maybe_tsified_type) |tsified_type| {
-                comptime var output: []const u8 = "type " ++ name ++ " =\n  " ++
-                    tsified_type;
-                inline for (d.fields[1..]) |field| {
-                    comptime const maybe_tsified_field_type = typescriptifyType(field.field_type);
-                    if (maybe_tsified_field_type) |tsified_field_type| {
-                        output = output ++ "\n  | " ++ tsified_field_type;
-                    }
-                }
-                output = output ++ ";";
-                break :output output;
-            }
-            break :output "broken";
-        },
-        .Type => |d| @compileError("unknown type"),
-        .Void => |d| @compileError("unknown type"),
-        .Bool => |d| @compileError("unknown type"),
-        .Enum => |d| @compileError("unknown type"),
-        .EnumLiteral => |d| @compileError("unknown type"),
-        .Frame => |d| @compileError("unknown type"),
-        .AnyFrame => |d| @compileError("unknown type"),
-        .Vector => |d| @compileError("unknown type"),
-        .Opaque => |d| @compileError("unknown type"),
-        .Fn => |d| @compileError("unknown type"),
-        .BoundFn => |d| @compileError("unknown type"),
-        .ErrorSet => |d| @compileError("unknown type"),
-        .ErrorUnion => |d| @compileError("unknown type"),
-        .Optional => |d| @compileError("unknown type"),
-        .Null => |d| @compileError("unknown type"),
-        .Undefined => |d| @compileError("unknown type"),
-        .ComptimeInt => |d| @compileError("unknown type"),
-        .ComptimeFloat => |d| @compileError("unknown type"),
-        .Float => |d| @compileError("unknown type"),
-        .Int => |d| @compileError("unknown type"),
-        .Pointer => |d| @compileError("unknown type"),
-        .Array => |d| @compileError("unknown type"),
-        .NoReturn => |d| @compileError("unknown type"),
-    };
-}
+const TestingAllocator = heap.GeneralPurposeAllocator(.{});
 
-fn typescriptifyType(comptime t: type) ?[]const u8 {
-    return switch (@typeInfo(t)) {
-        .Int, .Float => "number",
-        .Bool => "boolean",
-        .Pointer => |p| switch (p.child) {
-            u8 => "string",
-            else => output: {
-                const maybe_tsified_type = typescriptifyType(p.child);
-                if (maybe_tsified_type) |tsified_type| {
-                    break :output "Array<" ++ tsified_type ++ ">";
-                }
+pub fn outputPlainStruct(allocator: *mem.Allocator, plain_struct: PlainStruct) ![]const u8 {
+    const name = plain_struct.name;
+    var fields_output: []const u8 = "";
+    for (plain_struct.fields) |field, i| {
+        const type_output = switch (field.@"type") {
+            .empty => debug.panic("Empty is not a valid struct field type.\n", .{}),
+
+            .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+            .name => |n| try fmt.allocPrint(allocator, "{}", .{translateName(n)}),
+
+            .array => |a| output: {
+                const embedded_type = switch (a.@"type".*) {
+                    .name => |n| translateName(n),
+                    .applied_name => |applied_name| applied: {
+                        var applied = try fmt.allocPrint(
+                            allocator,
+                            "<{}",
+                            .{applied_name.open_names[0]},
+                        );
+
+                        for (applied_name.open_names[1..]) |open_name| {
+                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
+                            applied = try mem.concat(
+                                allocator,
+                                u8,
+                                &[_][]const u8{ applied, new_name },
+                            );
+                        }
+
+                        break :applied "";
+                    },
+                    else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
+                };
+
+                break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
             },
-        },
-        .Struct => @typeName(t),
-        .Void => null,
-        else => |x| @compileLog(x),
-    };
+
+            .slice => |s| output: {
+                const embedded_type = switch (s.@"type".*) {
+                    .name => |n| translateName(n),
+                    .applied_name => |applied_name| applied: {
+                        var applied = try fmt.allocPrint(
+                            allocator,
+                            "<{}",
+                            .{applied_name.open_names[0]},
+                        );
+
+                        for (applied_name.open_names[1..]) |open_name| {
+                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
+                            applied = try mem.concat(
+                                allocator,
+                                u8,
+                                &[_][]const u8{ applied, new_name },
+                            );
+                        }
+
+                        break :applied "";
+                    },
+                    else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
+                };
+
+                break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
+            },
+
+            .pointer => |p| output: {
+                const embedded_type = switch (p.@"type".*) {
+                    .name => |n| translateName(n),
+                    .applied_name => |applied_name| applied: {
+                        var applied = try fmt.allocPrint(
+                            allocator,
+                            "<{}",
+                            .{applied_name.open_names[0]},
+                        );
+
+                        for (applied_name.open_names[1..]) |open_name| {
+                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
+                            applied = try mem.concat(
+                                allocator,
+                                u8,
+                                &[_][]const u8{ applied, new_name },
+                            );
+                        }
+
+                        break :applied "";
+                    },
+                    else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
+                };
+
+                break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
+            },
+
+            .applied_name => |applied_name| {
+                debug.panic("applied_name", .{});
+            },
+        };
+        const line = if (i == (plain_struct.fields.len - 1))
+            try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output })
+        else
+            try fmt.allocPrint(allocator, "    {}: {};\n", .{ field.name, type_output });
+
+        fields_output = try mem.concat(allocator, u8, &[_][]const u8{ fields_output, line });
+    }
+
+    const output_format =
+        \\type {} = {c}
+        \\{}
+        \\{c};
+    ;
+
+    return try fmt.allocPrint(allocator, output_format, .{ name, '{', fields_output, '}' });
 }
 
-test "outputs basic interface type for zig struct" {
-    const type_output = typedefinitionToString(types.BasicStruct);
-    const expected =
-        \\interface BasicStruct {
-        \\  type: "BasicStruct";
-        \\  u: number;
-        \\  i: number;
-        \\  f: number;
-        \\  s: string;
-        \\  bools: Array<boolean>;
-        \\  hobbies: Array<string>;
-        \\  lotto_numbers: Array<Array<number>>;
-        \\  points: Array<Point>;
-        \\}
-    ;
-    testing.expectEqualSlices(u8, type_output, expected);
+fn translateName(name: []const u8) []const u8 {
+    return if (mem.eql(u8, name, "String"))
+        "string"
+    else if (isNumberType(name))
+        "number"
+    else if (mem.eql(u8, name, "Boolean"))
+        "boolean"
+    else
+        name;
 }
 
-test "outputs basic enum type for zig tagged union" {
-    const type_output = typedefinitionToString(types.BasicUnion);
-    const expected =
-        \\type BasicUnion =
-        \\  BasicStruct
-        \\  | Point;
+fn isNumberType(name: []const u8) bool {
+    return isStringEqualToOneOf(name, &[_][]const u8{
+        "U8",
+        "U16",
+        "U32",
+        "U64",
+        "U128",
+        "I8",
+        "I16",
+        "I32",
+        "I64",
+        "I128",
+        "F8",
+        "F16",
+        "F32",
+        "F64",
+        "F128",
+    });
+}
+
+fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) bool {
+    for (compared_values) |compared_value| {
+        if (mem.eql(u8, value, compared_value)) return true;
+    }
+
+    return false;
+}
+
+test "Outputs `Person` struct correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type Person = {
+        \\    type: "Person";
+        \\    name: string;
+        \\    age: number;
+        \\    efficiency: number;
+        \\    on_vacation: boolean;
+        \\    hobbies: string[];
+        \\    last_fifteen_comments: string[];
+        \\    recruiter: Person;
+        \\};
     ;
-    testing.expectEqualSlices(u8, type_output, expected);
+
+    var expect_error: ExpectError = undefined;
+
+    const output = try outputPlainStruct(
+        &allocator.allocator,
+        (try freeform.parser.parse(
+            &allocator.allocator,
+            &allocator.allocator,
+            type_examples.person_structure,
+            &expect_error,
+        )).success.definitions[0].structure.plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
 }
