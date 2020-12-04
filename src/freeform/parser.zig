@@ -283,6 +283,39 @@ pub fn parse(
     };
 }
 
+pub fn parseWithDescribedError(
+    allocator: *mem.Allocator,
+    error_allocator: *mem.Allocator,
+    buffer: []const u8,
+    expect_error: *ExpectError,
+) !ParseResult {
+    return parse(allocator, error_allocator, buffer, expect_error) catch |e| {
+        switch (e) {
+            error.UnexpectedToken => {
+                switch (expect_error.*) {
+                    .token => |token| {
+                        debug.panic(
+                            "Unexpected token at {}:{}:\n\tExpected: {}\n\tGot: {}",
+                            .{ token.line, token.column, token.expectation, token.got },
+                        );
+                    },
+                    .one_of => |one_of| {
+                        debug.print(
+                            "Unexpected token at {}:{}:\n\tExpected one of: {}",
+                            .{ one_of.line, one_of.column, one_of.expectations[0] },
+                        );
+                        for (one_of.expectations[1..]) |expectation| {
+                            debug.print(", {}", .{expectation});
+                        }
+                        debug.panic("\n\tGot: {}\n", .{one_of.got});
+                    },
+                }
+            },
+            else => return e,
+        }
+    };
+}
+
 /// `DefinitionIterator` is iterator that attempts to return the next definition in a source, based
 /// on a `TokenIterator` that it holds inside of its instance. It's an unapologetically stateful
 /// thing; most of what is going on in here depends entirely on the order methods are called and it
@@ -717,7 +750,7 @@ test "Parsing `Person` structure" {
         },
     }};
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parse(
+    const parsed_definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.person_structure,
@@ -921,7 +954,7 @@ test "Parsing invalid normal structure" {
             => unreachable,
             error.UnexpectedToken => {
                 switch (expect_error) {
-                    .oneOf => |one_of| {
+                    .one_of => |one_of| {
                         testing.expectEqualSlices(
                             TokenTag,
                             &[_]TokenTag{ .left_angle, .left_brace },
