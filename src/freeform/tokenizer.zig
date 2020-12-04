@@ -143,7 +143,7 @@ pub const ExpectOneOfError = struct {
 
 pub const ExpectError = union(enum) {
     token: ExpectTokenError,
-    oneOf: ExpectOneOfError,
+    one_of: ExpectOneOfError,
 };
 
 pub const TokenIterator = struct {
@@ -276,7 +276,7 @@ pub const TokenIterator = struct {
             }
 
             expect_error.* = ExpectError{
-                .oneOf = .{
+                .one_of = .{
                     .expectations = token_tags,
                     .got = token,
                     .line = self.line,
