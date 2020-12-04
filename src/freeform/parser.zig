@@ -780,7 +780,7 @@ test "Parsing basic generic structure" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parse(
+    const parsed_definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.node_structure,
@@ -820,7 +820,7 @@ test "Parsing basic plain union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parse(
+    const parsed_definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.event_union,
@@ -851,7 +851,7 @@ test "Parsing `Maybe` union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parse(
+    const parsed_definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.maybe_union,
@@ -884,7 +884,7 @@ test "Parsing `Either` union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parse(
+    const parsed_definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.either_union,
@@ -923,7 +923,7 @@ test "Parsing `List` union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parse(
+    const parsed_definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.list_union,
