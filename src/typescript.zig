@@ -88,11 +88,11 @@ pub fn outputPlainStruct(allocator: *mem.Allocator, plain_struct: PlainStruct) !
                         );
 
                         for (applied_name.open_names[1..]) |open_name| {
-                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
+                            const additional_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
                             applied = try mem.concat(
                                 allocator,
                                 u8,
-                                &[_][]const u8{ applied, new_name },
+                                &[_][]const u8{ applied, additional_name },
                             );
                         }
 
