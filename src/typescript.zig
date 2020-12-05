@@ -11,6 +11,7 @@ const type_examples = @import("./freeform/type_examples.zig");
 const PlainStructure = freeform.parser.PlainStructure;
 const GenericStructure = freeform.parser.GenericStructure;
 const PlainUnion = freeform.parser.PlainUnion;
+const GenericUnion = freeform.parser.GenericUnion;
 const Constructor = freeform.parser.Constructor;
 const Type = freeform.parser.Type;
 const Field = freeform.parser.Field;
@@ -102,11 +103,57 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     );
 }
 
+fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
+    const output_format =
+        \\type {}{} = {};
+        \\
+        \\{}
+    ;
+
+    const open_names = try outputOpenNames(allocator, generic_union.open_names);
+
+    var constructor_names = try allocator.alloc([]const u8, generic_union.constructors.len);
+    for (generic_union.constructors) |constructor, i| {
+        constructor_names[i] = constructor.tag;
+    }
+    const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
+
+    const tagged_structures_output = try outputTaggedMaybeGenericStructures(
+        allocator,
+        generic_union.constructors,
+        generic_union.open_names,
+    );
+
+    return fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ generic_union.name, open_names, constructor_names_output, tagged_structures_output },
+    );
+}
+
 fn outputTaggedStructures(allocator: *mem.Allocator, constructors: []Constructor) ![]const u8 {
     var tagged_structures_outputs = try allocator.alloc([]const u8, constructors.len);
 
     for (constructors) |constructor, i| {
         tagged_structures_outputs[i] = try outputTaggedStructure(allocator, constructor);
+    }
+
+    return try mem.join(allocator, "\n\n", tagged_structures_outputs);
+}
+
+fn outputTaggedMaybeGenericStructures(
+    allocator: *mem.Allocator,
+    constructors: []Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
+    var tagged_structures_outputs = try allocator.alloc([]const u8, constructors.len);
+
+    for (constructors) |constructor, i| {
+        tagged_structures_outputs[i] = try outputTaggedMaybeGenericStructure(
+            allocator,
+            constructor,
+            open_names,
+        );
     }
 
     return try mem.join(allocator, "\n\n", tagged_structures_outputs);
@@ -129,6 +176,38 @@ fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![
         allocator,
         output_format,
         .{ constructor.tag, '{', constructor.tag, parameter_output, '}' },
+    );
+}
+
+fn outputTaggedMaybeGenericStructure(
+    allocator: *mem.Allocator,
+    constructor: Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
+    const output_format =
+        \\type {}{} = {c}
+        \\    type: "{}";{}
+        \\{c};
+    ;
+
+    const open_names_output = switch (constructor.parameter) {
+        .applied_name => |applied_name| try outputOpenNames(allocator, applied_name.open_names),
+        .name => |n| if (isStringEqualToOneOf(n, open_names))
+            try fmt.allocPrint(allocator, "<{}>", .{n})
+        else
+            "",
+        else => "",
+    };
+
+    const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
+        try fmt.allocPrint(allocator, "\n    data: {};", .{output})
+    else
+        "";
+
+    return fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ constructor.tag, open_names_output, '{', constructor.tag, parameter_output, '}' },
     );
 }
 
@@ -327,6 +406,37 @@ test "Outputs `Event` union correctly" {
             type_examples.event_union,
             &expect_error,
         )).success.definitions[0].@"union".plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Outputs `Maybe` union correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type Maybe<T> = Just | Nothing;
+        \\
+        \\type Just<T> = {
+        \\    type: "Just";
+        \\    data: T;
+        \\};
+        \\
+        \\type Nothing = {
+        \\    type: "Nothing";
+        \\};
+    ;
+
+    var expect_error: ExpectError = undefined;
+
+    const output = try outputGenericUnion(
+        &allocator.allocator,
+        (try freeform.parser.parse(
+            &allocator.allocator,
+            &allocator.allocator,
+            type_examples.maybe_union,
+            &expect_error,
+        )).success.definitions[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
