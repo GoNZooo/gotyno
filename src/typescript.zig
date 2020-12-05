@@ -363,7 +363,7 @@ fn getOpenNamesFromType(
         else
             "",
 
-        else => "",
+        .empty, .string => "",
     };
 }
 
