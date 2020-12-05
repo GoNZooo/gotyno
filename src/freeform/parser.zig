@@ -723,7 +723,6 @@ test "Parsing `Person` structure" {
             .plain = PlainStructure{
                 .name = "Person",
                 .fields = &[_]Field{
-                    .{ .name = "type", .@"type" = Type{ .string = "Person" } },
                     .{ .name = "name", .@"type" = Type{ .name = "String" } },
                     .{ .name = "age", .@"type" = Type{ .name = "U8" } },
                     .{ .name = "efficiency", .@"type" = Type{ .name = "F32" } },
@@ -765,7 +764,6 @@ test "Parsing basic generic structure" {
     var allocator = TestingAllocator{};
 
     var fields = [_]Field{
-        .{ .name = "type", .@"type" = Type{ .string = "Node" } },
         .{ .name = "data", .@"type" = Type{ .name = "T" } },
     };
 

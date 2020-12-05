@@ -1,6 +1,5 @@
 pub const person_structure =
     \\struct Person {
-    \\    type: "Person";
     \\    name: String;
     \\    age: U8;
     \\    efficiency: F32;
@@ -13,7 +12,6 @@ pub const person_structure =
 
 pub const node_structure =
     \\struct Node <T>{
-    \\    type: "Node";
     \\    data: T;
     \\}
 ;
@@ -46,4 +44,18 @@ pub const list_union =
     \\    Empty;
     \\    Cons: *List<T>;
     \\}
+;
+
+pub const structure_with_concrete_maybe =
+    \\struct WithMaybe {
+    \\    field: Maybe<String>;
+    \\};
+;
+
+pub const union_with_different_maybes =
+    \\union WithMaybe <T, E>{
+    \\    WithConcrete: Maybe<String>;
+    \\    WithGeneric: Maybe<T>;
+    \\    WithBare: E;
+    \\};
 ;

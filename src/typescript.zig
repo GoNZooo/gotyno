@@ -5,6 +5,8 @@ const heap = std.heap;
 const mem = std.mem;
 const testing = std.testing;
 
+const ArrayList = std.ArrayList;
+
 const freeform = @import("./freeform.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 
@@ -29,11 +31,12 @@ fn outputPlainStructure(
 
     const output_format =
         \\type {} = {c}
+        \\    type: "{}";
         \\{}
         \\{c};
     ;
 
-    return try fmt.allocPrint(allocator, output_format, .{ name, '{', fields_output, '}' });
+    return try fmt.allocPrint(allocator, output_format, .{ name, '{', name, fields_output, '}' });
 }
 
 fn outputGenericStructure(
@@ -46,6 +49,7 @@ fn outputGenericStructure(
 
     const output_format =
         \\type {}{} = {c}
+        \\    type: "{}";
         \\{}
         \\{c};
     ;
@@ -53,7 +57,14 @@ fn outputGenericStructure(
     return try fmt.allocPrint(
         allocator,
         output_format,
-        .{ name, outputOpenNames(allocator, generic_structure.open_names), '{', fields_output, '}' },
+        .{
+            name,
+            outputOpenNames(allocator, generic_structure.open_names),
+            '{',
+            name,
+            fields_output,
+            '}',
+        },
     );
 }
 
@@ -108,7 +119,24 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     var constructor_names = try allocator.alloc([]const u8, generic_union.constructors.len);
     for (generic_union.constructors) |constructor, i| {
-        constructor_names[i] = constructor.tag;
+        const maybe_names = switch (constructor.parameter) {
+            .applied_name => |applied_name| try outputCommonOpenNames(
+                allocator,
+                generic_union.open_names,
+                applied_name.open_names,
+            ),
+            .name => |n| if (isStringEqualToOneOf(n, generic_union.open_names))
+                try fmt.allocPrint(allocator, "<{}>", .{n})
+            else
+                "",
+            else => "",
+        };
+
+        constructor_names[i] = try fmt.allocPrint(
+            allocator,
+            "{}{}",
+            .{ constructor.tag, maybe_names },
+        );
     }
     const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
 
@@ -128,6 +156,27 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         allocator,
         output_format,
         .{ generic_union.name, open_names, constructor_names_output, tagged_structures_output },
+    );
+}
+
+fn outputCommonOpenNames(
+    allocator: *mem.Allocator,
+    as: []const []const u8,
+    bs: []const []const u8,
+) ![]const u8 {
+    var common_names = ArrayList([]const u8).init(allocator);
+    defer common_names.deinit();
+
+    for (as) |a| {
+        for (bs) |b| {
+            if (mem.eql(u8, a, b) and !isTranslatedName(a)) try common_names.append(a);
+        }
+    }
+
+    return if (common_names.items.len == 0) "" else try fmt.allocPrint(
+        allocator,
+        "<{}>",
+        .{try mem.join(allocator, ", ", common_names.items)},
     );
 }
 
@@ -185,13 +234,16 @@ fn outputTaggedMaybeGenericStructure(
     open_names: []const []const u8,
 ) ![]const u8 {
     const open_names_output = switch (constructor.parameter) {
-        // @TODO: make sure this doesn't include applied concrete names (`String`, etc.)
-        // Solution might be to figure out which names are common between passed in `open_names`
-        // and the `applied_name.open_names` and have those be the tagged structure open names
-        .applied_name => |applied_name| try outputOpenNames(allocator, applied_name.open_names),
+        // We need to check whether or not we have one of the generic names in the structure here
+        // and if we do, add it as a type parameter to the tagged structure.
+        // It's possible that the name is actually a concrete type and so it shouldn't show up as
+        // a type parameter for the tagged structure.
+        .applied_name => |applied_name| try outputCommonOpenNames(
+            allocator,
+            open_names,
+            applied_name.open_names,
+        ),
 
-        // we need to check whether or not we have one of the generic names in the structure here
-        // and if we do, add it as a type parameter to the tagged structure
         .name => |n| if (isStringEqualToOneOf(n, open_names))
             try fmt.allocPrint(allocator, "<{}>", .{n})
         else
@@ -263,9 +315,11 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
         },
 
-        .applied_name => |applied_name| {
-            debug.panic("applied_name", .{});
-        },
+        .applied_name => |applied_name| try fmt.allocPrint(
+            allocator,
+            "{}{}",
+            .{ applied_name.name, try outputOpenNames(allocator, applied_name.open_names) },
+        ),
     };
 }
 
@@ -310,6 +364,11 @@ fn isNumberType(name: []const u8) bool {
         "F64",
         "F128",
     });
+}
+
+fn isTranslatedName(name: []const u8) bool {
+    return isNumberType(name) or
+        isStringEqualToOneOf(name, &[_][]const u8{ "String", "Boolean" });
 }
 
 fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) bool {
@@ -422,7 +481,7 @@ test "Outputs `Maybe` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Maybe<T> = Just | Nothing;
+        \\type Maybe<T> = Just<T> | Nothing;
         \\
         \\type Just<T> = {
         \\    type: "Just";
@@ -453,7 +512,7 @@ test "Outputs `Either` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Either<E, T> = Left | Right;
+        \\type Either<E, T> = Left<E> | Right<T>;
         \\
         \\type Left<E> = {
         \\    type: "Left";
@@ -474,6 +533,68 @@ test "Outputs `Either` union correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.either_union,
+            &expect_error,
+        )).success.definitions[0].@"union".generic,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Outputs struct with concrete `Maybe` correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type WithMaybe = {
+        \\    type: "WithMaybe";
+        \\    field: Maybe<string>;
+        \\};
+    ;
+
+    var expect_error: ExpectError = undefined;
+
+    const output = try outputPlainStructure(
+        &allocator.allocator,
+        (try freeform.parser.parse(
+            &allocator.allocator,
+            &allocator.allocator,
+            type_examples.structure_with_concrete_maybe,
+            &expect_error,
+        )).success.definitions[0].structure.plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Outputs struct with different `Maybe`s correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type WithMaybe<T, E> = WithConcrete | WithGeneric<T> | WithBare<E>;
+        \\
+        \\type WithConcrete = {
+        \\    type: "WithConcrete";
+        \\    data: Maybe<string>;
+        \\};
+        \\
+        \\type WithGeneric<T> = {
+        \\    type: "WithGeneric";
+        \\    data: Maybe<T>;
+        \\};
+        \\
+        \\type WithBare<E> = {
+        \\    type: "WithBare";
+        \\    data: E;
+        \\};
+    ;
+
+    var expect_error: ExpectError = undefined;
+
+    const output = try outputGenericUnion(
+        &allocator.allocator,
+        (try freeform.parser.parseWithDescribedError(
+            &allocator.allocator,
+            &allocator.allocator,
+            type_examples.union_with_different_maybes,
             &expect_error,
         )).success.definitions[0].@"union".generic,
     );
