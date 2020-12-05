@@ -441,3 +441,35 @@ test "Outputs `Maybe` union correctly" {
 
     testing.expectEqualStrings(output, expected_output);
 }
+
+test "Outputs `Either` union correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type Either<E, T> = Left | Right;
+        \\
+        \\type Left<E> = {
+        \\    type: "Left";
+        \\    data: E;
+        \\};
+        \\
+        \\type Right<T> = {
+        \\    type: "Right";
+        \\    data: T;
+        \\};
+    ;
+
+    var expect_error: ExpectError = undefined;
+
+    const output = try outputGenericUnion(
+        &allocator.allocator,
+        (try freeform.parser.parse(
+            &allocator.allocator,
+            &allocator.allocator,
+            type_examples.either_union,
+            &expect_error,
+        )).success.definitions[0].@"union".generic,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
