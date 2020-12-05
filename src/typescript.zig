@@ -119,18 +119,11 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     var constructor_names = try allocator.alloc([]const u8, generic_union.constructors.len);
     for (generic_union.constructors) |constructor, i| {
-        const maybe_names = switch (constructor.parameter) {
-            .applied_name => |applied_name| try outputCommonOpenNames(
-                allocator,
-                generic_union.open_names,
-                applied_name.open_names,
-            ),
-            .name => |n| if (isStringEqualToOneOf(n, generic_union.open_names))
-                try fmt.allocPrint(allocator, "<{}>", .{n})
-            else
-                "",
-            else => "",
-        };
+        const maybe_names = try getOpenNamesFromType(
+            allocator,
+            constructor.parameter,
+            generic_union.open_names,
+        );
 
         constructor_names[i] = try fmt.allocPrint(
             allocator,
@@ -233,24 +226,7 @@ fn outputTaggedMaybeGenericStructure(
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
-    const open_names_output = switch (constructor.parameter) {
-        // We need to check whether or not we have one of the generic names in the structure here
-        // and if we do, add it as a type parameter to the tagged structure.
-        // It's possible that the name is actually a concrete type and so it shouldn't show up as
-        // a type parameter for the tagged structure.
-        .applied_name => |applied_name| try outputCommonOpenNames(
-            allocator,
-            open_names,
-            applied_name.open_names,
-        ),
-
-        .name => |n| if (isStringEqualToOneOf(n, open_names))
-            try fmt.allocPrint(allocator, "<{}>", .{n})
-        else
-            "",
-
-        else => "",
-    };
+    const open_names_output = getOpenNamesFromType(allocator, constructor.parameter, open_names);
 
     const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
         try fmt.allocPrint(allocator, "\n    data: {};", .{output})
@@ -268,6 +244,35 @@ fn outputTaggedMaybeGenericStructure(
         output_format,
         .{ constructor.tag, open_names_output, '{', constructor.tag, parameter_output, '}' },
     );
+}
+
+fn getOpenNamesFromType(
+    allocator: *mem.Allocator,
+    t: Type,
+    open_names: []const []const u8,
+) error{OutOfMemory}![]const u8 {
+    return switch (t) {
+        .pointer => |pointer| try getOpenNamesFromType(allocator, pointer.@"type".*, open_names),
+        .array => |a| try getOpenNamesFromType(allocator, a.@"type".*, open_names),
+        .slice => |s| try getOpenNamesFromType(allocator, s.@"type".*, open_names),
+
+        // We need to check whether or not we have one of the generic names in the structure here
+        // and if we do, add it as a type parameter to the tagged structure.
+        // It's possible that the name is actually a concrete type and so it shouldn't show up as
+        // a type parameter for the tagged structure.
+        .applied_name => |applied_name| try outputCommonOpenNames(
+            allocator,
+            open_names,
+            applied_name.open_names,
+        ),
+
+        .name => |n| if (isStringEqualToOneOf(n, open_names))
+            try fmt.allocPrint(allocator, "<{}>", .{n})
+        else
+            "",
+
+        else => "",
+    };
 }
 
 fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
@@ -305,10 +310,18 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
         .pointer => |p| output: {
             const embedded_type = switch (p.@"type".*) {
                 .name => |n| translateName(n),
-                .applied_name => |applied_name| try outputOpenNames(
-                    allocator,
-                    applied_name.open_names,
-                ),
+                .applied_name => |applied_name| embedded_type: {
+                    const open_names = try outputOpenNames(
+                        allocator,
+                        applied_name.open_names,
+                    );
+
+                    break :embedded_type try fmt.allocPrint(
+                        allocator,
+                        "{}{}",
+                        .{ applied_name.name, open_names },
+                    );
+                },
                 else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
             };
 
@@ -595,6 +608,37 @@ test "Outputs struct with different `Maybe`s correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.union_with_different_maybes,
+            &expect_error,
+        )).success.definitions[0].@"union".generic,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Outputs `List` union correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type List<T> = Empty | Cons<T>;
+        \\
+        \\type Empty = {
+        \\    type: "Empty";
+        \\};
+        \\
+        \\type Cons<T> = {
+        \\    type: "Cons";
+        \\    data: List<T>;
+        \\};
+    ;
+
+    var expect_error: ExpectError = undefined;
+
+    const output = try outputGenericUnion(
+        &allocator.allocator,
+        (try freeform.parser.parseWithDescribedError(
+            &allocator.allocator,
+            &allocator.allocator,
+            type_examples.list_union,
             &expect_error,
         )).success.definitions[0].@"union".generic,
     );
