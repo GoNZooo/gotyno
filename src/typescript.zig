@@ -185,11 +185,18 @@ fn outputTaggedMaybeGenericStructure(
     open_names: []const []const u8,
 ) ![]const u8 {
     const open_names_output = switch (constructor.parameter) {
+        // @TODO: make sure this doesn't include applied concrete names (`String`, etc.)
+        // Solution might be to figure out which names are common between passed in `open_names`
+        // and the `applied_name.open_names` and have those be the tagged structure open names
         .applied_name => |applied_name| try outputOpenNames(allocator, applied_name.open_names),
+
+        // we need to check whether or not we have one of the generic names in the structure here
+        // and if we do, add it as a type parameter to the tagged structure
         .name => |n| if (isStringEqualToOneOf(n, open_names))
             try fmt.allocPrint(allocator, "<{}>", .{n})
         else
             "",
+
         else => "",
     };
 
