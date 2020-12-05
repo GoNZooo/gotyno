@@ -78,12 +78,6 @@ fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8
 }
 
 fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const u8 {
-    const output_format =
-        \\type {} = {};
-        \\
-        \\{}
-    ;
-
     var constructor_names = try allocator.alloc([]const u8, plain_union.constructors.len);
     for (plain_union.constructors) |constructor, i| {
         constructor_names[i] = constructor.tag;
@@ -96,6 +90,12 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         plain_union.constructors,
     );
 
+    const output_format =
+        \\type {} = {};
+        \\
+        \\{}
+    ;
+
     return fmt.allocPrint(
         allocator,
         output_format,
@@ -104,12 +104,6 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 }
 
 fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
-    const output_format =
-        \\type {}{} = {};
-        \\
-        \\{}
-    ;
-
     const open_names = try outputOpenNames(allocator, generic_union.open_names);
 
     var constructor_names = try allocator.alloc([]const u8, generic_union.constructors.len);
@@ -123,6 +117,12 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.constructors,
         generic_union.open_names,
     );
+
+    const output_format =
+        \\type {}{} = {};
+        \\
+        \\{}
+    ;
 
     return fmt.allocPrint(
         allocator,
@@ -160,17 +160,17 @@ fn outputTaggedMaybeGenericStructures(
 }
 
 fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+    const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
+        output
+    else
+        "null";
+
     const output_format =
         \\type {} = {c}
         \\    type: "{}";
         \\    data: {};
         \\{c};
     ;
-
-    const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
-        output
-    else
-        "null";
 
     return fmt.allocPrint(
         allocator,
@@ -184,12 +184,6 @@ fn outputTaggedMaybeGenericStructure(
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
-    const output_format =
-        \\type {}{} = {c}
-        \\    type: "{}";{}
-        \\{c};
-    ;
-
     const open_names_output = switch (constructor.parameter) {
         .applied_name => |applied_name| try outputOpenNames(allocator, applied_name.open_names),
         .name => |n| if (isStringEqualToOneOf(n, open_names))
@@ -203,6 +197,12 @@ fn outputTaggedMaybeGenericStructure(
         try fmt.allocPrint(allocator, "\n    data: {};", .{output})
     else
         "";
+
+    const output_format =
+        \\type {}{} = {c}
+        \\    type: "{}";{}
+        \\{c};
+    ;
 
     return fmt.allocPrint(
         allocator,
