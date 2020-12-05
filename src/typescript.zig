@@ -101,8 +101,12 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         plain_union.constructors,
     );
 
+    const type_guards_output = try outputTypeGuards(allocator, plain_union.constructors);
+
     const output_format =
         \\type {} = {};
+        \\
+        \\{}
         \\
         \\{}
     ;
@@ -110,7 +114,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     return fmt.allocPrint(
         allocator,
         output_format,
-        .{ plain_union.name, constructor_names_output, tagged_structures_output },
+        .{ plain_union.name, constructor_names_output, tagged_structures_output, type_guards_output },
     );
 }
 
@@ -150,6 +154,94 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         output_format,
         .{ generic_union.name, open_names, constructor_names_output, tagged_structures_output },
     );
+}
+
+fn outputTypeGuards(allocator: *mem.Allocator, constructors: []Constructor) ![]const u8 {
+    var type_guards = try allocator.alloc([]const u8, constructors.len);
+
+    for (constructors) |constructor, i| {
+        type_guards[i] = try outputTypeGuard(allocator, constructor);
+    }
+
+    const joined_type_guards = try mem.join(allocator, "\n\n", type_guards);
+
+    // for (type_guards) |type_guard| {
+    //     allocator.free(type_guard);
+    // }
+
+    return joined_type_guards;
+}
+
+fn outputTypeGuard(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+    const tag = constructor.tag;
+
+    const output_format =
+        \\const is{} = (value: unknown): value is {} => {c}
+        \\    return simpleValidationTools.isInterfaceOf<{}>(value, {c}type: "{}"{}{c});
+        \\{c};
+    ;
+
+    const type_guard_output = try getTypeGuardFromType(allocator, constructor.parameter);
+
+    return try fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ tag, tag, '{', tag, '{', tag, type_guard_output, '}', '}' },
+    );
+}
+
+fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
+    const bare_format = ", data: {}";
+    const type_guard_format = ", data: is{}";
+    const array_format = ", data: simpleValidationTools.arrayOf({})";
+
+    return switch (t) {
+        .empty => "",
+        .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
+        .name => |n| try fmt.allocPrint(allocator, type_guard_format, .{n}),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedTypeGuardFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedTypeGuardFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try fmt.allocPrint(
+            allocator,
+            type_guard_format,
+            .{try getNestedTypeGuardFromType(allocator, p.@"type".*)},
+        ),
+        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+    };
+}
+
+fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
+    const array_format = "simpleValidationTools.arrayOf({})";
+
+    return switch (t) {
+        .empty => debug.panic("Empty nested type invalid for type guard\n", .{}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .name => |n| try fmt.allocPrint(allocator, "is{}", .{n}),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedTypeGuardFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedTypeGuardFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try fmt.allocPrint(
+            allocator,
+            "is{}",
+            .{try getNestedTypeGuardFromType(allocator, p.@"type".*)},
+        ),
+        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+    };
 }
 
 fn outputCommonOpenNames(
@@ -472,6 +564,22 @@ test "Outputs `Event` union correctly" {
         \\type SetEmails = {
         \\    type: "SetEmails";
         \\    data: Email[];
+        \\};
+        \\
+        \\const isLogIn = (value: unknown): value is LogIn => {
+        \\    return simpleValidationTools.isInterfaceOf<LogIn>(value, {type: "LogIn", data: isLogInData});
+        \\};
+        \\
+        \\const isLogOut = (value: unknown): value is LogOut => {
+        \\    return simpleValidationTools.isInterfaceOf<LogOut>(value, {type: "LogOut", data: isUserId});
+        \\};
+        \\
+        \\const isJoinChannels = (value: unknown): value is JoinChannels => {
+        \\    return simpleValidationTools.isInterfaceOf<JoinChannels>(value, {type: "JoinChannels", data: simpleValidationTools.arrayOf(isChannel)});
+        \\};
+        \\
+        \\const isSetEmails = (value: unknown): value is SetEmails => {
+        \\    return simpleValidationTools.isInterfaceOf<SetEmails>(value, {type: "SetEmails", data: simpleValidationTools.arrayOf(isEmail)});
         \\};
     ;
 
