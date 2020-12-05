@@ -10,12 +10,15 @@ const type_examples = @import("./freeform/type_examples.zig");
 
 const PlainStructure = freeform.parser.PlainStructure;
 const GenericStructure = freeform.parser.GenericStructure;
+const PlainUnion = freeform.parser.PlainUnion;
+const Constructor = freeform.parser.Constructor;
+const Type = freeform.parser.Type;
 const Field = freeform.parser.Field;
 const ExpectError = freeform.tokenizer.ExpectError;
 
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
 
-pub fn outputPlainStructure(
+fn outputPlainStructure(
     allocator: *mem.Allocator,
     plain_structure: PlainStructure,
 ) ![]const u8 {
@@ -32,7 +35,7 @@ pub fn outputPlainStructure(
     return try fmt.allocPrint(allocator, output_format, .{ name, '{', fields_output, '}' });
 }
 
-pub fn outputGenericStructure(
+fn outputGenericStructure(
     allocator: *mem.Allocator,
     generic_structure: GenericStructure,
 ) ![]const u8 {
@@ -57,55 +60,11 @@ fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8
     var fields_output: []const u8 = "";
 
     for (fields) |field, i| {
-        const type_output = switch (field.@"type") {
-            .empty => debug.panic("Empty is not a valid struct field type.\n", .{}),
+        const type_output = if (try outputType(allocator, field.@"type")) |output|
+            output
+        else
+            debug.panic("Empty type is not valid for struct field\n", .{});
 
-            .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-            .name => |n| try fmt.allocPrint(allocator, "{}", .{translateName(n)}),
-
-            .array => |a| output: {
-                const embedded_type = switch (a.@"type".*) {
-                    .name => |n| translateName(n),
-                    .applied_name => |applied_name| try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    ),
-                    else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
-                };
-
-                break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
-            },
-
-            .slice => |s| output: {
-                const embedded_type = switch (s.@"type".*) {
-                    .name => |n| translateName(n),
-                    .applied_name => |applied_name| try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    ),
-                    else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
-                };
-
-                break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
-            },
-
-            .pointer => |p| output: {
-                const embedded_type = switch (p.@"type".*) {
-                    .name => |n| translateName(n),
-                    .applied_name => |applied_name| try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    ),
-                    else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
-                };
-
-                break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
-            },
-
-            .applied_name => |applied_name| {
-                debug.panic("applied_name", .{});
-            },
-        };
         const line = if (i == (fields.len - 1))
             try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output })
         else
@@ -115,6 +74,113 @@ fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8
     }
 
     return fields_output;
+}
+
+fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const u8 {
+    const output_format =
+        \\type {} = {};
+        \\
+        \\{}
+    ;
+
+    var constructor_names = try allocator.alloc([]const u8, plain_union.constructors.len);
+    for (plain_union.constructors) |constructor, i| {
+        constructor_names[i] = constructor.tag;
+    }
+
+    const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
+
+    const tagged_structures_output = try outputTaggedStructures(
+        allocator,
+        plain_union.constructors,
+    );
+
+    return fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ plain_union.name, constructor_names_output, tagged_structures_output },
+    );
+}
+
+fn outputTaggedStructures(allocator: *mem.Allocator, constructors: []Constructor) ![]const u8 {
+    var tagged_structures_outputs = try allocator.alloc([]const u8, constructors.len);
+
+    for (constructors) |constructor, i| {
+        tagged_structures_outputs[i] = try outputTaggedStructure(allocator, constructor);
+    }
+
+    return try mem.join(allocator, "\n\n", tagged_structures_outputs);
+}
+
+fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+    const output_format =
+        \\type {} = {c}
+        \\    type: "{}";
+        \\    data: {};
+        \\{c};
+    ;
+
+    const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
+        output
+    else
+        "null";
+
+    return fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ constructor.tag, '{', constructor.tag, parameter_output, '}' },
+    );
+}
+
+fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
+    return switch (t) {
+        .empty => null,
+        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .name => |n| translateName(n),
+
+        .array => |a| output: {
+            const embedded_type = switch (a.@"type".*) {
+                .name => |n| translateName(n),
+                .applied_name => |applied_name| try outputOpenNames(
+                    allocator,
+                    applied_name.open_names,
+                ),
+                else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
+            };
+
+            break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
+        },
+
+        .slice => |s| output: {
+            const embedded_type = switch (s.@"type".*) {
+                .name => |n| translateName(n),
+                .applied_name => |applied_name| try outputOpenNames(
+                    allocator,
+                    applied_name.open_names,
+                ),
+                else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
+            };
+
+            break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
+        },
+
+        .pointer => |p| output: {
+            const embedded_type = switch (p.@"type".*) {
+                .name => |n| translateName(n),
+                .applied_name => |applied_name| try outputOpenNames(
+                    allocator,
+                    applied_name.open_names,
+                ),
+                else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
+            };
+
+            break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
+        },
+
+        .applied_name => |applied_name| {
+            debug.panic("applied_name", .{});
+        },
+    };
 }
 
 fn outputOpenNames(allocator: *mem.Allocator, names: []const []const u8) ![]const u8 {
@@ -219,6 +285,48 @@ test "Outputs `Node` struct correctly" {
             type_examples.node_structure,
             &expect_error,
         )).success.definitions[0].structure.generic,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Outputs `Event` union correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type Event = LogIn | LogOut | JoinChannels | SetEmails;
+        \\
+        \\type LogIn = {
+        \\    type: "LogIn";
+        \\    data: LogInData;
+        \\};
+        \\
+        \\type LogOut = {
+        \\    type: "LogOut";
+        \\    data: UserId;
+        \\};
+        \\
+        \\type JoinChannels = {
+        \\    type: "JoinChannels";
+        \\    data: Channel[];
+        \\};
+        \\
+        \\type SetEmails = {
+        \\    type: "SetEmails";
+        \\    data: Email[];
+        \\};
+    ;
+
+    var expect_error: ExpectError = undefined;
+
+    const output = try outputPlainUnion(
+        &allocator.allocator,
+        (try freeform.parser.parse(
+            &allocator.allocator,
+            &allocator.allocator,
+            type_examples.event_union,
+            &expect_error,
+        )).success.definitions[0].@"union".plain,
     );
 
     testing.expectEqualStrings(output, expected_output);
