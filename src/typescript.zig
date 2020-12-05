@@ -168,7 +168,17 @@ pub fn outputGenericStructure(
 }
 
 fn outputOpenNames(allocator: *mem.Allocator, names: []const []const u8) ![]const u8 {
-    return try fmt.allocPrint(allocator, "<{}>", .{try mem.join(allocator, ", ", names)});
+    var translated_names = try allocator.alloc([]const u8, names.len);
+
+    for (names) |name, i| {
+        translated_names[i] = translateName(name);
+    }
+
+    return try fmt.allocPrint(
+        allocator,
+        "<{}>",
+        .{try mem.join(allocator, ", ", translated_names)},
+    );
 }
 
 fn translateName(name: []const u8) []const u8 {
