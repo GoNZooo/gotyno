@@ -10,6 +10,7 @@ const type_examples = @import("./freeform/type_examples.zig");
 
 const PlainStructure = freeform.parser.PlainStructure;
 const GenericStructure = freeform.parser.GenericStructure;
+const Field = freeform.parser.Field;
 const ExpectError = freeform.tokenizer.ExpectError;
 
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
@@ -19,65 +20,8 @@ pub fn outputPlainStructure(
     plain_structure: PlainStructure,
 ) ![]const u8 {
     const name = plain_structure.name;
-    var fields_output: []const u8 = "";
 
-    for (plain_structure.fields) |field, i| {
-        const type_output = switch (field.@"type") {
-            .empty => debug.panic("Empty is not a valid struct field type.\n", .{}),
-
-            .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-            .name => |n| try fmt.allocPrint(allocator, "{}", .{translateName(n)}),
-
-            .array => |a| output: {
-                const embedded_type = switch (a.@"type".*) {
-                    .name => |n| translateName(n),
-                    .applied_name => |applied_name| try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    ),
-                    else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
-                };
-
-                break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
-            },
-
-            .slice => |s| output: {
-                const embedded_type = switch (s.@"type".*) {
-                    .name => |n| translateName(n),
-                    .applied_name => |applied_name| try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    ),
-                    else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
-                };
-
-                break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
-            },
-
-            .pointer => |p| output: {
-                const embedded_type = switch (p.@"type".*) {
-                    .name => |n| translateName(n),
-                    .applied_name => |applied_name| try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    ),
-                    else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
-                };
-
-                break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
-            },
-
-            .applied_name => |applied_name| {
-                debug.panic("applied_name", .{});
-            },
-        };
-        const line = if (i == (plain_structure.fields.len - 1))
-            try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output })
-        else
-            try fmt.allocPrint(allocator, "    {}: {};\n", .{ field.name, type_output });
-
-        fields_output = try mem.concat(allocator, u8, &[_][]const u8{ fields_output, line });
-    }
+    const fields_output = try outputStructureFields(allocator, plain_structure.fields);
 
     const output_format =
         \\type {} = {c}
@@ -93,10 +37,26 @@ pub fn outputGenericStructure(
     generic_structure: GenericStructure,
 ) ![]const u8 {
     const name = generic_structure.name;
+
+    const fields_output = try outputStructureFields(allocator, generic_structure.fields);
+
+    const output_format =
+        \\type {}{} = {c}
+        \\{}
+        \\{c};
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ name, outputOpenNames(allocator, generic_structure.open_names), '{', fields_output, '}' },
+    );
+}
+
+fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
     var fields_output: []const u8 = "";
 
-    // @TODO: break this out into function, re-use for both structure output functions
-    for (generic_structure.fields) |field, i| {
+    for (fields) |field, i| {
         const type_output = switch (field.@"type") {
             .empty => debug.panic("Empty is not a valid struct field type.\n", .{}),
 
@@ -146,7 +106,7 @@ pub fn outputGenericStructure(
                 debug.panic("applied_name", .{});
             },
         };
-        const line = if (i == (generic_structure.fields.len - 1))
+        const line = if (i == (fields.len - 1))
             try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output })
         else
             try fmt.allocPrint(allocator, "    {}: {};\n", .{ field.name, type_output });
@@ -154,17 +114,7 @@ pub fn outputGenericStructure(
         fields_output = try mem.concat(allocator, u8, &[_][]const u8{ fields_output, line });
     }
 
-    const output_format =
-        \\type {}{} = {c}
-        \\{}
-        \\{c};
-    ;
-
-    return try fmt.allocPrint(
-        allocator,
-        output_format,
-        .{ name, outputOpenNames(allocator, generic_structure.open_names), '{', fields_output, '}' },
-    );
+    return fields_output;
 }
 
 fn outputOpenNames(allocator: *mem.Allocator, names: []const []const u8) ![]const u8 {
