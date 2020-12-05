@@ -177,7 +177,7 @@ fn outputTypeGuard(allocator: *mem.Allocator, constructor: Constructor) ![]const
 
     const output_format =
         \\const is{} = (value: unknown): value is {} => {c}
-        \\    return simpleValidationTools.isInterfaceOf<{}>(value, {c}type: "{}"{}{c});
+        \\    return svt.isInterfaceOf<{}>(value, {c}type: "{}"{}{c});
         \\{c};
     ;
 
@@ -193,7 +193,7 @@ fn outputTypeGuard(allocator: *mem.Allocator, constructor: Constructor) ![]const
 fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     const bare_format = ", data: {}";
     const type_guard_format = ", data: is{}";
-    const array_format = ", data: simpleValidationTools.arrayOf({})";
+    const array_format = ", data: svt.arrayOf({})";
 
     return switch (t) {
         .empty => "",
@@ -219,7 +219,7 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 }
 
 fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
-    const array_format = "simpleValidationTools.arrayOf({})";
+    const array_format = "svt.arrayOf({})";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for type guard\n", .{}),
@@ -567,19 +567,19 @@ test "Outputs `Event` union correctly" {
         \\};
         \\
         \\const isLogIn = (value: unknown): value is LogIn => {
-        \\    return simpleValidationTools.isInterfaceOf<LogIn>(value, {type: "LogIn", data: isLogInData});
+        \\    return svt.isInterfaceOf<LogIn>(value, {type: "LogIn", data: isLogInData});
         \\};
         \\
         \\const isLogOut = (value: unknown): value is LogOut => {
-        \\    return simpleValidationTools.isInterfaceOf<LogOut>(value, {type: "LogOut", data: isUserId});
+        \\    return svt.isInterfaceOf<LogOut>(value, {type: "LogOut", data: isUserId});
         \\};
         \\
         \\const isJoinChannels = (value: unknown): value is JoinChannels => {
-        \\    return simpleValidationTools.isInterfaceOf<JoinChannels>(value, {type: "JoinChannels", data: simpleValidationTools.arrayOf(isChannel)});
+        \\    return svt.isInterfaceOf<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
         \\};
         \\
         \\const isSetEmails = (value: unknown): value is SetEmails => {
-        \\    return simpleValidationTools.isInterfaceOf<SetEmails>(value, {type: "SetEmails", data: simpleValidationTools.arrayOf(isEmail)});
+        \\    return svt.isInterfaceOf<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
         \\};
     ;
 
