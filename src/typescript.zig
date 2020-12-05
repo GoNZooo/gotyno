@@ -32,22 +32,9 @@ pub fn outputPlainStructure(
                 const embedded_type = switch (a.@"type".*) {
                     .name => |n| translateName(n),
                     .applied_name => |applied_name| applied: {
-                        var applied = try fmt.allocPrint(
-                            allocator,
-                            "<{}",
-                            .{applied_name.open_names[0]},
-                        );
+                        const open_names = try mem.join(allocator, ", ", applied_name.open_names);
 
-                        for (applied_name.open_names[1..]) |open_name| {
-                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
-                            applied = try mem.concat(
-                                allocator,
-                                u8,
-                                &[_][]const u8{ applied, new_name },
-                            );
-                        }
-
-                        break :applied "";
+                        break :applied try fmt.allocPrint(allocator, "<{}>", .{open_names});
                     },
                     else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
                 };
@@ -59,22 +46,9 @@ pub fn outputPlainStructure(
                 const embedded_type = switch (s.@"type".*) {
                     .name => |n| translateName(n),
                     .applied_name => |applied_name| applied: {
-                        var applied = try fmt.allocPrint(
-                            allocator,
-                            "<{}",
-                            .{applied_name.open_names[0]},
-                        );
+                        const open_names = try mem.join(allocator, ", ", applied_name.open_names);
 
-                        for (applied_name.open_names[1..]) |open_name| {
-                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
-                            applied = try mem.concat(
-                                allocator,
-                                u8,
-                                &[_][]const u8{ applied, new_name },
-                            );
-                        }
-
-                        break :applied "";
+                        break :applied try fmt.allocPrint(allocator, "<{}>", .{open_names});
                     },
                     else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
                 };
@@ -86,22 +60,9 @@ pub fn outputPlainStructure(
                 const embedded_type = switch (p.@"type".*) {
                     .name => |n| translateName(n),
                     .applied_name => |applied_name| applied: {
-                        var applied = try fmt.allocPrint(
-                            allocator,
-                            "<{}",
-                            .{applied_name.open_names[0]},
-                        );
+                        const open_names = try mem.join(allocator, ", ", applied_name.open_names);
 
-                        for (applied_name.open_names[1..]) |open_name| {
-                            const additional_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
-                            applied = try mem.concat(
-                                allocator,
-                                u8,
-                                &[_][]const u8{ applied, additional_name },
-                            );
-                        }
-
-                        break :applied "";
+                        break :applied try fmt.allocPrint(allocator, "<{}>", .{open_names});
                     },
                     else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
                 };
@@ -149,22 +110,9 @@ pub fn outputGenericStructure(
                 const embedded_type = switch (a.@"type".*) {
                     .name => |n| translateName(n),
                     .applied_name => |applied_name| applied: {
-                        var applied = try fmt.allocPrint(
-                            allocator,
-                            "<{}",
-                            .{applied_name.open_names[0]},
-                        );
+                        const open_names = try mem.join(allocator, ", ", applied_name.open_names);
 
-                        for (applied_name.open_names[1..]) |open_name| {
-                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
-                            applied = try mem.concat(
-                                allocator,
-                                u8,
-                                &[_][]const u8{ applied, new_name },
-                            );
-                        }
-
-                        break :applied "";
+                        break :applied try fmt.allocPrint(allocator, "<{}>", .{open_names});
                     },
                     else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
                 };
@@ -176,22 +124,9 @@ pub fn outputGenericStructure(
                 const embedded_type = switch (s.@"type".*) {
                     .name => |n| translateName(n),
                     .applied_name => |applied_name| applied: {
-                        var applied = try fmt.allocPrint(
-                            allocator,
-                            "<{}",
-                            .{applied_name.open_names[0]},
-                        );
+                        const open_names = try mem.join(allocator, ", ", applied_name.open_names);
 
-                        for (applied_name.open_names[1..]) |open_name| {
-                            const new_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
-                            applied = try mem.concat(
-                                allocator,
-                                u8,
-                                &[_][]const u8{ applied, new_name },
-                            );
-                        }
-
-                        break :applied "";
+                        break :applied try fmt.allocPrint(allocator, "<{}>", .{open_names});
                     },
                     else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
                 };
@@ -203,22 +138,9 @@ pub fn outputGenericStructure(
                 const embedded_type = switch (p.@"type".*) {
                     .name => |n| translateName(n),
                     .applied_name => |applied_name| applied: {
-                        var applied = try fmt.allocPrint(
-                            allocator,
-                            "<{}",
-                            .{applied_name.open_names[0]},
-                        );
+                        const open_names = try mem.join(allocator, ", ", applied_name.open_names);
 
-                        for (applied_name.open_names[1..]) |open_name| {
-                            const additional_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
-                            applied = try mem.concat(
-                                allocator,
-                                u8,
-                                &[_][]const u8{ applied, additional_name },
-                            );
-                        }
-
-                        break :applied "";
+                        break :applied try fmt.allocPrint(allocator, "<{}>", .{open_names});
                     },
                     else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
                 };
@@ -238,15 +160,7 @@ pub fn outputGenericStructure(
         fields_output = try mem.concat(allocator, u8, &[_][]const u8{ fields_output, line });
     }
 
-    var open_names_output = try fmt.allocPrint(allocator, "{}", .{generic_structure.open_names[0]});
-    for (generic_structure.open_names[1..]) |open_name| {
-        const additional_name = try fmt.allocPrint(allocator, ", {}", .{open_name});
-        open_names_output = try mem.concat(
-            allocator,
-            u8,
-            &[_][]const u8{ open_names_output, additional_name },
-        );
-    }
+    const open_names_output = try mem.join(allocator, ", ", generic_structure.open_names);
 
     const output_format =
         \\type {}<{}> = {c}
