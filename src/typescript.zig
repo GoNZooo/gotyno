@@ -98,6 +98,7 @@ fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8
 
 fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const u8 {
     var constructor_names = try allocator.alloc([]const u8, plain_union.constructors.len);
+    defer allocator.free(constructor_names);
     for (plain_union.constructors) |constructor, i| {
         constructor_names[i] = constructor.tag;
     }
@@ -194,7 +195,7 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, name: []const u8, fields: 
 
     try fields_outputs.append(try fmt.allocPrint(allocator, "type: \"{}\"", .{name}));
 
-    for (fields) |field, i| {
+    for (fields) |field| {
         if (try getTypeGuardFromType(allocator, field.@"type")) |type_guard| {
             const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, type_guard });
             try fields_outputs.append(output);
@@ -235,19 +236,14 @@ fn outputTypeGuardsForConstructors(
     allocator: *mem.Allocator,
     constructors: []Constructor,
 ) ![]const u8 {
-    var type_guards = try allocator.alloc([]const u8, constructors.len);
+    var type_guards = ArrayList([]const u8).init(allocator);
+    defer type_guards.deinit();
 
-    for (constructors) |constructor, i| {
-        type_guards[i] = try outputTypeGuardForConstructor(allocator, constructor);
+    for (constructors) |constructor| {
+        try type_guards.append(try outputTypeGuardForConstructor(allocator, constructor));
     }
 
-    const joined_type_guards = try mem.join(allocator, "\n\n", type_guards);
-
-    for (type_guards) |type_guard| {
-        allocator.free(type_guard);
-    }
-
-    return joined_type_guards;
+    return try mem.join(allocator, "\n\n", type_guards.items);
 }
 
 fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
@@ -371,7 +367,7 @@ fn outputTaggedMaybeGenericStructures(
     var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
     defer tagged_structures_outputs.deinit();
 
-    for (constructors) |constructor, i| {
+    for (constructors) |constructor| {
         try tagged_structures_outputs.append(
             try outputTaggedMaybeGenericStructure(allocator, constructor, open_names),
         );
@@ -516,16 +512,15 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 }
 
 fn outputOpenNames(allocator: *mem.Allocator, names: []const []const u8) ![]const u8 {
-    var translated_names = try allocator.alloc([]const u8, names.len);
+    var translated_names = ArrayList([]const u8).init(allocator);
+    defer translated_names.deinit();
 
-    for (names) |name, i| {
-        translated_names[i] = translateName(name);
-    }
+    for (names) |name| try translated_names.append(translateName(name));
 
     return try fmt.allocPrint(
         allocator,
         "<{}>",
-        .{try mem.join(allocator, ", ", translated_names)},
+        .{try mem.join(allocator, ", ", translated_names.items)},
     );
 }
 
