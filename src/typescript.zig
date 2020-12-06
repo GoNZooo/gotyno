@@ -243,9 +243,9 @@ fn outputTypeGuardsForConstructors(
 
     const joined_type_guards = try mem.join(allocator, "\n\n", type_guards);
 
-    // for (type_guards) |type_guard| {
-    //     allocator.free(type_guard);
-    // }
+    for (type_guards) |type_guard| {
+        allocator.free(type_guard);
+    }
 
     return joined_type_guards;
 }
@@ -353,13 +353,14 @@ fn outputCommonOpenNames(
 }
 
 fn outputTaggedStructures(allocator: *mem.Allocator, constructors: []Constructor) ![]const u8 {
-    var tagged_structures_outputs = try allocator.alloc([]const u8, constructors.len);
+    var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
+    defer tagged_structures_outputs.deinit();
 
-    for (constructors) |constructor, i| {
-        tagged_structures_outputs[i] = try outputTaggedStructure(allocator, constructor);
+    for (constructors) |constructor| {
+        try tagged_structures_outputs.append(try outputTaggedStructure(allocator, constructor));
     }
 
-    return try mem.join(allocator, "\n\n", tagged_structures_outputs);
+    return try mem.join(allocator, "\n\n", tagged_structures_outputs.items);
 }
 
 fn outputTaggedMaybeGenericStructures(
@@ -367,17 +368,16 @@ fn outputTaggedMaybeGenericStructures(
     constructors: []Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
-    var tagged_structures_outputs = try allocator.alloc([]const u8, constructors.len);
+    var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
+    defer tagged_structures_outputs.deinit();
 
     for (constructors) |constructor, i| {
-        tagged_structures_outputs[i] = try outputTaggedMaybeGenericStructure(
-            allocator,
-            constructor,
-            open_names,
+        try tagged_structures_outputs.append(
+            try outputTaggedMaybeGenericStructure(allocator, constructor, open_names),
         );
     }
 
-    return try mem.join(allocator, "\n\n", tagged_structures_outputs);
+    return try mem.join(allocator, "\n\n", tagged_structures_outputs.items);
 }
 
 fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
