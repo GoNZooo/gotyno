@@ -30,7 +30,7 @@ fn outputPlainStructure(
     const fields_output = try outputStructureFields(allocator, plain_structure.fields);
 
     const output_format =
-        \\type {} = {c}
+        \\export type {} = {c}
         \\    type: "{}";
         \\{}
         \\{c};
@@ -48,7 +48,7 @@ fn outputGenericStructure(
     const fields_output = try outputStructureFields(allocator, generic_structure.fields);
 
     const output_format =
-        \\type {}{} = {c}
+        \\export type {}{} = {c}
         \\    type: "{}";
         \\{}
         \\{c};
@@ -104,7 +104,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     const type_guards_output = try outputTypeGuards(allocator, plain_union.constructors);
 
     const output_format =
-        \\type {} = {};
+        \\export type {} = {};
         \\
         \\{}
         \\
@@ -144,7 +144,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
     );
 
     const output_format =
-        \\type {}{} = {};
+        \\export type {}{} = {};
         \\
         \\{}
     ;
@@ -176,7 +176,7 @@ fn outputTypeGuard(allocator: *mem.Allocator, constructor: Constructor) ![]const
     const tag = constructor.tag;
 
     const output_format =
-        \\const is{} = (value: unknown): value is {} => {c}
+        \\export const is{} = (value: unknown): value is {} => {c}
         \\    return svt.isInterfaceOf<{}>(value, {c}type: "{}"{}{c});
         \\{c};
     ;
@@ -300,7 +300,7 @@ fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![
         "null";
 
     const output_format =
-        \\type {} = {c}
+        \\export type {} = {c}
         \\    type: "{}";
         \\    data: {};
         \\{c};
@@ -326,7 +326,7 @@ fn outputTaggedMaybeGenericStructure(
         "";
 
     const output_format =
-        \\type {}{} = {c}
+        \\export type {}{} = {c}
         \\    type: "{}";{}
         \\{c};
     ;
@@ -488,7 +488,7 @@ test "Outputs `Person` struct correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Person = {
+        \\export type Person = {
         \\    type: "Person";
         \\    name: string;
         \\    age: number;
@@ -519,7 +519,7 @@ test "Outputs `Node` struct correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Node<T> = {
+        \\export type Node<T> = {
         \\    type: "Node";
         \\    data: T;
         \\};
@@ -544,41 +544,41 @@ test "Outputs `Event` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Event = LogIn | LogOut | JoinChannels | SetEmails;
+        \\export type Event = LogIn | LogOut | JoinChannels | SetEmails;
         \\
-        \\type LogIn = {
+        \\export type LogIn = {
         \\    type: "LogIn";
         \\    data: LogInData;
         \\};
         \\
-        \\type LogOut = {
+        \\export type LogOut = {
         \\    type: "LogOut";
         \\    data: UserId;
         \\};
         \\
-        \\type JoinChannels = {
+        \\export type JoinChannels = {
         \\    type: "JoinChannels";
         \\    data: Channel[];
         \\};
         \\
-        \\type SetEmails = {
+        \\export type SetEmails = {
         \\    type: "SetEmails";
         \\    data: Email[];
         \\};
         \\
-        \\const isLogIn = (value: unknown): value is LogIn => {
+        \\export const isLogIn = (value: unknown): value is LogIn => {
         \\    return svt.isInterfaceOf<LogIn>(value, {type: "LogIn", data: isLogInData});
         \\};
         \\
-        \\const isLogOut = (value: unknown): value is LogOut => {
+        \\export const isLogOut = (value: unknown): value is LogOut => {
         \\    return svt.isInterfaceOf<LogOut>(value, {type: "LogOut", data: isUserId});
         \\};
         \\
-        \\const isJoinChannels = (value: unknown): value is JoinChannels => {
+        \\export const isJoinChannels = (value: unknown): value is JoinChannels => {
         \\    return svt.isInterfaceOf<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
         \\};
         \\
-        \\const isSetEmails = (value: unknown): value is SetEmails => {
+        \\export const isSetEmails = (value: unknown): value is SetEmails => {
         \\    return svt.isInterfaceOf<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
         \\};
     ;
@@ -602,14 +602,14 @@ test "Outputs `Maybe` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Maybe<T> = Just<T> | Nothing;
+        \\export type Maybe<T> = Just<T> | Nothing;
         \\
-        \\type Just<T> = {
+        \\export type Just<T> = {
         \\    type: "Just";
         \\    data: T;
         \\};
         \\
-        \\type Nothing = {
+        \\export type Nothing = {
         \\    type: "Nothing";
         \\};
     ;
@@ -633,14 +633,14 @@ test "Outputs `Either` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Either<E, T> = Left<E> | Right<T>;
+        \\export type Either<E, T> = Left<E> | Right<T>;
         \\
-        \\type Left<E> = {
+        \\export type Left<E> = {
         \\    type: "Left";
         \\    data: E;
         \\};
         \\
-        \\type Right<T> = {
+        \\export type Right<T> = {
         \\    type: "Right";
         \\    data: T;
         \\};
@@ -665,7 +665,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type WithMaybe = {
+        \\export type WithMaybe = {
         \\    type: "WithMaybe";
         \\    field: Maybe<string>;
         \\};
@@ -690,19 +690,19 @@ test "Outputs struct with different `Maybe`s correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type WithMaybe<T, E> = WithConcrete | WithGeneric<T> | WithBare<E>;
+        \\export type WithMaybe<T, E> = WithConcrete | WithGeneric<T> | WithBare<E>;
         \\
-        \\type WithConcrete = {
+        \\export type WithConcrete = {
         \\    type: "WithConcrete";
         \\    data: Maybe<string>;
         \\};
         \\
-        \\type WithGeneric<T> = {
+        \\export type WithGeneric<T> = {
         \\    type: "WithGeneric";
         \\    data: Maybe<T>;
         \\};
         \\
-        \\type WithBare<E> = {
+        \\export type WithBare<E> = {
         \\    type: "WithBare";
         \\    data: E;
         \\};
@@ -727,13 +727,13 @@ test "Outputs `List` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type List<T> = Empty | Cons<T>;
+        \\export type List<T> = Empty | Cons<T>;
         \\
-        \\type Empty = {
+        \\export type Empty = {
         \\    type: "Empty";
         \\};
         \\
-        \\type Cons<T> = {
+        \\export type Cons<T> = {
         \\    type: "Cons";
         \\    data: List<T>;
         \\};
