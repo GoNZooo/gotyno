@@ -29,14 +29,22 @@ fn outputPlainStructure(
 
     const fields_output = try outputStructureFields(allocator, plain_structure.fields);
 
+    const type_guards_output = try outputTypeGuardForPlainStructure(allocator, plain_structure);
+
     const output_format =
         \\export type {} = {c}
         \\    type: "{}";
         \\{}
         \\{c};
+        \\
+        \\{}
     ;
 
-    return try fmt.allocPrint(allocator, output_format, .{ name, '{', name, fields_output, '}' });
+    return try fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ name, '{', name, fields_output, '}', type_guards_output },
+    );
 }
 
 fn outputGenericStructure(
@@ -101,7 +109,10 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         plain_union.constructors,
     );
 
-    const type_guards_output = try outputTypeGuards(allocator, plain_union.constructors);
+    const type_guards_output = try outputTypeGuardsForConstructors(
+        allocator,
+        plain_union.constructors,
+    );
 
     const output_format =
         \\export type {} = {};
@@ -156,11 +167,78 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
     );
 }
 
-fn outputTypeGuards(allocator: *mem.Allocator, constructors: []Constructor) ![]const u8 {
+fn outputTypeGuardForPlainStructure(
+    allocator: *mem.Allocator,
+    plain_structure: PlainStructure,
+) ![]const u8 {
+    const name = plain_structure.name;
+
+    const checkers_output = try getTypeGuardsFromFields(allocator, name, plain_structure.fields);
+
+    const output_format =
+        \\export const is{} = (value: unknown): value is {} => {c}
+        \\    return svt.isInterfaceOf<{}>(value, {c}{}{c});
+        \\{c};
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ name, name, '{', name, '{', checkers_output, '}', '}' },
+    );
+}
+
+fn getTypeGuardsFromFields(allocator: *mem.Allocator, name: []const u8, fields: []Field) ![]const u8 {
+    var fields_outputs = ArrayList([]const u8).init(allocator);
+    defer fields_outputs.deinit();
+
+    try fields_outputs.append(try fmt.allocPrint(allocator, "type: \"{}\"", .{name}));
+
+    for (fields) |field, i| {
+        if (try getTypeGuardFromType(allocator, field.@"type")) |type_guard| {
+            const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, type_guard });
+            try fields_outputs.append(output);
+        }
+    }
+
+    return try mem.join(allocator, ", ", fields_outputs.items);
+}
+
+fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
+    const array_format = "svt.arrayOf({})";
+
+    return switch (t) {
+        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .name => |n| try fmt.allocPrint(
+            allocator,
+            "{}",
+            .{try translatedTypeGuardName(allocator, n)},
+        ),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedTypeGuardFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedTypeGuardFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try getNestedTypeGuardFromType(allocator, p.@"type".*),
+
+        .empty => debug.panic("Empty type does not seem like it should have a type guard\n", .{}),
+        .applied_name => null,
+    };
+}
+
+fn outputTypeGuardsForConstructors(
+    allocator: *mem.Allocator,
+    constructors: []Constructor,
+) ![]const u8 {
     var type_guards = try allocator.alloc([]const u8, constructors.len);
 
     for (constructors) |constructor, i| {
-        type_guards[i] = try outputTypeGuard(allocator, constructor);
+        type_guards[i] = try outputTypeGuardForConstructor(allocator, constructor);
     }
 
     const joined_type_guards = try mem.join(allocator, "\n\n", type_guards);
@@ -172,7 +250,7 @@ fn outputTypeGuards(allocator: *mem.Allocator, constructors: []Constructor) ![]c
     return joined_type_guards;
 }
 
-fn outputTypeGuard(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
     const tag = constructor.tag;
 
     const output_format =
@@ -181,7 +259,7 @@ fn outputTypeGuard(allocator: *mem.Allocator, constructor: Constructor) ![]const
         \\{c};
     ;
 
-    const type_guard_output = try getTypeGuardFromType(allocator, constructor.parameter);
+    const type_guard_output = try getDataTypeGuardFromType(allocator, constructor.parameter);
 
     return try fmt.allocPrint(
         allocator,
@@ -190,15 +268,20 @@ fn outputTypeGuard(allocator: *mem.Allocator, constructor: Constructor) ![]const
     );
 }
 
-fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
+fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     const bare_format = ", data: {}";
-    const type_guard_format = ", data: is{}";
+    const type_guard_format = ", data: {}";
+    const builtin_type_guard_format = ", data: svt.is{}";
     const array_format = ", data: svt.arrayOf({})";
 
     return switch (t) {
         .empty => "",
         .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
-        .name => |n| try fmt.allocPrint(allocator, type_guard_format, .{n}),
+        .name => |n| try fmt.allocPrint(
+            allocator,
+            type_guard_format,
+            .{try translatedTypeGuardName(allocator, n)},
+        ),
         .array => |a| try fmt.allocPrint(
             allocator,
             array_format,
@@ -224,7 +307,11 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for type guard\n", .{}),
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try fmt.allocPrint(allocator, "is{}", .{n}),
+        .name => |n| try fmt.allocPrint(
+            allocator,
+            "{}",
+            .{try translatedTypeGuardName(allocator, n)},
+        ),
         .array => |a| try fmt.allocPrint(
             allocator,
             array_format,
@@ -476,6 +563,17 @@ fn isTranslatedName(name: []const u8) bool {
         isStringEqualToOneOf(name, &[_][]const u8{ "String", "Boolean" });
 }
 
+fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+    return if (mem.eql(u8, name, "String"))
+        "svt.isString"
+    else if (isNumberType(name))
+        "svt.isNumber"
+    else if (mem.eql(u8, name, "Boolean"))
+        "svt.isBoolean"
+    else
+        try fmt.allocPrint(allocator, "is{}", .{name});
+}
+
 fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) bool {
     for (compared_values) |compared_value| {
         if (mem.eql(u8, value, compared_value)) return true;
@@ -497,6 +595,10 @@ test "Outputs `Person` struct correctly" {
         \\    hobbies: string[];
         \\    last_fifteen_comments: string[];
         \\    recruiter: Person;
+        \\};
+        \\
+        \\export const isPerson = (value: unknown): value is Person => {
+        \\    return svt.isInterfaceOf<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isPerson});
         \\};
     ;
 
@@ -668,6 +770,10 @@ test "Outputs struct with concrete `Maybe` correctly" {
         \\export type WithMaybe = {
         \\    type: "WithMaybe";
         \\    field: Maybe<string>;
+        \\};
+        \\
+        \\export const isWithMaybe = (value: unknown): value is WithMaybe => {
+        \\    return svt.isInterfaceOf<WithMaybe>(value, {type: "WithMaybe"});
         \\};
     ;
 
