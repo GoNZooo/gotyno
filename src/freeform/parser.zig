@@ -972,6 +972,79 @@ test "Parsing invalid normal structure" {
     };
 }
 
+test "Parsing multiple definitions works as it should" {
+    var allocator = TestingAllocator{};
+    var expect_error: ExpectError = undefined;
+
+    const parsing_results = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.person_structure_and_event_union,
+        &expect_error,
+    );
+
+    var hobbies_slice_type = Type{ .name = "String" };
+    var comments_array_type = Type{ .name = "String" };
+    var recruiter_pointer_type = Type{ .name = "Person" };
+    var channels_slice_type = Type{ .name = "Channel" };
+    var set_emails_array_type = Type{ .name = "Email" };
+    var expected_constructors = [_]Constructor{
+        .{ .tag = "LogIn", .parameter = Type{ .name = "LogInData" } },
+        .{ .tag = "LogOut", .parameter = Type{ .name = "UserId" } },
+        .{
+            .tag = "JoinChannels",
+            .parameter = Type{ .slice = Slice{ .@"type" = &channels_slice_type } },
+        },
+        .{
+            .tag = "SetEmails",
+            .parameter = Type{ .array = Array{ .@"type" = &set_emails_array_type, .size = 5 } },
+        },
+    };
+
+    const expected_definitions = [_]Definition{
+        .{
+            .structure = Structure{
+                .plain = PlainStructure{
+                    .name = "Person",
+                    .fields = &[_]Field{
+                        .{ .name = "name", .@"type" = Type{ .name = "String" } },
+                        .{ .name = "age", .@"type" = Type{ .name = "U8" } },
+                        .{ .name = "efficiency", .@"type" = Type{ .name = "F32" } },
+                        .{ .name = "on_vacation", .@"type" = Type{ .name = "Boolean" } },
+                        .{
+                            .name = "hobbies",
+                            .@"type" = Type{ .slice = Slice{ .@"type" = &hobbies_slice_type } },
+                        },
+                        .{
+                            .name = "last_fifteen_comments",
+                            .@"type" = Type{
+                                .array = Array{
+                                    .size = 15,
+                                    .@"type" = &comments_array_type,
+                                },
+                            },
+                        },
+                        .{
+                            .name = "recruiter",
+                            .@"type" = Type{ .pointer = Pointer{ .@"type" = &recruiter_pointer_type } },
+                        },
+                    },
+                },
+            },
+        },
+        .{
+            .@"union" = Union{
+                .plain = PlainUnion{
+                    .name = "Event",
+                    .constructors = &expected_constructors,
+                },
+            },
+        },
+    };
+
+    expectEqualDefinitions(&expected_definitions, parsing_results.success.definitions);
+}
+
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
     const Names = struct {
         a: []const u8,
@@ -987,6 +1060,14 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
         names: Names,
         fields: Fields,
     };
+
+    if (as.len == 0) {
+        testing_utilities.testPanic("Definition slice `as` is zero length; invalid test\n", .{});
+    }
+
+    if (bs.len == 0) {
+        testing_utilities.testPanic("Definition slice `bs` is zero length; invalid test\n", .{});
+    }
 
     for (as) |a, i| {
         const b = bs[i];

@@ -25,6 +25,25 @@ pub const event_union =
     \\}
 ;
 
+pub const person_structure_and_event_union =
+    \\struct Person {
+    \\    name: String;
+    \\    age: U8;
+    \\    efficiency: F32;
+    \\    on_vacation: Boolean;
+    \\    hobbies: []String;
+    \\    last_fifteen_comments: [15]String;
+    \\    recruiter: *Person;
+    \\}
+    \\
+    \\union Event {
+    \\    LogIn: LogInData;
+    \\    LogOut: UserId;
+    \\    JoinChannels: []Channel;
+    \\    SetEmails: [5]Email;
+    \\}
+;
+
 pub const maybe_union =
     \\union Maybe <T>{
     \\    Just: T;
