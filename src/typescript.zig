@@ -7,19 +7,54 @@ const testing = std.testing;
 
 const ArrayList = std.ArrayList;
 
-const freeform = @import("./freeform.zig");
+const parser = @import("./freeform/parser.zig");
+const tokenizer = @import("./freeform/tokenizer.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 
-const PlainStructure = freeform.parser.PlainStructure;
-const GenericStructure = freeform.parser.GenericStructure;
-const PlainUnion = freeform.parser.PlainUnion;
-const GenericUnion = freeform.parser.GenericUnion;
-const Constructor = freeform.parser.Constructor;
-const Type = freeform.parser.Type;
-const Field = freeform.parser.Field;
-const ExpectError = freeform.tokenizer.ExpectError;
+const Definition = parser.Definition;
+const PlainStructure = parser.PlainStructure;
+const GenericStructure = parser.GenericStructure;
+const PlainUnion = parser.PlainUnion;
+const GenericUnion = parser.GenericUnion;
+const Constructor = parser.Constructor;
+const Type = parser.Type;
+const Field = parser.Field;
+const ExpectError = tokenizer.ExpectError;
 
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
+
+pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
+    debug.assert(mem.endsWith(u8, filename, ".gotyno"));
+
+    var split_iterator = mem.split(filename, ".gotyno");
+    const before_extension = split_iterator.next().?;
+
+    return mem.join(allocator, "", &[_][]const u8{ before_extension, ".ts" });
+}
+
+pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) ![]const u8 {
+    var outputs = ArrayList([]const u8).init(allocator);
+    defer outputs.deinit();
+
+    try outputs.append("import * as svt from \"simple-validation-tools\";");
+
+    for (definitions) |definition| {
+        const output = switch (definition) {
+            .structure => |structure| switch (structure) {
+                .plain => |plain| try outputPlainStructure(allocator, plain),
+                .generic => |generic| try outputGenericStructure(allocator, generic),
+            },
+            .@"union" => |u| switch (u) {
+                .plain => |plain| try outputPlainUnion(allocator, plain),
+                .generic => |generic| try outputGenericUnion(allocator, generic),
+            },
+        };
+
+        try outputs.append(output);
+    }
+
+    return try mem.join(allocator, "\n\n", outputs.items);
+}
 
 fn outputPlainStructure(
     allocator: *mem.Allocator,
@@ -195,7 +230,7 @@ fn outputTypeGuardForPlainStructure(
 
     const output_format =
         \\export const is{} = (value: unknown): value is {} => {c}
-        \\    return svt.isInterfaceOf<{}>(value, {c}{}{c});
+        \\    return svt.isInterface<{}>(value, {c}{}{c});
         \\{c};
     ;
 
@@ -346,7 +381,7 @@ fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constru
 
     const output_format =
         \\export const is{} = (value: unknown): value is {} => {c}
-        \\    return svt.isInterfaceOf<{}>(value, {c}type: "{}"{}{c});
+        \\    return svt.isInterface<{}>(value, {c}type: "{}"{}{c});
         \\{c};
     ;
 
@@ -780,7 +815,7 @@ test "Outputs `Person` struct correctly" {
         \\};
         \\
         \\export const isPerson = (value: unknown): value is Person => {
-        \\    return svt.isInterfaceOf<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isPerson});
+        \\    return svt.isInterface<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isPerson});
         \\};
         \\
         \\export const validatePerson = (value: unknown): svt.ValidationResult<Person> => {
@@ -855,19 +890,19 @@ test "Outputs `Event` union correctly" {
         \\};
         \\
         \\export const isLogIn = (value: unknown): value is LogIn => {
-        \\    return svt.isInterfaceOf<LogIn>(value, {type: "LogIn", data: isLogInData});
+        \\    return svt.isInterface<LogIn>(value, {type: "LogIn", data: isLogInData});
         \\};
         \\
         \\export const isLogOut = (value: unknown): value is LogOut => {
-        \\    return svt.isInterfaceOf<LogOut>(value, {type: "LogOut", data: isUserId});
+        \\    return svt.isInterface<LogOut>(value, {type: "LogOut", data: isUserId});
         \\};
         \\
         \\export const isJoinChannels = (value: unknown): value is JoinChannels => {
-        \\    return svt.isInterfaceOf<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
+        \\    return svt.isInterface<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
         \\};
         \\
         \\export const isSetEmails = (value: unknown): value is SetEmails => {
-        \\    return svt.isInterfaceOf<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
+        \\    return svt.isInterface<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
         \\};
         \\
         \\export const validateLogIn = (value: unknown): svt.ValidationResult<LogIn> => {
@@ -975,7 +1010,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
         \\};
         \\
         \\export const isWithMaybe = (value: unknown): value is WithMaybe => {
-        \\    return svt.isInterfaceOf<WithMaybe>(value, {type: "WithMaybe"});
+        \\    return svt.isInterface<WithMaybe>(value, {type: "WithMaybe"});
         \\};
         \\
         \\export const validateWithMaybe = (value: unknown): svt.ValidationResult<WithMaybe> => {

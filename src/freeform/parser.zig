@@ -270,7 +270,7 @@ pub fn parse(
     expect_error: *ExpectError,
 ) !ParseResult {
     var definitions = ArrayList(Definition).init(allocator);
-    var definition_iterator = definitionIterator(allocator, buffer, expect_error);
+    var definition_iterator = DefinitionIterator.init(allocator, buffer, expect_error);
     while (try definition_iterator.next()) |definition| {
         try definitions.append(definition);
     }
@@ -326,6 +326,20 @@ pub const DefinitionIterator = struct {
     token_iterator: TokenIterator,
     allocator: *mem.Allocator,
     expect_error: *ExpectError,
+
+    pub fn init(
+        allocator: *mem.Allocator,
+        buffer: []const u8,
+        expect_error: *ExpectError,
+    ) Self {
+        var token_iterator = tokenizer.TokenIterator.init(buffer);
+
+        return DefinitionIterator{
+            .token_iterator = token_iterator,
+            .allocator = allocator,
+            .expect_error = expect_error,
+        };
+    }
 
     pub fn next(self: *Self) !?Definition {
         while (try self.token_iterator.next(.{})) |token| {
@@ -698,20 +712,6 @@ pub const DefinitionIterator = struct {
         return field;
     }
 };
-
-pub fn definitionIterator(
-    allocator: *mem.Allocator,
-    buffer: []const u8,
-    expect_error: *ExpectError,
-) DefinitionIterator {
-    var token_iterator = tokenizer.TokenIterator.init(buffer);
-
-    return DefinitionIterator{
-        .token_iterator = token_iterator,
-        .allocator = allocator,
-        .expect_error = expect_error,
-    };
-}
 
 test "Parsing `Person` structure" {
     var allocator = TestingAllocator{};
