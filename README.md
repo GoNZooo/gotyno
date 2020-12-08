@@ -1,133 +1,34 @@
-# zig-type-translator
+# gotyno
 
-The thesis is this: It's neat to write a type in one language and have it
-automatically defined as per that spec in another language, with some leniency
-with regards to idioms, etc.
+A type definition language that outputs definitions and validation functions in
+different languages (eventually).
 
-## Way forward
+## Supported languages
 
-Likely it'll make more sense to not interpret types from any one language'
-internal structures and instead just parse either a ready-made language
-(whatever pleases oneself, I guess?) or a basic format that is tailored for
-the essentials of what one wants to do.
+- [x] TypeScript
+- [ ] F#
+- [ ] OCaml
+- [ ] Haskell
+- [ ] PureScript
+- [ ] Elixir (partial support)
+- [ ] Zig
 
-This is all obviously reinventing the wheel, which I'm fine with. More likely
-than anything else is that I'll just write a parser in Zig for a custom format
-and use that.
+### TypeScript example
 
-## Example
+[basic.gotyno](./test_files/basic.gotyno) has an example of some types being
+defined and [basic.ts](./test_files/basic.ts) is the automatically generated
+TypeScript output from this file.
 
-In the repo you'll find (in `types.zig`) some basic types. These can be
-automatically converted into other language forms via `typedefinitionToString`
-functions in their respective modules.
+Behind the scenens it's using a validation library I wrote for validating
+`unknown` values (for the most part against given interface definitions).
 
-```zig
-pub const BasicStruct = struct {
-    u: u32,
-    i: i64,
-    f: f64,
-    s: []const u8,
-    bools: []bool,
-    hobbies: []const []const u8,
-    lotto_numbers: [][]u32,
-    points: []Point,
-};
+## Roadmap
 
-pub const BasicUnion = union(enum) {
-    Struct: BasicStruct,
-    Coordinates: Point,
-    NoPayload,
-};
+The project was previously reoriented from a model where it took Zig type
+definitions and turned them into types in other languages. This had some issues
+that seemed to be more work than seemed reasonable or currently impossible to
+solve so I reworked it into a type definition language instead.
 
-const Point = struct {
-    x: i32,
-    y: i32,
-};
-```
-
-Running the executable in this repo will yield:
-
-```typescript
-// TypeScript:
-
-interface BasicStruct {
-  type: "BasicStruct";
-  u: number;
-  i: number;
-  f: number;
-  s: string;
-  bools: Array<boolean>;
-  hobbies: Array<string>;
-  lotto_numbers: Array<Array<number>>;
-  points: Array<Point>;
-}
-
-interface Point {
-  type: "Point";
-  x: number;
-  y: number;
-}
-
-type BasicUnion =
-  BasicStruct
-  | Point;
-```
-
-```purescript
--- PureScript:
-
-newtype BasicStruct
-  = BasicStruct
-  { u :: Int
-  , i :: Int
-  , f :: Number
-  , s :: String
-  , bools :: Array Boolean
-  , hobbies :: Array String
-  , lotto_numbers :: Array (Array Int)
-  , points :: Array Point
-  }
-
-newtype Point
-  = Point
-  { x :: Int
-  , y :: Int
-  }
-
-data BasicUnion
-  = Struct BasicStruct
-  | Coordinates Point
-  | NoPayload
-```
-
-```haskell
--- Haskell:
-
-data BasicStruct
-  = BasicStruct
-  { u :: Int
-  , i :: Int
-  , f :: Number
-  , s :: String
-  , bools :: [Bool]
-  , hobbies :: [String]
-  , lotto_numbers :: [[Int]]
-  , points :: [Point]
-  }
-
-data Point
-  = Point
-  { x :: Int
-  , y :: Int
-  }
-
-data BasicUnion
-  = Struct BasicStruct
-  | Coordinates Point
-  | NoPayload
-```
-
-Note the difference in what is important between TypeScript and PureScript/Haskell:
-
-We want to distinguish types based on their payload in TypeScript, which is why
-we have the `type` field/tag and the union is based on the payloads themselves.
+Currently it parses generic type definitions correctly, but doesn't output
+definitions and validation for them. I have an idea for how to solve this that
+I'm fairly confident will work, but I've yet to create it.
