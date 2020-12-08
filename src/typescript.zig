@@ -31,6 +31,8 @@ fn outputPlainStructure(
 
     const type_guards_output = try outputTypeGuardForPlainStructure(allocator, plain_structure);
 
+    const validator_output = try outputValidatorForPlainStructure(allocator, plain_structure);
+
     const output_format =
         \\export type {} = {c}
         \\    type: "{}";
@@ -38,12 +40,14 @@ fn outputPlainStructure(
         \\{c};
         \\
         \\{}
+        \\
+        \\{}
     ;
 
     return try fmt.allocPrint(
         allocator,
         output_format,
-        .{ name, '{', name, fields_output, '}', type_guards_output },
+        .{ name, '{', name, fields_output, '}', type_guards_output, validator_output },
     );
 }
 
@@ -189,6 +193,27 @@ fn outputTypeGuardForPlainStructure(
     );
 }
 
+fn outputValidatorForPlainStructure(
+    allocator: *mem.Allocator,
+    plain_structure: PlainStructure,
+) ![]const u8 {
+    const name = plain_structure.name;
+
+    const validators_output = try getValidatorsFromFields(allocator, name, plain_structure.fields);
+
+    const output_format =
+        \\export const validate{} = (value: unknown): svt.ValidationResult<{}> => {c}
+        \\    return svt.validate<{}>(value, {c}{}{c});
+        \\{c};
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ name, name, '{', name, '{', validators_output, '}', '}' },
+    );
+}
+
 fn getTypeGuardsFromFields(allocator: *mem.Allocator, name: []const u8, fields: []Field) ![]const u8 {
     var fields_outputs = ArrayList([]const u8).init(allocator);
     defer fields_outputs.deinit();
@@ -198,6 +223,22 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, name: []const u8, fields: 
     for (fields) |field| {
         if (try getTypeGuardFromType(allocator, field.@"type")) |type_guard| {
             const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, type_guard });
+            try fields_outputs.append(output);
+        }
+    }
+
+    return try mem.join(allocator, ", ", fields_outputs.items);
+}
+
+fn getValidatorsFromFields(allocator: *mem.Allocator, name: []const u8, fields: []Field) ![]const u8 {
+    var fields_outputs = ArrayList([]const u8).init(allocator);
+    defer fields_outputs.deinit();
+
+    try fields_outputs.append(try fmt.allocPrint(allocator, "type: \"{}\"", .{name}));
+
+    for (fields) |field| {
+        if (try getValidatorFromType(allocator, field.@"type")) |validator| {
+            const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, validator });
             try fields_outputs.append(output);
         }
     }
@@ -226,6 +267,33 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             .{try getNestedTypeGuardFromType(allocator, s.@"type".*)},
         ),
         .pointer => |p| try getNestedTypeGuardFromType(allocator, p.@"type".*),
+
+        .empty => debug.panic("Empty type does not seem like it should have a type guard\n", .{}),
+        .applied_name => null,
+    };
+}
+
+fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
+    const array_format = "svt.validateArray({})";
+
+    return switch (t) {
+        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .name => |n| try fmt.allocPrint(
+            allocator,
+            "{}",
+            .{try translatedValidatorName(allocator, n)},
+        ),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedValidatorFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedValidatorFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try getNestedValidatorFromType(allocator, p.@"type".*),
 
         .empty => debug.panic("Empty type does not seem like it should have a type guard\n", .{}),
         .applied_name => null,
@@ -322,6 +390,36 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             allocator,
             "is{}",
             .{try getNestedTypeGuardFromType(allocator, p.@"type".*)},
+        ),
+        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+    };
+}
+
+fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
+    const array_format = "svt.validateArray({})";
+
+    return switch (t) {
+        .empty => debug.panic("Empty nested type invalid for validator\n", .{}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .name => |n| try fmt.allocPrint(
+            allocator,
+            "{}",
+            .{try translatedValidatorName(allocator, n)},
+        ),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedValidatorFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedValidatorFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try fmt.allocPrint(
+            allocator,
+            "is{}",
+            .{try getNestedValidatorFromType(allocator, p.@"type".*)},
         ),
         .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
     };
@@ -569,6 +667,17 @@ fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const
         try fmt.allocPrint(allocator, "is{}", .{name});
 }
 
+fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+    return if (mem.eql(u8, name, "String"))
+        "svt.validateString"
+    else if (isNumberType(name))
+        "svt.validateNumber"
+    else if (mem.eql(u8, name, "Boolean"))
+        "svt.validateBoolean"
+    else
+        try fmt.allocPrint(allocator, "validate{}", .{name});
+}
+
 fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) bool {
     for (compared_values) |compared_value| {
         if (mem.eql(u8, value, compared_value)) return true;
@@ -594,6 +703,10 @@ test "Outputs `Person` struct correctly" {
         \\
         \\export const isPerson = (value: unknown): value is Person => {
         \\    return svt.isInterfaceOf<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isPerson});
+        \\};
+        \\
+        \\export const validatePerson = (value: unknown): svt.ValidationResult<Person> => {
+        \\    return svt.validate<Person>(value, {type: "Person", name: svt.validateString, age: svt.validateNumber, efficiency: svt.validateNumber, on_vacation: svt.validateBoolean, hobbies: svt.validateArray(svt.validateString), last_fifteen_comments: svt.validateArray(svt.validateString), recruiter: validatePerson});
         \\};
     ;
 
@@ -769,6 +882,10 @@ test "Outputs struct with concrete `Maybe` correctly" {
         \\
         \\export const isWithMaybe = (value: unknown): value is WithMaybe => {
         \\    return svt.isInterfaceOf<WithMaybe>(value, {type: "WithMaybe"});
+        \\};
+        \\
+        \\export const validateWithMaybe = (value: unknown): svt.ValidationResult<WithMaybe> => {
+        \\    return svt.validate<WithMaybe>(value, {type: "WithMaybe"});
         \\};
     ;
 
