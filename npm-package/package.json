@@ -1,6 +1,6 @@
 {
   "name": "gotyno",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "license": "MIT",
   "scripts": {
     "preinstall": "node ./scripts/linkForPlatform.js"
