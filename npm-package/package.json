@@ -1,12 +1,12 @@
 {
   "name": "gotyno",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "license": "MIT",
   "scripts": {
     "preinstall": "node ./scripts/linkForPlatform.js"
   },
   "bin": {
-    "gotyno": "./bin/gotyno"
+    "gotyno": "./scripts/cli.js"
   },
   "dependencies": {
     "simple-validation-tools": "GoNZooo/simple-validation-tools#3abf0168d1db89d1cbb2d0b2878ff9ef11632609"
