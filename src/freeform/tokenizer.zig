@@ -80,6 +80,7 @@ pub const Token = union(enum) {
             .colon,
             .comma,
             .newline,
+            // @TODO: add CRLF/\r\n token?
             .space,
             .question_mark,
             .asterisk,
