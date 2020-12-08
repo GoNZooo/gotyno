@@ -1,0 +1,14 @@
+{
+  "name": "gotyno",
+  "version": "0.1.1",
+  "license": "MIT",
+  "scripts": {
+    "install": "node ./scripts/linkForPlatform.js"
+  },
+  "bin": {
+    "gotyno": "bin/gotyno"
+  },
+  "dependencies": {
+    "simple-validation-tools": "GoNZooo/simple-validation-tools#3abf0168d1db89d1cbb2d0b2878ff9ef11632609"
+  }
+}
