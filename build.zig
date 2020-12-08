@@ -12,7 +12,7 @@ const test_files = [_][]const u8{
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
     const target = b.standardTargetOptions(.{});
-    const exe = b.addExecutable("type-translator", "src/main.zig");
+    const exe = b.addExecutable("gotyno", "src/main.zig");
     exe.setBuildMode(mode);
     exe.setTarget(target);
     exe.install();
