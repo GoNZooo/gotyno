@@ -1,0 +1,9 @@
+{
+  "name": "test_files",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "simple-validation-tools": "GoNZooo/simple-validation-tools#3abf0168d1db89d1cbb2d0b2878ff9ef11632609"
+  }
+}
