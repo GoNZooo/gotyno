@@ -1,9 +1,9 @@
 {
   "name": "gotyno",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "scripts": {
-    "install": "node ./scripts/linkForPlatform.js"
+    "preinstall": "node ./scripts/linkForPlatform.js"
   },
   "bin": {
     "gotyno": "bin/gotyno"
