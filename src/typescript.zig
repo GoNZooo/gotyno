@@ -119,8 +119,15 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         plain_union.constructors,
     );
 
+    const validators_output = try outputValidatorsForConstructors(
+        allocator,
+        plain_union.constructors,
+    );
+
     const output_format =
         \\export type {} = {};
+        \\
+        \\{}
         \\
         \\{}
         \\
@@ -130,7 +137,13 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     return fmt.allocPrint(
         allocator,
         output_format,
-        .{ plain_union.name, constructor_names_output, tagged_structures_output, type_guards_output },
+        .{
+            plain_union.name,
+            constructor_names_output,
+            tagged_structures_output,
+            type_guards_output,
+            validators_output,
+        },
     );
 }
 
@@ -314,6 +327,20 @@ fn outputTypeGuardsForConstructors(
     return try mem.join(allocator, "\n\n", type_guards.items);
 }
 
+fn outputValidatorsForConstructors(
+    allocator: *mem.Allocator,
+    constructors: []Constructor,
+) ![]const u8 {
+    var validators = ArrayList([]const u8).init(allocator);
+    defer validators.deinit();
+
+    for (constructors) |constructor| {
+        try validators.append(try outputValidatorForConstructor(allocator, constructor));
+    }
+
+    return try mem.join(allocator, "\n\n", validators.items);
+}
+
 fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
     const tag = constructor.tag;
 
@@ -329,6 +356,24 @@ fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constru
         allocator,
         output_format,
         .{ tag, tag, '{', tag, '{', tag, type_guard_output, '}', '}' },
+    );
+}
+
+fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+    const tag = constructor.tag;
+
+    const output_format =
+        \\export const validate{} = (value: unknown): svt.ValidationResult<{}> => {c}
+        \\    return svt.validate<{}>(value, {c}type: "{}"{}{c});
+        \\{c};
+    ;
+
+    const validator_output = try getDataValidatorFromType(allocator, constructor.parameter);
+
+    return try fmt.allocPrint(
+        allocator,
+        output_format,
+        .{ tag, tag, '{', tag, '{', tag, validator_output, '}', '}' },
     );
 }
 
@@ -362,6 +407,39 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             .{try getNestedTypeGuardFromType(allocator, p.@"type".*)},
         ),
         .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+    };
+}
+
+fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
+    const bare_format = ", data: {}";
+    const validator_format = ", data: {}";
+    const builtin_type_guard_format = ", data: svt.validate{}";
+    const array_format = ", data: svt.validateArray({})";
+
+    return switch (t) {
+        .empty => "",
+        .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
+        .name => |n| try fmt.allocPrint(
+            allocator,
+            validator_format,
+            .{try translatedValidatorName(allocator, n)},
+        ),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedValidatorFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedValidatorFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try fmt.allocPrint(
+            allocator,
+            validator_format,
+            .{try getNestedValidatorFromType(allocator, p.@"type".*)},
+        ),
+        .applied_name => debug.panic("Trying to get validator from type for: {}\n", .{t}),
     };
 }
 
@@ -790,6 +868,22 @@ test "Outputs `Event` union correctly" {
         \\
         \\export const isSetEmails = (value: unknown): value is SetEmails => {
         \\    return svt.isInterfaceOf<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
+        \\};
+        \\
+        \\export const validateLogIn = (value: unknown): svt.ValidationResult<LogIn> => {
+        \\    return svt.validate<LogIn>(value, {type: "LogIn", data: validateLogInData});
+        \\};
+        \\
+        \\export const validateLogOut = (value: unknown): svt.ValidationResult<LogOut> => {
+        \\    return svt.validate<LogOut>(value, {type: "LogOut", data: validateUserId});
+        \\};
+        \\
+        \\export const validateJoinChannels = (value: unknown): svt.ValidationResult<JoinChannels> => {
+        \\    return svt.validate<JoinChannels>(value, {type: "JoinChannels", data: svt.validateArray(validateChannel)});
+        \\};
+        \\
+        \\export const validateSetEmails = (value: unknown): svt.ValidationResult<SetEmails> => {
+        \\    return svt.validate<SetEmails>(value, {type: "SetEmails", data: svt.validateArray(validateEmail)});
         \\};
     ;
 
