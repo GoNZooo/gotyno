@@ -148,6 +148,8 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         plain_union.constructors,
     );
 
+    const constructors_output = try outputConstructors(allocator, plain_union.constructors);
+
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
         plain_union.constructors,
@@ -166,6 +168,8 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         \\{}
         \\
         \\{}
+        \\
+        \\{}
     ;
 
     return fmt.allocPrint(
@@ -175,6 +179,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
             plain_union.name,
             constructor_names_output,
             tagged_structures_output,
+            constructors_output,
             type_guards_output,
             validators_output,
         },
@@ -343,6 +348,20 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
     };
 }
 
+fn outputConstructors(
+    allocator: *mem.Allocator,
+    constructors: []Constructor,
+) ![]const u8 {
+    var constructor_outputs = ArrayList([]const u8).init(allocator);
+    defer constructor_outputs.deinit();
+
+    for (constructors) |constructor| {
+        try constructor_outputs.append(try outputConstructor(allocator, constructor));
+    }
+
+    return try mem.join(allocator, "\n\n", constructor_outputs.items);
+}
+
 fn outputTypeGuardsForConstructors(
     allocator: *mem.Allocator,
     constructors: []Constructor,
@@ -369,6 +388,37 @@ fn outputValidatorsForConstructors(
     }
 
     return try mem.join(allocator, "\n\n", validators.items);
+}
+
+fn outputConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+    const tag = constructor.tag;
+
+    const data_specification = try getDataSpecificationFromType(allocator, constructor.parameter);
+
+    const output_format_with_data =
+        \\export const {} = (data: {}): {} => {c}
+        \\    return {c}type: "{}", data{c};
+        \\{c};
+    ;
+
+    const output_format_without_data =
+        \\export const {} = (): {} => {c}
+        \\    return {c}type: "{}"{c};
+        \\{c};
+    ;
+
+    return if (data_specification) |specification|
+        try fmt.allocPrint(
+            allocator,
+            output_format_with_data,
+            .{ tag, specification, tag, '{', '{', tag, '}', '}' },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            output_format_without_data,
+            .{ tag, tag, '{', '{', tag, '}', '}' },
+        );
 }
 
 fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
@@ -405,6 +455,33 @@ fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constru
         output_format,
         .{ tag, tag, '{', tag, '{', tag, validator_output, '}', '}' },
     );
+}
+
+fn getDataSpecificationFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
+    const bare_format = "{}";
+    const array_format = "{}[]";
+
+    return switch (t) {
+        .empty => null,
+        .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
+        .name => |n| try fmt.allocPrint(allocator, bare_format, .{translateName(n)}),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedDataSpecificationFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedDataSpecificationFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try fmt.allocPrint(
+            allocator,
+            bare_format,
+            .{try getNestedDataSpecificationFromType(allocator, p.@"type".*)},
+        ),
+        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+    };
 }
 
 fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
@@ -470,6 +547,39 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             .{try getNestedValidatorFromType(allocator, p.@"type".*)},
         ),
         .applied_name => debug.panic("Trying to get validator from type for: {}\n", .{t}),
+    };
+}
+
+fn getNestedDataSpecificationFromType(
+    allocator: *mem.Allocator,
+    t: Type,
+) error{OutOfMemory}![]const u8 {
+    const array_format = "{}[]";
+
+    return switch (t) {
+        .empty => debug.panic("Empty nested type invalid for data specification\n", .{}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .name => |n| try fmt.allocPrint(
+            allocator,
+            "{}",
+            .{translateName(n)},
+        ),
+        .array => |a| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedDataSpecificationFromType(allocator, a.@"type".*)},
+        ),
+        .slice => |s| try fmt.allocPrint(
+            allocator,
+            array_format,
+            .{try getNestedDataSpecificationFromType(allocator, s.@"type".*)},
+        ),
+        .pointer => |p| try fmt.allocPrint(
+            allocator,
+            "is{}",
+            .{try getNestedDataSpecificationFromType(allocator, p.@"type".*)},
+        ),
+        .applied_name => debug.panic("Trying to get data specification from type for: {}\n", .{t}),
     };
 }
 
@@ -882,6 +992,22 @@ test "Outputs `Event` union correctly" {
         \\export type SetEmails = {
         \\    type: "SetEmails";
         \\    data: Email[];
+        \\};
+        \\
+        \\export const LogIn = (data: LogInData): LogIn => {
+        \\    return {type: "LogIn", data};
+        \\};
+        \\
+        \\export const LogOut = (data: UserId): LogOut => {
+        \\    return {type: "LogOut", data};
+        \\};
+        \\
+        \\export const JoinChannels = (data: Channel[]): JoinChannels => {
+        \\    return {type: "JoinChannels", data};
+        \\};
+        \\
+        \\export const SetEmails = (data: Email[]): SetEmails => {
+        \\    return {type: "SetEmails", data};
         \\};
         \\
         \\export const isLogIn = (value: unknown): value is LogIn => {
