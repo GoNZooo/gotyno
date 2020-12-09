@@ -23,6 +23,7 @@ pub const event_union =
     \\    LogOut: UserId;
     \\    JoinChannels: []Channel;
     \\    SetEmails: [5]Email;
+    \\    Close;
     \\}
 ;
 

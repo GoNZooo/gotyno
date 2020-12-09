@@ -693,23 +693,33 @@ fn outputTaggedMaybeGenericStructures(
 }
 
 fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
-    const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
-        output
-    else
-        "null";
+    const parameter_output = try outputType(allocator, constructor.parameter);
 
-    const output_format =
+    const output_format_with_parameter =
         \\export type {} = {c}
         \\    type: "{}";
         \\    data: {};
         \\{c};
     ;
 
-    return fmt.allocPrint(
-        allocator,
-        output_format,
-        .{ constructor.tag, '{', constructor.tag, parameter_output, '}' },
-    );
+    const output_format_without_parameter =
+        \\export type {} = {c}
+        \\    type: "{}";
+        \\{c};
+    ;
+
+    return if (parameter_output) |output|
+        try fmt.allocPrint(
+            allocator,
+            output_format_with_parameter,
+            .{ constructor.tag, '{', constructor.tag, output, '}' },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            output_format_without_parameter,
+            .{ constructor.tag, '{', constructor.tag, '}' },
+        );
 }
 
 fn outputTaggedMaybeGenericStructure(
@@ -972,7 +982,7 @@ test "Outputs `Event` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\export type Event = LogIn | LogOut | JoinChannels | SetEmails;
+        \\export type Event = LogIn | LogOut | JoinChannels | SetEmails | Close;
         \\
         \\export type LogIn = {
         \\    type: "LogIn";
@@ -994,6 +1004,10 @@ test "Outputs `Event` union correctly" {
         \\    data: Email[];
         \\};
         \\
+        \\export type Close = {
+        \\    type: "Close";
+        \\};
+        \\
         \\export const LogIn = (data: LogInData): LogIn => {
         \\    return {type: "LogIn", data};
         \\};
@@ -1008,6 +1022,10 @@ test "Outputs `Event` union correctly" {
         \\
         \\export const SetEmails = (data: Email[]): SetEmails => {
         \\    return {type: "SetEmails", data};
+        \\};
+        \\
+        \\export const Close = (): Close => {
+        \\    return {type: "Close"};
         \\};
         \\
         \\export const isLogIn = (value: unknown): value is LogIn => {
@@ -1026,6 +1044,10 @@ test "Outputs `Event` union correctly" {
         \\    return svt.isInterface<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
         \\};
         \\
+        \\export const isClose = (value: unknown): value is Close => {
+        \\    return svt.isInterface<Close>(value, {type: "Close"});
+        \\};
+        \\
         \\export const validateLogIn = (value: unknown): svt.ValidationResult<LogIn> => {
         \\    return svt.validate<LogIn>(value, {type: "LogIn", data: validateLogInData});
         \\};
@@ -1040,6 +1062,10 @@ test "Outputs `Event` union correctly" {
         \\
         \\export const validateSetEmails = (value: unknown): svt.ValidationResult<SetEmails> => {
         \\    return svt.validate<SetEmails>(value, {type: "SetEmails", data: svt.validateArray(validateEmail)});
+        \\};
+        \\
+        \\export const validateClose = (value: unknown): svt.ValidationResult<Close> => {
+        \\    return svt.validate<Close>(value, {type: "Close"});
         \\};
     ;
 
