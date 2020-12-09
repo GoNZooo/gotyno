@@ -822,7 +822,7 @@ test "Outputs `Person` struct correctly" {
 
     const output = try outputPlainStructure(
         &allocator.allocator,
-        (try freeform.parser.parse(
+        (try parser.parse(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.person_structure,
@@ -847,7 +847,7 @@ test "Outputs `Node` struct correctly" {
 
     const output = try outputGenericStructure(
         &allocator.allocator,
-        (try freeform.parser.parse(
+        (try parser.parse(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.node_structure,
@@ -921,7 +921,7 @@ test "Outputs `Event` union correctly" {
 
     const output = try outputPlainUnion(
         &allocator.allocator,
-        (try freeform.parser.parse(
+        (try parser.parse(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.event_union,
@@ -952,7 +952,7 @@ test "Outputs `Maybe` union correctly" {
 
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try freeform.parser.parse(
+        (try parser.parse(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.maybe_union,
@@ -984,7 +984,7 @@ test "Outputs `Either` union correctly" {
 
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try freeform.parser.parse(
+        (try parser.parse(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.either_union,
@@ -1016,7 +1016,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
 
     const output = try outputPlainStructure(
         &allocator.allocator,
-        (try freeform.parser.parse(
+        (try parser.parse(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.structure_with_concrete_maybe,
@@ -1053,7 +1053,7 @@ test "Outputs struct with different `Maybe`s correctly" {
 
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try freeform.parser.parseWithDescribedError(
+        (try parser.parseWithDescribedError(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.union_with_different_maybes,
@@ -1084,7 +1084,7 @@ test "Outputs `List` union correctly" {
 
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try freeform.parser.parseWithDescribedError(
+        (try parser.parseWithDescribedError(
             &allocator.allocator,
             &allocator.allocator,
             type_examples.list_union,
