@@ -4,6 +4,7 @@ const heap = std.heap;
 const mem = std.mem;
 const fs = std.fs;
 const debug = std.debug;
+const builtin = std.builtin;
 
 const freeform = @import("./freeform.zig");
 
@@ -71,15 +72,17 @@ fn compileInputs(
     const current_directory = fs.cwd();
 
     for (files) |file| {
+        const sanitized_filename = try sanitizeFilename(allocator, file);
+
         const file_contents = try current_directory.readFileAlloc(
             allocator,
-            file,
+            sanitized_filename,
             10_000_000,
         );
 
         try freeform.compile(
             allocator,
-            file,
+            sanitized_filename,
             file_contents,
             output_languages,
             current_directory,
@@ -99,4 +102,17 @@ pub fn main() anyerror!void {
         compilation_options.inputs,
         compilation_options.outputs,
     );
+}
+
+fn sanitizeFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
+    return if (builtin.os.tag == .windows) filename: {
+        debug.print("filename={}\n", .{filename});
+        var new_filename = try allocator.dupe(u8, mem.trimLeft(u8, filename, ".\\"));
+        for (new_filename) |*character| {
+            if (character.* == '\\') character.* = '/';
+        }
+        debug.print("new_filename={}\n", .{new_filename});
+
+        break :filename new_filename;
+    } else filename;
 }
