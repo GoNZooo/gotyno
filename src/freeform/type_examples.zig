@@ -1,5 +1,6 @@
 pub const person_structure =
     \\struct Person {
+    \\    type: "Person";
     \\    name: String;
     \\    age: U8;
     \\    efficiency: F32;
@@ -27,6 +28,7 @@ pub const event_union =
 
 pub const person_structure_and_event_union =
     \\struct Person {
+    \\    type: "Person";
     \\    name: String;
     \\    age: U8;
     \\    efficiency: F32;

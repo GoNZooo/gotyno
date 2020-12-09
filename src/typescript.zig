@@ -70,7 +70,6 @@ fn outputPlainStructure(
 
     const output_format =
         \\export type {} = {c}
-        \\    type: "{}";
         \\{}
         \\{c};
         \\
@@ -82,7 +81,7 @@ fn outputPlainStructure(
     return try fmt.allocPrint(
         allocator,
         output_format,
-        .{ name, '{', name, fields_output, '}', type_guards_output, validator_output },
+        .{ name, '{', fields_output, '}', type_guards_output, validator_output },
     );
 }
 
@@ -266,8 +265,6 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, name: []const u8, fields: 
     var fields_outputs = ArrayList([]const u8).init(allocator);
     defer fields_outputs.deinit();
 
-    try fields_outputs.append(try fmt.allocPrint(allocator, "type: \"{}\"", .{name}));
-
     for (fields) |field| {
         if (try getTypeGuardFromType(allocator, field.@"type")) |type_guard| {
             const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, type_guard });
@@ -281,8 +278,6 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, name: []const u8, fields: 
 fn getValidatorsFromFields(allocator: *mem.Allocator, name: []const u8, fields: []Field) ![]const u8 {
     var fields_outputs = ArrayList([]const u8).init(allocator);
     defer fields_outputs.deinit();
-
-    try fields_outputs.append(try fmt.allocPrint(allocator, "type: \"{}\"", .{name}));
 
     for (fields) |field| {
         if (try getValidatorFromType(allocator, field.@"type")) |validator| {
@@ -1005,16 +1000,15 @@ test "Outputs struct with concrete `Maybe` correctly" {
 
     const expected_output =
         \\export type WithMaybe = {
-        \\    type: "WithMaybe";
         \\    field: Maybe<string>;
         \\};
         \\
         \\export const isWithMaybe = (value: unknown): value is WithMaybe => {
-        \\    return svt.isInterface<WithMaybe>(value, {type: "WithMaybe"});
+        \\    return svt.isInterface<WithMaybe>(value, {});
         \\};
         \\
         \\export const validateWithMaybe = (value: unknown): svt.ValidationResult<WithMaybe> => {
-        \\    return svt.validate<WithMaybe>(value, {type: "WithMaybe"});
+        \\    return svt.validate<WithMaybe>(value, {});
         \\};
     ;
 
