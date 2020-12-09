@@ -211,8 +211,16 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.open_names,
     );
 
+    const constructors_output = try outputGenericConstructors(
+        allocator,
+        generic_union.constructors,
+        generic_union.open_names,
+    );
+
     const output_format =
         \\export type {}{} = {};
+        \\
+        \\{}
         \\
         \\{}
     ;
@@ -220,7 +228,13 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
     return fmt.allocPrint(
         allocator,
         output_format,
-        .{ generic_union.name, open_names, constructor_names_output, tagged_structures_output },
+        .{
+            generic_union.name,
+            open_names,
+            constructor_names_output,
+            tagged_structures_output,
+            constructors_output,
+        },
     );
 }
 
@@ -368,7 +382,11 @@ fn outputConstructors(
     defer constructor_outputs.deinit();
 
     for (constructors) |constructor| {
-        try constructor_outputs.append(try outputConstructor(allocator, constructor));
+        try constructor_outputs.append(try outputConstructor(
+            allocator,
+            constructor,
+            &[_][]const u8{},
+        ));
     }
 
     return try mem.join(allocator, "\n\n", constructor_outputs.items);
@@ -402,10 +420,19 @@ fn outputValidatorsForConstructors(
     return try mem.join(allocator, "\n\n", validators.items);
 }
 
-fn outputConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+fn outputConstructor(
+    allocator: *mem.Allocator,
+    constructor: Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
+    const constructor_name = try outputConstructorName(allocator, constructor, open_names);
     const tag = constructor.tag;
 
-    const data_specification = try getDataSpecificationFromType(allocator, constructor.parameter);
+    const data_specification = try getDataSpecificationFromType(
+        allocator,
+        constructor.parameter,
+        open_names,
+    );
 
     const open_names_output = try outputOpenNamesFromType(
         allocator,
@@ -414,7 +441,7 @@ fn outputConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]con
     );
 
     const output_format_with_data =
-        \\export const {} = (data: {}): {} => {c}
+        \\export const {} = {}(data: {}): {}{} => {c}
         \\    return {c}type: "{}", data{c};
         \\{c};
     ;
@@ -429,7 +456,18 @@ fn outputConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]con
         try fmt.allocPrint(
             allocator,
             output_format_with_data,
-            .{ tag, specification, tag, '{', '{', tag, '}', '}' },
+            .{
+                tag,
+                open_names_output,
+                specification,
+                tag,
+                open_names_output,
+                '{',
+                '{',
+                tag,
+                '}',
+                '}',
+            },
         )
     else
         try fmt.allocPrint(
@@ -437,6 +475,21 @@ fn outputConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]con
             output_format_without_data,
             .{ tag, tag, '{', '{', tag, '}', '}' },
         );
+}
+
+fn outputConstructorName(
+    allocator: *mem.Allocator,
+    constructor: Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
+    return try fmt.allocPrint(
+        allocator,
+        "{}{}",
+        .{
+            constructor.tag,
+            try outputOpenNamesFromType(allocator, constructor.parameter, open_names),
+        },
+    );
 }
 
 fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
@@ -475,7 +528,11 @@ fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constru
     );
 }
 
-fn getDataSpecificationFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
+fn getDataSpecificationFromType(
+    allocator: *mem.Allocator,
+    t: Type,
+    open_names: []const []const u8,
+) !?[]const u8 {
     const bare_format = "{}";
     const array_format = "{}[]";
     const optional_format = "{} | null";
@@ -504,7 +561,13 @@ fn getDataSpecificationFromType(allocator: *mem.Allocator, t: Type) !?[]const u8
             optional_format,
             .{try getNestedDataSpecificationFromType(allocator, o.@"type".*)},
         ),
-        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+        .applied_name => |applied_name| output: {
+            break :output try fmt.allocPrint(
+                allocator,
+                "{}{}",
+                .{ applied_name.name, try outputOpenNames(allocator, applied_name.open_names) },
+            );
+        },
     };
 }
 
@@ -621,7 +684,13 @@ fn getNestedDataSpecificationFromType(
             optional_format,
             .{try getNestedDataSpecificationFromType(allocator, o.@"type".*)},
         ),
-        .applied_name => debug.panic("Trying to get data specification from type for: {}\n", .{t}),
+        .applied_name => |applied_name| output: {
+            break :output try fmt.allocPrint(
+                allocator,
+                "{}{}",
+                .{ applied_name.name, try outputOpenNames(allocator, applied_name.open_names) },
+            );
+        },
     };
 }
 
@@ -744,6 +813,25 @@ fn outputTaggedMaybeGenericStructures(
     }
 
     return try mem.join(allocator, "\n\n", tagged_structures_outputs.items);
+}
+
+fn outputGenericConstructors(
+    allocator: *mem.Allocator,
+    constructors: []Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
+    var constructor_outputs = ArrayList([]const u8).init(allocator);
+    defer constructor_outputs.deinit();
+
+    for (constructors) |constructor| {
+        try constructor_outputs.append(try outputConstructor(
+            allocator,
+            constructor,
+            open_names,
+        ));
+    }
+
+    return try mem.join(allocator, "\n\n", constructor_outputs.items);
 }
 
 fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
@@ -1174,6 +1262,14 @@ test "Outputs `Maybe` union correctly" {
         \\export type Nothing = {
         \\    type: "Nothing";
         \\};
+        \\
+        \\export const Just = <T>(data: T): Just<T> => {
+        \\    return {type: "Just", data};
+        \\};
+        \\
+        \\export const Nothing = (): Nothing => {
+        \\    return {type: "Nothing"};
+        \\};
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1205,6 +1301,14 @@ test "Outputs `Either` union correctly" {
         \\export type Right<T> = {
         \\    type: "Right";
         \\    data: T;
+        \\};
+        \\
+        \\export const Left = <E>(data: E): Left<E> => {
+        \\    return {type: "Left", data};
+        \\};
+        \\
+        \\export const Right = <T>(data: T): Right<T> => {
+        \\    return {type: "Right", data};
         \\};
     ;
 
@@ -1275,6 +1379,18 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\    type: "WithBare";
         \\    data: E;
         \\};
+        \\
+        \\export const WithConcrete = (data: Maybe<string>): WithConcrete => {
+        \\    return {type: "WithConcrete", data};
+        \\};
+        \\
+        \\export const WithGeneric = <T>(data: Maybe<T>): WithGeneric<T> => {
+        \\    return {type: "WithGeneric", data};
+        \\};
+        \\
+        \\export const WithBare = <E>(data: E): WithBare<E> => {
+        \\    return {type: "WithBare", data};
+        \\};
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1305,6 +1421,14 @@ test "Outputs `List` union correctly" {
         \\export type Cons<T> = {
         \\    type: "Cons";
         \\    data: List<T>;
+        \\};
+        \\
+        \\export const Empty = (): Empty => {
+        \\    return {type: "Empty"};
+        \\};
+        \\
+        \\export const Cons = <T>(data: List<T>): Cons<T> => {
+        \\    return {type: "Cons", data};
         \\};
     ;
 
