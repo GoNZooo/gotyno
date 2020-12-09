@@ -191,7 +191,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     var constructor_names = try allocator.alloc([]const u8, generic_union.constructors.len);
     for (generic_union.constructors) |constructor, i| {
-        const maybe_names = try getOpenNamesFromType(
+        const maybe_names = try outputOpenNamesFromType(
             allocator,
             constructor.parameter,
             generic_union.open_names,
@@ -406,6 +406,12 @@ fn outputConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]con
     const tag = constructor.tag;
 
     const data_specification = try getDataSpecificationFromType(allocator, constructor.parameter);
+
+    const open_names_output = try outputOpenNamesFromType(
+        allocator,
+        constructor.parameter,
+        open_names,
+    );
 
     const output_format_with_data =
         \\export const {} = (data: {}): {} => {c}
@@ -775,7 +781,7 @@ fn outputTaggedMaybeGenericStructure(
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
-    const open_names_output = getOpenNamesFromType(allocator, constructor.parameter, open_names);
+    const open_names_output = outputOpenNamesFromType(allocator, constructor.parameter, open_names);
 
     const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
         try fmt.allocPrint(allocator, "\n    data: {};", .{output})
@@ -795,16 +801,16 @@ fn outputTaggedMaybeGenericStructure(
     );
 }
 
-fn getOpenNamesFromType(
+fn outputOpenNamesFromType(
     allocator: *mem.Allocator,
     t: Type,
     open_names: []const []const u8,
 ) error{OutOfMemory}![]const u8 {
     return switch (t) {
-        .pointer => |pointer| try getOpenNamesFromType(allocator, pointer.@"type".*, open_names),
-        .array => |a| try getOpenNamesFromType(allocator, a.@"type".*, open_names),
-        .slice => |s| try getOpenNamesFromType(allocator, s.@"type".*, open_names),
-        .optional => |o| try getOpenNamesFromType(allocator, o.@"type".*, open_names),
+        .pointer => |pointer| try outputOpenNamesFromType(allocator, pointer.@"type".*, open_names),
+        .array => |a| try outputOpenNamesFromType(allocator, a.@"type".*, open_names),
+        .slice => |s| try outputOpenNamesFromType(allocator, s.@"type".*, open_names),
+        .optional => |o| try outputOpenNamesFromType(allocator, o.@"type".*, open_names),
 
         // We need to check whether or not we have one of the generic names in the structure here
         // and if we do, add it as a type parameter to the tagged structure.
