@@ -106,12 +106,10 @@ pub fn main() anyerror!void {
 
 fn sanitizeFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
     return if (builtin.os.tag == .windows) filename: {
-        debug.print("filename={}\n", .{filename});
         var new_filename = try allocator.dupe(u8, mem.trimLeft(u8, filename, ".\\"));
         for (new_filename) |*character| {
             if (character.* == '\\') character.* = '/';
         }
-        debug.print("new_filename={}\n", .{new_filename});
 
         break :filename new_filename;
     } else filename;
