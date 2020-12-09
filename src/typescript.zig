@@ -296,6 +296,7 @@ fn getValidatorsFromFields(allocator: *mem.Allocator, name: []const u8, fields: 
 
 fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
     const array_format = "svt.arrayOf({})";
+    const optional_format = "svt.optional({})";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
@@ -315,6 +316,11 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             .{try getNestedTypeGuardFromType(allocator, s.@"type".*)},
         ),
         .pointer => |p| try getNestedTypeGuardFromType(allocator, p.@"type".*),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedTypeGuardFromType(allocator, o.@"type".*)},
+        ),
 
         .empty => debug.panic("Empty type does not seem like it should have a type guard\n", .{}),
         .applied_name => null,
@@ -323,6 +329,7 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
 fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
     const array_format = "svt.validateArray({})";
+    const optional_format = "svt.validateOptional({})";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
@@ -342,6 +349,11 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             .{try getNestedValidatorFromType(allocator, s.@"type".*)},
         ),
         .pointer => |p| try getNestedValidatorFromType(allocator, p.@"type".*),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedValidatorFromType(allocator, o.@"type".*)},
+        ),
 
         .empty => debug.panic("Empty type does not seem like it should have a type guard\n", .{}),
         .applied_name => null,
@@ -460,6 +472,7 @@ fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constru
 fn getDataSpecificationFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
     const bare_format = "{}";
     const array_format = "{}[]";
+    const optional_format = "{} | null";
 
     return switch (t) {
         .empty => null,
@@ -480,6 +493,11 @@ fn getDataSpecificationFromType(allocator: *mem.Allocator, t: Type) !?[]const u8
             bare_format,
             .{try getNestedDataSpecificationFromType(allocator, p.@"type".*)},
         ),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedDataSpecificationFromType(allocator, o.@"type".*)},
+        ),
         .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
     };
 }
@@ -489,6 +507,7 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     const type_guard_format = ", data: {}";
     const builtin_type_guard_format = ", data: svt.is{}";
     const array_format = ", data: svt.arrayOf({})";
+    const optional_format = ", data: svt.optional({})";
 
     return switch (t) {
         .empty => "",
@@ -513,6 +532,11 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             type_guard_format,
             .{try getNestedTypeGuardFromType(allocator, p.@"type".*)},
         ),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedTypeGuardFromType(allocator, o.@"type".*)},
+        ),
         .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
     };
 }
@@ -522,6 +546,7 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     const validator_format = ", data: {}";
     const builtin_type_guard_format = ", data: svt.validate{}";
     const array_format = ", data: svt.validateArray({})";
+    const optional_format = ", data: svt.validateOptional({})";
 
     return switch (t) {
         .empty => "",
@@ -546,6 +571,11 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             validator_format,
             .{try getNestedValidatorFromType(allocator, p.@"type".*)},
         ),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedValidatorFromType(allocator, o.@"type".*)},
+        ),
         .applied_name => debug.panic("Trying to get validator from type for: {}\n", .{t}),
     };
 }
@@ -555,6 +585,7 @@ fn getNestedDataSpecificationFromType(
     t: Type,
 ) error{OutOfMemory}![]const u8 {
     const array_format = "{}[]";
+    const optional_format = "{} | null";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for data specification\n", .{}),
@@ -579,12 +610,18 @@ fn getNestedDataSpecificationFromType(
             "is{}",
             .{try getNestedDataSpecificationFromType(allocator, p.@"type".*)},
         ),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedDataSpecificationFromType(allocator, o.@"type".*)},
+        ),
         .applied_name => debug.panic("Trying to get data specification from type for: {}\n", .{t}),
     };
 }
 
 fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "svt.arrayOf({})";
+    const optional_format = "svt.optional({})";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for type guard\n", .{}),
@@ -609,12 +646,18 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             "is{}",
             .{try getNestedTypeGuardFromType(allocator, p.@"type".*)},
         ),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedTypeGuardFromType(allocator, o.@"type".*)},
+        ),
         .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
     };
 }
 
 fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "svt.validateArray({})";
+    const optional_format = "svt.validateOptional({})";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for validator\n", .{}),
@@ -638,6 +681,11 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             allocator,
             "is{}",
             .{try getNestedValidatorFromType(allocator, p.@"type".*)},
+        ),
+        .optional => |o| try fmt.allocPrint(
+            allocator,
+            optional_format,
+            .{try getNestedValidatorFromType(allocator, o.@"type".*)},
         ),
         .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
     };
@@ -756,6 +804,7 @@ fn getOpenNamesFromType(
         .pointer => |pointer| try getOpenNamesFromType(allocator, pointer.@"type".*, open_names),
         .array => |a| try getOpenNamesFromType(allocator, a.@"type".*, open_names),
         .slice => |s| try getOpenNamesFromType(allocator, s.@"type".*, open_names),
+        .optional => |o| try getOpenNamesFromType(allocator, o.@"type".*, open_names),
 
         // We need to check whether or not we have one of the generic names in the structure here
         // and if we do, add it as a type parameter to the tagged structure.
@@ -827,6 +876,27 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             };
 
             break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
+        },
+
+        .optional => |o| output: {
+            const embedded_type = switch (o.@"type".*) {
+                .name => |n| translateName(n),
+                .applied_name => |applied_name| embedded_type: {
+                    const open_names = try outputOpenNames(
+                        allocator,
+                        applied_name.open_names,
+                    );
+
+                    break :embedded_type try fmt.allocPrint(
+                        allocator,
+                        "{}{}",
+                        .{ applied_name.name, open_names },
+                    );
+                },
+                else => debug.panic("Invalid embedded type for optional: {}\n", .{o.@"type"}),
+            };
+
+            break :output try fmt.allocPrint(allocator, "{} | null | undefined", .{embedded_type});
         },
 
         .applied_name => |applied_name| try fmt.allocPrint(
@@ -1242,6 +1312,39 @@ test "Outputs `List` union correctly" {
             type_examples.list_union,
             &expect_error,
         )).success.definitions[0].@"union".generic,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Outputs struct with optional float value correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\export type WithOptionalFloat = {
+        \\    field: number | null | undefined;
+        \\};
+        \\
+        \\export const isWithOptionalFloat = (value: unknown): value is WithOptionalFloat => {
+        \\    return svt.isInterface<WithOptionalFloat>(value, {field: svt.optional(svt.isNumber)});
+        \\};
+        \\
+        \\export const validateWithOptionalFloat = (value: unknown): svt.ValidationResult<WithOptionalFloat> => {
+        \\    return svt.validate<WithOptionalFloat>(value, {field: svt.validateOptional(svt.validateNumber)});
+        \\};
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.structure_with_optional_float,
+        &expect_error,
+    );
+
+    const output = try outputPlainStructure(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[0].structure.plain,
     );
 
     testing.expectEqualStrings(output, expected_output);

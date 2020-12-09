@@ -119,6 +119,7 @@ pub const Type = union(enum) {
     array: Array,
     slice: Slice,
     pointer: Pointer,
+    optional: Optional,
     applied_name: AppliedName,
 
     pub fn isEqual(self: Self, other: Self) bool {
@@ -129,6 +130,8 @@ pub const Type = union(enum) {
             .array => |array| meta.activeTag(other) == .array and array.isEqual(other.array),
             .slice => |slice| meta.activeTag(other) == .slice and slice.isEqual(other.slice),
             .pointer => |pointer| meta.activeTag(other) == .pointer and pointer.isEqual(other.pointer),
+            .optional => |optional| meta.activeTag(other) == .optional and
+                optional.isEqual(other.optional),
             .applied_name => |applied_name| meta.activeTag(other) == .applied_name and
                 applied_name.isEqual(other.applied_name),
         };
@@ -157,6 +160,16 @@ pub const Slice = struct {
 };
 
 pub const Pointer = struct {
+    const Self = @This();
+
+    @"type": *Type,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return self.@"type".isEqual(other.@"type".*);
+    }
+};
+
+pub const Optional = struct {
     const Self = @This();
 
     @"type": *Type,
@@ -642,7 +655,7 @@ pub const DefinitionIterator = struct {
         const tokens = &self.token_iterator;
 
         const field_type_start_token = try tokens.expectOneOf(
-            &[_]TokenTag{ .string, .name, .left_bracket, .asterisk },
+            &[_]TokenTag{ .string, .name, .left_bracket, .asterisk, .question_mark },
             self.expect_error,
         );
 
@@ -696,6 +709,17 @@ pub const DefinitionIterator = struct {
                     Type{ .name = name };
 
                 break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
+            },
+
+            .question_mark => field_type: {
+                var field_type = try self.allocator.create(Type);
+                const name = (try tokens.expect(Token.name, self.expect_error)).name;
+                field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
+                    Type{ .applied_name = applied_name }
+                else
+                    Type{ .name = name };
+
+                break :field_type Type{ .optional = Optional{ .@"type" = field_type } };
             },
 
             else => {

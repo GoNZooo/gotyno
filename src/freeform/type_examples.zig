@@ -81,3 +81,9 @@ pub const union_with_different_maybes =
     \\    WithBare: E;
     \\};
 ;
+
+pub const structure_with_optional_float =
+    \\struct WithOptionalFloat {
+    \\    field: ?F32;
+    \\};
+;
