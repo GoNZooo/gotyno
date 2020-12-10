@@ -247,7 +247,7 @@ fn outputTypeGuardForPlainStructure(
     const checkers_output = try getTypeGuardsFromFields(allocator, name, plain_structure.fields);
 
     const output_format =
-        \\export const is{} = (value: unknown): value is {} => {c}
+        \\export function is{}(value: unknown): value is {} {c}
         \\    return svt.isInterface<{}>(value, {c}{}{c});
         \\{c};
     ;
@@ -268,7 +268,7 @@ fn outputValidatorForPlainStructure(
     const validators_output = try getValidatorsFromFields(allocator, name, plain_structure.fields);
 
     const output_format =
-        \\export const validate{} = (value: unknown): svt.ValidationResult<{}> => {c}
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {c}
         \\    return svt.validate<{}>(value, {c}{}{c});
         \\{c};
     ;
@@ -441,13 +441,13 @@ fn outputConstructor(
     );
 
     const output_format_with_data =
-        \\export const {} = {}(data: {}): {}{} => {c}
+        \\export function {}{}(data: {}): {}{} {c}
         \\    return {c}type: "{}", data{c};
         \\{c};
     ;
 
     const output_format_without_data =
-        \\export const {} = (): {} => {c}
+        \\export function {}(): {} {c}
         \\    return {c}type: "{}"{c};
         \\{c};
     ;
@@ -496,7 +496,7 @@ fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constru
     const tag = constructor.tag;
 
     const output_format =
-        \\export const is{} = (value: unknown): value is {} => {c}
+        \\export function is{}(value: unknown): value is {} {c}
         \\    return svt.isInterface<{}>(value, {c}type: "{}"{}{c});
         \\{c};
     ;
@@ -514,7 +514,7 @@ fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constru
     const tag = constructor.tag;
 
     const output_format =
-        \\export const validate{} = (value: unknown): svt.ValidationResult<{}> => {c}
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {c}
         \\    return svt.validate<{}>(value, {c}type: "{}"{}{c});
         \\{c};
     ;
@@ -1093,11 +1093,11 @@ test "Outputs `Person` struct correctly" {
         \\    recruiter: Person;
         \\};
         \\
-        \\export const isPerson = (value: unknown): value is Person => {
+        \\export function isPerson(value: unknown): value is Person {
         \\    return svt.isInterface<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isPerson});
         \\};
         \\
-        \\export const validatePerson = (value: unknown): svt.ValidationResult<Person> => {
+        \\export function validatePerson(value: unknown): svt.ValidationResult<Person> {
         \\    return svt.validate<Person>(value, {type: "Person", name: svt.validateString, age: svt.validateNumber, efficiency: svt.validateNumber, on_vacation: svt.validateBoolean, hobbies: svt.validateArray(svt.validateString), last_fifteen_comments: svt.validateArray(svt.validateString), recruiter: validatePerson});
         \\};
     ;
@@ -1172,63 +1172,63 @@ test "Outputs `Event` union correctly" {
         \\    type: "Close";
         \\};
         \\
-        \\export const LogIn = (data: LogInData): LogIn => {
+        \\export function LogIn(data: LogInData): LogIn {
         \\    return {type: "LogIn", data};
         \\};
         \\
-        \\export const LogOut = (data: UserId): LogOut => {
+        \\export function LogOut(data: UserId): LogOut {
         \\    return {type: "LogOut", data};
         \\};
         \\
-        \\export const JoinChannels = (data: Channel[]): JoinChannels => {
+        \\export function JoinChannels(data: Channel[]): JoinChannels {
         \\    return {type: "JoinChannels", data};
         \\};
         \\
-        \\export const SetEmails = (data: Email[]): SetEmails => {
+        \\export function SetEmails(data: Email[]): SetEmails {
         \\    return {type: "SetEmails", data};
         \\};
         \\
-        \\export const Close = (): Close => {
+        \\export function Close(): Close {
         \\    return {type: "Close"};
         \\};
         \\
-        \\export const isLogIn = (value: unknown): value is LogIn => {
+        \\export function isLogIn(value: unknown): value is LogIn {
         \\    return svt.isInterface<LogIn>(value, {type: "LogIn", data: isLogInData});
         \\};
         \\
-        \\export const isLogOut = (value: unknown): value is LogOut => {
+        \\export function isLogOut(value: unknown): value is LogOut {
         \\    return svt.isInterface<LogOut>(value, {type: "LogOut", data: isUserId});
         \\};
         \\
-        \\export const isJoinChannels = (value: unknown): value is JoinChannels => {
+        \\export function isJoinChannels(value: unknown): value is JoinChannels {
         \\    return svt.isInterface<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
         \\};
         \\
-        \\export const isSetEmails = (value: unknown): value is SetEmails => {
+        \\export function isSetEmails(value: unknown): value is SetEmails {
         \\    return svt.isInterface<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
         \\};
         \\
-        \\export const isClose = (value: unknown): value is Close => {
+        \\export function isClose(value: unknown): value is Close {
         \\    return svt.isInterface<Close>(value, {type: "Close"});
         \\};
         \\
-        \\export const validateLogIn = (value: unknown): svt.ValidationResult<LogIn> => {
+        \\export function validateLogIn(value: unknown): svt.ValidationResult<LogIn> {
         \\    return svt.validate<LogIn>(value, {type: "LogIn", data: validateLogInData});
         \\};
         \\
-        \\export const validateLogOut = (value: unknown): svt.ValidationResult<LogOut> => {
+        \\export function validateLogOut(value: unknown): svt.ValidationResult<LogOut> {
         \\    return svt.validate<LogOut>(value, {type: "LogOut", data: validateUserId});
         \\};
         \\
-        \\export const validateJoinChannels = (value: unknown): svt.ValidationResult<JoinChannels> => {
+        \\export function validateJoinChannels(value: unknown): svt.ValidationResult<JoinChannels> {
         \\    return svt.validate<JoinChannels>(value, {type: "JoinChannels", data: svt.validateArray(validateChannel)});
         \\};
         \\
-        \\export const validateSetEmails = (value: unknown): svt.ValidationResult<SetEmails> => {
+        \\export function validateSetEmails(value: unknown): svt.ValidationResult<SetEmails> {
         \\    return svt.validate<SetEmails>(value, {type: "SetEmails", data: svt.validateArray(validateEmail)});
         \\};
         \\
-        \\export const validateClose = (value: unknown): svt.ValidationResult<Close> => {
+        \\export function validateClose(value: unknown): svt.ValidationResult<Close> {
         \\    return svt.validate<Close>(value, {type: "Close"});
         \\};
     ;
@@ -1263,11 +1263,11 @@ test "Outputs `Maybe` union correctly" {
         \\    type: "Nothing";
         \\};
         \\
-        \\export const Just = <T>(data: T): Just<T> => {
+        \\export function Just<T>(data: T): Just<T> {
         \\    return {type: "Just", data};
         \\};
         \\
-        \\export const Nothing = (): Nothing => {
+        \\export function Nothing(): Nothing {
         \\    return {type: "Nothing"};
         \\};
     ;
@@ -1303,11 +1303,11 @@ test "Outputs `Either` union correctly" {
         \\    data: T;
         \\};
         \\
-        \\export const Left = <E>(data: E): Left<E> => {
+        \\export function Left<E>(data: E): Left<E> {
         \\    return {type: "Left", data};
         \\};
         \\
-        \\export const Right = <T>(data: T): Right<T> => {
+        \\export function Right<T>(data: T): Right<T> {
         \\    return {type: "Right", data};
         \\};
     ;
@@ -1335,11 +1335,11 @@ test "Outputs struct with concrete `Maybe` correctly" {
         \\    field: Maybe<string>;
         \\};
         \\
-        \\export const isWithMaybe = (value: unknown): value is WithMaybe => {
+        \\export function isWithMaybe(value: unknown): value is WithMaybe {
         \\    return svt.isInterface<WithMaybe>(value, {});
         \\};
         \\
-        \\export const validateWithMaybe = (value: unknown): svt.ValidationResult<WithMaybe> => {
+        \\export function validateWithMaybe(value: unknown): svt.ValidationResult<WithMaybe> {
         \\    return svt.validate<WithMaybe>(value, {});
         \\};
     ;
@@ -1380,15 +1380,15 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\    data: E;
         \\};
         \\
-        \\export const WithConcrete = (data: Maybe<string>): WithConcrete => {
+        \\export function WithConcrete(data: Maybe<string>): WithConcrete {
         \\    return {type: "WithConcrete", data};
         \\};
         \\
-        \\export const WithGeneric = <T>(data: Maybe<T>): WithGeneric<T> => {
+        \\export function WithGeneric<T>(data: Maybe<T>): WithGeneric<T> {
         \\    return {type: "WithGeneric", data};
         \\};
         \\
-        \\export const WithBare = <E>(data: E): WithBare<E> => {
+        \\export function WithBare<E>(data: E): WithBare<E> {
         \\    return {type: "WithBare", data};
         \\};
     ;
@@ -1423,11 +1423,11 @@ test "Outputs `List` union correctly" {
         \\    data: List<T>;
         \\};
         \\
-        \\export const Empty = (): Empty => {
+        \\export function Empty(): Empty {
         \\    return {type: "Empty"};
         \\};
         \\
-        \\export const Cons = <T>(data: List<T>): Cons<T> => {
+        \\export function Cons<T>(data: List<T>): Cons<T> {
         \\    return {type: "Cons", data};
         \\};
     ;
@@ -1455,11 +1455,11 @@ test "Outputs struct with optional float value correctly" {
         \\    field: number | null | undefined;
         \\};
         \\
-        \\export const isWithOptionalFloat = (value: unknown): value is WithOptionalFloat => {
+        \\export function isWithOptionalFloat(value: unknown): value is WithOptionalFloat {
         \\    return svt.isInterface<WithOptionalFloat>(value, {field: svt.optional(svt.isNumber)});
         \\};
         \\
-        \\export const validateWithOptionalFloat = (value: unknown): svt.ValidationResult<WithOptionalFloat> => {
+        \\export function validateWithOptionalFloat(value: unknown): svt.ValidationResult<WithOptionalFloat> {
         \\    return svt.validate<WithOptionalFloat>(value, {field: svt.validateOptional(svt.validateNumber)});
         \\};
     ;
