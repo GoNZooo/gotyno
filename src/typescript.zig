@@ -249,7 +249,7 @@ fn outputTypeGuardForPlainStructure(
     const output_format =
         \\export function is{}(value: unknown): value is {} {c}
         \\    return svt.isInterface<{}>(value, {c}{}{c});
-        \\{c};
+        \\{c}
     ;
 
     return try fmt.allocPrint(
@@ -270,7 +270,7 @@ fn outputValidatorForPlainStructure(
     const output_format =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {c}
         \\    return svt.validate<{}>(value, {c}{}{c});
-        \\{c};
+        \\{c}
     ;
 
     return try fmt.allocPrint(
@@ -443,13 +443,13 @@ fn outputConstructor(
     const output_format_with_data =
         \\export function {}{}(data: {}): {}{} {c}
         \\    return {c}type: "{}", data{c};
-        \\{c};
+        \\{c}
     ;
 
     const output_format_without_data =
         \\export function {}(): {} {c}
         \\    return {c}type: "{}"{c};
-        \\{c};
+        \\{c}
     ;
 
     return if (data_specification) |specification|
@@ -498,7 +498,7 @@ fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constru
     const output_format =
         \\export function is{}(value: unknown): value is {} {c}
         \\    return svt.isInterface<{}>(value, {c}type: "{}"{}{c});
-        \\{c};
+        \\{c}
     ;
 
     const type_guard_output = try getDataTypeGuardFromType(allocator, constructor.parameter);
@@ -516,7 +516,7 @@ fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constru
     const output_format =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {c}
         \\    return svt.validate<{}>(value, {c}type: "{}"{}{c});
-        \\{c};
+        \\{c}
     ;
 
     const validator_output = try getDataValidatorFromType(allocator, constructor.parameter);
@@ -1095,11 +1095,11 @@ test "Outputs `Person` struct correctly" {
         \\
         \\export function isPerson(value: unknown): value is Person {
         \\    return svt.isInterface<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isPerson});
-        \\};
+        \\}
         \\
         \\export function validatePerson(value: unknown): svt.ValidationResult<Person> {
         \\    return svt.validate<Person>(value, {type: "Person", name: svt.validateString, age: svt.validateNumber, efficiency: svt.validateNumber, on_vacation: svt.validateBoolean, hobbies: svt.validateArray(svt.validateString), last_fifteen_comments: svt.validateArray(svt.validateString), recruiter: validatePerson});
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1174,63 +1174,63 @@ test "Outputs `Event` union correctly" {
         \\
         \\export function LogIn(data: LogInData): LogIn {
         \\    return {type: "LogIn", data};
-        \\};
+        \\}
         \\
         \\export function LogOut(data: UserId): LogOut {
         \\    return {type: "LogOut", data};
-        \\};
+        \\}
         \\
         \\export function JoinChannels(data: Channel[]): JoinChannels {
         \\    return {type: "JoinChannels", data};
-        \\};
+        \\}
         \\
         \\export function SetEmails(data: Email[]): SetEmails {
         \\    return {type: "SetEmails", data};
-        \\};
+        \\}
         \\
         \\export function Close(): Close {
         \\    return {type: "Close"};
-        \\};
+        \\}
         \\
         \\export function isLogIn(value: unknown): value is LogIn {
         \\    return svt.isInterface<LogIn>(value, {type: "LogIn", data: isLogInData});
-        \\};
+        \\}
         \\
         \\export function isLogOut(value: unknown): value is LogOut {
         \\    return svt.isInterface<LogOut>(value, {type: "LogOut", data: isUserId});
-        \\};
+        \\}
         \\
         \\export function isJoinChannels(value: unknown): value is JoinChannels {
         \\    return svt.isInterface<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
-        \\};
+        \\}
         \\
         \\export function isSetEmails(value: unknown): value is SetEmails {
         \\    return svt.isInterface<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
-        \\};
+        \\}
         \\
         \\export function isClose(value: unknown): value is Close {
         \\    return svt.isInterface<Close>(value, {type: "Close"});
-        \\};
+        \\}
         \\
         \\export function validateLogIn(value: unknown): svt.ValidationResult<LogIn> {
         \\    return svt.validate<LogIn>(value, {type: "LogIn", data: validateLogInData});
-        \\};
+        \\}
         \\
         \\export function validateLogOut(value: unknown): svt.ValidationResult<LogOut> {
         \\    return svt.validate<LogOut>(value, {type: "LogOut", data: validateUserId});
-        \\};
+        \\}
         \\
         \\export function validateJoinChannels(value: unknown): svt.ValidationResult<JoinChannels> {
         \\    return svt.validate<JoinChannels>(value, {type: "JoinChannels", data: svt.validateArray(validateChannel)});
-        \\};
+        \\}
         \\
         \\export function validateSetEmails(value: unknown): svt.ValidationResult<SetEmails> {
         \\    return svt.validate<SetEmails>(value, {type: "SetEmails", data: svt.validateArray(validateEmail)});
-        \\};
+        \\}
         \\
         \\export function validateClose(value: unknown): svt.ValidationResult<Close> {
         \\    return svt.validate<Close>(value, {type: "Close"});
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1265,11 +1265,11 @@ test "Outputs `Maybe` union correctly" {
         \\
         \\export function Just<T>(data: T): Just<T> {
         \\    return {type: "Just", data};
-        \\};
+        \\}
         \\
         \\export function Nothing(): Nothing {
         \\    return {type: "Nothing"};
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1305,11 +1305,11 @@ test "Outputs `Either` union correctly" {
         \\
         \\export function Left<E>(data: E): Left<E> {
         \\    return {type: "Left", data};
-        \\};
+        \\}
         \\
         \\export function Right<T>(data: T): Right<T> {
         \\    return {type: "Right", data};
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1337,11 +1337,11 @@ test "Outputs struct with concrete `Maybe` correctly" {
         \\
         \\export function isWithMaybe(value: unknown): value is WithMaybe {
         \\    return svt.isInterface<WithMaybe>(value, {});
-        \\};
+        \\}
         \\
         \\export function validateWithMaybe(value: unknown): svt.ValidationResult<WithMaybe> {
         \\    return svt.validate<WithMaybe>(value, {});
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1382,15 +1382,15 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\
         \\export function WithConcrete(data: Maybe<string>): WithConcrete {
         \\    return {type: "WithConcrete", data};
-        \\};
+        \\}
         \\
         \\export function WithGeneric<T>(data: Maybe<T>): WithGeneric<T> {
         \\    return {type: "WithGeneric", data};
-        \\};
+        \\}
         \\
         \\export function WithBare<E>(data: E): WithBare<E> {
         \\    return {type: "WithBare", data};
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1425,11 +1425,11 @@ test "Outputs `List` union correctly" {
         \\
         \\export function Empty(): Empty {
         \\    return {type: "Empty"};
-        \\};
+        \\}
         \\
         \\export function Cons<T>(data: List<T>): Cons<T> {
         \\    return {type: "Cons", data};
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1457,11 +1457,11 @@ test "Outputs struct with optional float value correctly" {
         \\
         \\export function isWithOptionalFloat(value: unknown): value is WithOptionalFloat {
         \\    return svt.isInterface<WithOptionalFloat>(value, {field: svt.optional(svt.isNumber)});
-        \\};
+        \\}
         \\
         \\export function validateWithOptionalFloat(value: unknown): svt.ValidationResult<WithOptionalFloat> {
         \\    return svt.validate<WithOptionalFloat>(value, {field: svt.validateOptional(svt.validateNumber)});
-        \\};
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
