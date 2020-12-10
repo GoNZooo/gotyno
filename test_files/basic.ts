@@ -1,20 +1,18 @@
 import * as svt from "simple-validation-tools";
 
 export type Recruiter = {
-    type: "Recruiter";
     name: string;
 };
 
-export const isRecruiter = (value: unknown): value is Recruiter => {
-    return svt.isInterface<Recruiter>(value, {type: "Recruiter", name: svt.isString});
+export function isRecruiter(value: unknown): value is Recruiter {
+    return svt.isInterface<Recruiter>(value, {name: svt.isString});
 };
 
-export const validateRecruiter = (value: unknown): svt.ValidationResult<Recruiter> => {
-    return svt.validate<Recruiter>(value, {type: "Recruiter", name: svt.validateString});
+export function validateRecruiter(value: unknown): svt.ValidationResult<Recruiter> {
+    return svt.validate<Recruiter>(value, {name: svt.validateString});
 };
 
 export type Person = {
-    type: "Person";
     name: string;
     age: number;
     efficiency: number;
@@ -24,66 +22,62 @@ export type Person = {
     recruiter: Recruiter;
 };
 
-export const isPerson = (value: unknown): value is Person => {
-    return svt.isInterface<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isRecruiter});
+export function isPerson(value: unknown): value is Person {
+    return svt.isInterface<Person>(value, {name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isRecruiter});
 };
 
-export const validatePerson = (value: unknown): svt.ValidationResult<Person> => {
-    return svt.validate<Person>(value, {type: "Person", name: svt.validateString, age: svt.validateNumber, efficiency: svt.validateNumber, on_vacation: svt.validateBoolean, hobbies: svt.validateArray(svt.validateString), last_fifteen_comments: svt.validateArray(svt.validateString), recruiter: validateRecruiter});
+export function validatePerson(value: unknown): svt.ValidationResult<Person> {
+    return svt.validate<Person>(value, {name: svt.validateString, age: svt.validateNumber, efficiency: svt.validateNumber, on_vacation: svt.validateBoolean, hobbies: svt.validateArray(svt.validateString), last_fifteen_comments: svt.validateArray(svt.validateString), recruiter: validateRecruiter});
 };
 
 export type LogInData = {
-    type: "LogInData";
     username: string;
     password: string;
 };
 
-export const isLogInData = (value: unknown): value is LogInData => {
-    return svt.isInterface<LogInData>(value, {type: "LogInData", username: svt.isString, password: svt.isString});
+export function isLogInData(value: unknown): value is LogInData {
+    return svt.isInterface<LogInData>(value, {username: svt.isString, password: svt.isString});
 };
 
-export const validateLogInData = (value: unknown): svt.ValidationResult<LogInData> => {
-    return svt.validate<LogInData>(value, {type: "LogInData", username: svt.validateString, password: svt.validateString});
+export function validateLogInData(value: unknown): svt.ValidationResult<LogInData> {
+    return svt.validate<LogInData>(value, {username: svt.validateString, password: svt.validateString});
 };
 
 export type UserId = {
-    type: "UserId";
     value: string;
 };
 
-export const isUserId = (value: unknown): value is UserId => {
-    return svt.isInterface<UserId>(value, {type: "UserId", value: svt.isString});
+export function isUserId(value: unknown): value is UserId {
+    return svt.isInterface<UserId>(value, {value: svt.isString});
 };
 
-export const validateUserId = (value: unknown): svt.ValidationResult<UserId> => {
-    return svt.validate<UserId>(value, {type: "UserId", value: svt.validateString});
+export function validateUserId(value: unknown): svt.ValidationResult<UserId> {
+    return svt.validate<UserId>(value, {value: svt.validateString});
 };
 
 export type Channel = {
-    type: "Channel";
     name: string;
     private: boolean;
 };
 
-export const isChannel = (value: unknown): value is Channel => {
-    return svt.isInterface<Channel>(value, {type: "Channel", name: svt.isString, private: svt.isBoolean});
+export function isChannel(value: unknown): value is Channel {
+    return svt.isInterface<Channel>(value, {name: svt.isString, private: svt.isBoolean});
 };
 
-export const validateChannel = (value: unknown): svt.ValidationResult<Channel> => {
-    return svt.validate<Channel>(value, {type: "Channel", name: svt.validateString, private: svt.validateBoolean});
+export function validateChannel(value: unknown): svt.ValidationResult<Channel> {
+    return svt.validate<Channel>(value, {name: svt.validateString, private: svt.validateBoolean});
 };
 
 export type Email = {
-    type: "Email";
     value: string;
 };
 
-export const isEmail = (value: unknown): value is Email => {
-    return svt.isInterface<Email>(value, {type: "Email", value: svt.isString});
+export function isEmail(value: unknown): value is Email {
+    return svt.isInterface<Email>(value, {value: svt.isString});
 };
 
-export const validateEmail = (value: unknown): svt.ValidationResult<Email> => {
-    return svt.validate<Email>(value, {type: "Email", value: svt.validateString});
+export function validateEmail(value: unknown): svt.ValidationResult<Email> {
+    return svt.validate<Email>(value, {value: svt.validateString});
 };
 
 export type Event = LogIn | LogOut | JoinChannels | SetEmails;
@@ -108,34 +102,50 @@ export type SetEmails = {
     data: Email[];
 };
 
-export const isLogIn = (value: unknown): value is LogIn => {
+export function LogIn(data: LogInData): LogIn {
+    return {type: "LogIn", data};
+};
+
+export function LogOut(data: UserId): LogOut {
+    return {type: "LogOut", data};
+};
+
+export function JoinChannels(data: Channel[]): JoinChannels {
+    return {type: "JoinChannels", data};
+};
+
+export function SetEmails(data: Email[]): SetEmails {
+    return {type: "SetEmails", data};
+};
+
+export function isLogIn(value: unknown): value is LogIn {
     return svt.isInterface<LogIn>(value, {type: "LogIn", data: isLogInData});
 };
 
-export const isLogOut = (value: unknown): value is LogOut => {
+export function isLogOut(value: unknown): value is LogOut {
     return svt.isInterface<LogOut>(value, {type: "LogOut", data: isUserId});
 };
 
-export const isJoinChannels = (value: unknown): value is JoinChannels => {
+export function isJoinChannels(value: unknown): value is JoinChannels {
     return svt.isInterface<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
 };
 
-export const isSetEmails = (value: unknown): value is SetEmails => {
+export function isSetEmails(value: unknown): value is SetEmails {
     return svt.isInterface<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
 };
 
-export const validateLogIn = (value: unknown): svt.ValidationResult<LogIn> => {
+export function validateLogIn(value: unknown): svt.ValidationResult<LogIn> {
     return svt.validate<LogIn>(value, {type: "LogIn", data: validateLogInData});
 };
 
-export const validateLogOut = (value: unknown): svt.ValidationResult<LogOut> => {
+export function validateLogOut(value: unknown): svt.ValidationResult<LogOut> {
     return svt.validate<LogOut>(value, {type: "LogOut", data: validateUserId});
 };
 
-export const validateJoinChannels = (value: unknown): svt.ValidationResult<JoinChannels> => {
+export function validateJoinChannels(value: unknown): svt.ValidationResult<JoinChannels> {
     return svt.validate<JoinChannels>(value, {type: "JoinChannels", data: svt.validateArray(validateChannel)});
 };
 
-export const validateSetEmails = (value: unknown): svt.ValidationResult<SetEmails> => {
+export function validateSetEmails(value: unknown): svt.ValidationResult<SetEmails> {
     return svt.validate<SetEmails>(value, {type: "SetEmails", data: svt.validateArray(validateEmail)});
 };
