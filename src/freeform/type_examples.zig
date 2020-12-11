@@ -12,8 +12,9 @@ pub const person_structure =
 ;
 
 pub const node_structure =
-    \\struct Node <T>{
+    \\struct Node <T, U>{
     \\    data: T;
+    \\    otherData: U;
     \\}
 ;
 
