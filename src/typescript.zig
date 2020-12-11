@@ -248,6 +248,8 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.open_names,
     );
 
+    const union_type_guard_output = try outputTypeGuardForGenericUnion(allocator, generic_union);
+
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
         generic_union.constructors,
@@ -256,6 +258,8 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     const output_format =
         \\export type {}{} = {};
+        \\
+        \\{}
         \\
         \\{}
         \\
@@ -273,6 +277,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
             constructor_names_output,
             tagged_structures_output,
             constructors_output,
+            union_type_guard_output,
             type_guards_output,
         },
     );
@@ -296,6 +301,98 @@ fn outputTypeGuardForPlainStructure(
         allocator,
         output_format,
         .{ name, name, name, checkers_output },
+    );
+}
+
+fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
+    var predicate_outputs = ArrayList([]const u8).init(allocator);
+    defer predicate_outputs.deinit();
+
+    const open_names_predicates = try openNamePredicates(allocator, generic.open_names);
+
+    var open_name_predicate_types = try allocator.alloc([]const u8, generic.open_names.len);
+    for (open_name_predicate_types) |*t, i| {
+        t.* = try fmt.allocPrint(
+            allocator,
+            "svt.TypePredicate<{}>",
+            .{generic.open_names[i]},
+        );
+    }
+    defer allocator.free(open_name_predicate_types);
+
+    var parameter_outputs = try allocator.alloc([]const u8, generic.open_names.len);
+    defer allocator.free(parameter_outputs);
+    for (parameter_outputs) |*o, i| {
+        o.* = try fmt.allocPrint(
+            allocator,
+            "{}: {}",
+            .{ open_names_predicates.items[i], open_name_predicate_types[i] },
+        );
+    }
+
+    const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
+
+    const open_names_output = try fmt.allocPrint(
+        allocator,
+        "{}",
+        .{try mem.join(allocator, ", ", generic.open_names)},
+    );
+
+    var predicate_list_outputs = ArrayList([]const u8).init(allocator);
+    defer predicate_list_outputs.deinit();
+    for (generic.constructors) |constructor| {
+        const constructor_open_names = try openNamesFromType(
+            allocator,
+            constructor.parameter,
+            generic.open_names,
+        );
+        defer constructor_open_names.deinit();
+        const constructor_open_name_predicates = try openNamePredicates(
+            allocator,
+            constructor_open_names.items,
+        );
+        defer constructor_open_name_predicates.deinit();
+
+        try predicate_list_outputs.append(if (constructor_open_names.items.len > 0)
+            try fmt.allocPrint(
+                allocator,
+                "is{}({})",
+                .{
+                    constructor.tag,
+                    try mem.join(allocator, ", ", constructor_open_name_predicates.items),
+                },
+            )
+        else
+            try fmt.allocPrint(allocator, "is{}", .{constructor.tag}));
+    }
+
+    const predicates_output = try mem.join(allocator, ", ", predicate_list_outputs.items);
+
+    const joined_open_names = try mem.join(allocator, "", generic.open_names);
+
+    const format =
+        \\export function is{}<{}>({}): svt.TypePredicate<{}<{}>> {{
+        \\    return function is{}{}(value: unknown): value is {}<{}> {{
+        \\        return [{}].some((typePredicate) => typePredicate(value));
+        \\    }};
+        \\}}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{
+            generic.name,
+            open_names_output,
+            parameters_output,
+            generic.name,
+            open_names_output,
+            generic.name,
+            joined_open_names,
+            generic.name,
+            open_names_output,
+            predicates_output,
+        },
     );
 }
 
@@ -1575,12 +1672,6 @@ test "Outputs `Event` union correctly" {
 test "Outputs `Maybe` union correctly" {
     var allocator = TestingAllocator{};
 
-    // \\export function isMaybe<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Maybe<T>> {
-    // \\    return function isMaybeT(value: unknown): value is Maybe<T> {
-    // \\        return [isJust(isT), isNothing].some((typePredicate) => typePredicate(value));
-    // \\    };
-    // \\}
-    // \\
     const expected_output =
         \\export type Maybe<T> = Just<T> | Nothing;
         \\
@@ -1599,6 +1690,12 @@ test "Outputs `Maybe` union correctly" {
         \\
         \\export function Nothing(): Nothing {
         \\    return {type: "Nothing"};
+        \\}
+        \\
+        \\export function isMaybe<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Maybe<T>> {
+        \\    return function isMaybeT(value: unknown): value is Maybe<T> {
+        \\        return [isJust(isT), isNothing].some((typePredicate) => typePredicate(value));
+        \\    };
         \\}
         \\
         \\export function isJust<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Just<T>> {
@@ -1649,6 +1746,12 @@ test "Outputs `Either` union correctly" {
         \\
         \\export function Right<T>(data: T): Right<T> {
         \\    return {type: "Right", data};
+        \\}
+        \\
+        \\export function isEither<E, T>(isE: svt.TypePredicate<E>, isT: svt.TypePredicate<T>): svt.TypePredicate<Either<E, T>> {
+        \\    return function isEitherET(value: unknown): value is Either<E, T> {
+        \\        return [isLeft(isE), isRight(isT)].some((typePredicate) => typePredicate(value));
+        \\    };
         \\}
         \\
         \\export function isLeft<E>(isE: svt.TypePredicate<E>): svt.TypePredicate<Left<E>> {
@@ -1744,6 +1847,12 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\    return {type: "WithBare", data};
         \\}
         \\
+        \\export function isWithMaybe<T, E>(isT: svt.TypePredicate<T>, isE: svt.TypePredicate<E>): svt.TypePredicate<WithMaybe<T, E>> {
+        \\    return function isWithMaybeTE(value: unknown): value is WithMaybe<T, E> {
+        \\        return [isWithConcrete, isWithGeneric(isT), isWithBare(isE)].some((typePredicate) => typePredicate(value));
+        \\    };
+        \\}
+        \\
         \\export function isWithConcrete(value: unknown): value is WithConcrete {
         \\    return svt.isInterface<WithConcrete>(value, {type: "WithConcrete", data: isMaybe(svt.isString)});
         \\}
@@ -1797,6 +1906,12 @@ test "Outputs `List` union correctly" {
         \\
         \\export function Cons<T>(data: List<T>): Cons<T> {
         \\    return {type: "Cons", data};
+        \\}
+        \\
+        \\export function isList<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<List<T>> {
+        \\    return function isListT(value: unknown): value is List<T> {
+        \\        return [isEmpty, isCons(isT)].some((typePredicate) => typePredicate(value));
+        \\    };
         \\}
         \\
         \\export function isEmpty(value: unknown): value is Empty {
