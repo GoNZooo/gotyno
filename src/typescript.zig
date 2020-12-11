@@ -156,6 +156,8 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 
     const constructors_output = try outputConstructors(allocator, plain_union.constructors);
 
+    const union_type_guard_output = try outputTypeGuardForPlainUnion(allocator, plain_union);
+
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
         plain_union.constructors,
@@ -177,6 +179,8 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         \\{}
         \\
         \\{}
+        \\
+        \\{}
     ;
 
     return fmt.allocPrint(
@@ -187,10 +191,30 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
             constructor_names_output,
             tagged_structures_output,
             constructors_output,
+            union_type_guard_output,
             type_guards_output,
             validators_output,
         },
     );
+}
+
+fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
+    var predicate_outputs = ArrayList([]const u8).init(allocator);
+    defer predicate_outputs.deinit();
+
+    for (plain.constructors) |constructor| {
+        try predicate_outputs.append(try fmt.allocPrint(allocator, "is{}", .{constructor.tag}));
+    }
+
+    const predicates_output = try mem.join(allocator, ", ", predicate_outputs.items);
+
+    const format =
+        \\export function is{}(value: unknown): value is {} {{
+        \\    return [{}].some((typePredicate) => typePredicate(value));
+        \\}}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ plain.name, plain.name, predicates_output });
 }
 
 fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
@@ -1488,6 +1512,10 @@ test "Outputs `Event` union correctly" {
         \\    return {type: "Close"};
         \\}
         \\
+        \\export function isEvent(value: unknown): value is Event {
+        \\    return [isLogIn, isLogOut, isJoinChannels, isSetEmails, isClose].some((typePredicate) => typePredicate(value));
+        \\}
+        \\
         \\export function isLogIn(value: unknown): value is LogIn {
         \\    return svt.isInterface<LogIn>(value, {type: "LogIn", data: isLogInData});
         \\}
@@ -1547,6 +1575,12 @@ test "Outputs `Event` union correctly" {
 test "Outputs `Maybe` union correctly" {
     var allocator = TestingAllocator{};
 
+    // \\export function isMaybe<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Maybe<T>> {
+    // \\    return function isMaybeT(value: unknown): value is Maybe<T> {
+    // \\        return [isJust(isT), isNothing].some((typePredicate) => typePredicate(value));
+    // \\    };
+    // \\}
+    // \\
     const expected_output =
         \\export type Maybe<T> = Just<T> | Nothing;
         \\
