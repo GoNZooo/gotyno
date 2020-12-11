@@ -592,14 +592,12 @@ pub const DefinitionIterator = struct {
 
         const tag = (try tokens.expect(Token.name, self.expect_error)).name;
 
-        const colon_or_semicolon = try tokens.expectOneOf(
-            &[_]TokenTag{ .colon, .semicolon },
+        const colon_or_newline = try tokens.expectOneOf(
+            &[_]TokenTag{ .colon, .newline },
             self.expect_error,
         );
 
-        if (colon_or_semicolon == Token.semicolon) {
-            _ = try tokens.expect(Token.newline, self.expect_error);
-
+        if (colon_or_newline == Token.newline) {
             return Constructor{ .tag = tag, .parameter = Type.empty };
         }
 
@@ -730,7 +728,6 @@ pub const DefinitionIterator = struct {
             },
         };
         const p = try tokens.peek();
-        _ = try tokens.expect(Token.semicolon, self.expect_error);
         _ = try tokens.expect(Token.newline, self.expect_error);
 
         return field;
