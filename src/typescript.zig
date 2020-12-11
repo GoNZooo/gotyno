@@ -159,6 +159,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
         plain_union.constructors,
+        &[_][]const u8{},
     );
 
     const validators_output = try outputValidatorsForConstructors(
@@ -223,8 +224,16 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.open_names,
     );
 
+    const type_guards_output = try outputTypeGuardsForConstructors(
+        allocator,
+        generic_union.constructors,
+        generic_union.open_names,
+    );
+
     const output_format =
         \\export type {}{} = {};
+        \\
+        \\{}
         \\
         \\{}
         \\
@@ -240,6 +249,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
             constructor_names_output,
             tagged_structures_output,
             constructors_output,
+            type_guards_output,
         },
     );
 }
@@ -561,12 +571,15 @@ fn outputConstructors(
 fn outputTypeGuardsForConstructors(
     allocator: *mem.Allocator,
     constructors: []Constructor,
+    open_names: []const []const u8,
 ) ![]const u8 {
     var type_guards = ArrayList([]const u8).init(allocator);
     defer type_guards.deinit();
 
     for (constructors) |constructor| {
-        try type_guards.append(try outputTypeGuardForConstructor(allocator, constructor));
+        try type_guards.append(
+            try outputTypeGuardForConstructor(allocator, constructor, open_names),
+        );
     }
 
     return try mem.join(allocator, "\n\n", type_guards.items);
@@ -643,10 +656,59 @@ fn outputConstructorName(
     );
 }
 
-fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+fn outputTypeGuardForConstructor(
+    allocator: *mem.Allocator,
+    constructor: Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
     const tag = constructor.tag;
 
-    const output_format =
+    const constructor_open_names = try openNamesFromType(
+        allocator,
+        constructor.parameter,
+        open_names,
+    );
+    const open_names_output = try outputOpenNamesFromType(
+        allocator,
+        constructor.parameter,
+        open_names,
+    );
+    const open_names_predicates = try openNamePredicates(allocator, constructor_open_names.items);
+
+    var open_name_predicate_types = try allocator.alloc(
+        []const u8,
+        constructor_open_names.items.len,
+    );
+    for (open_name_predicate_types) |*t, i| {
+        t.* = try fmt.allocPrint(
+            allocator,
+            "svt.TypePredicate<{}>",
+            .{constructor_open_names.items[i]},
+        );
+    }
+    defer allocator.free(open_name_predicate_types);
+
+    var parameter_outputs = try allocator.alloc([]const u8, constructor_open_names.items.len);
+    defer allocator.free(parameter_outputs);
+    for (parameter_outputs) |*o, i| {
+        o.* = try fmt.allocPrint(
+            allocator,
+            "{}: {}",
+            .{ open_names_predicates.items[i], open_name_predicate_types[i] },
+        );
+    }
+
+    const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
+
+    const output_format_with_open_names =
+        \\export function is{}{}({}): svt.TypePredicate<{}{}> {{
+        \\    return function is{}{}(value: unknown): value is {}{} {{
+        \\        return svt.isInterface<{}{}>(value, {{type: "{}"{}}});
+        \\    }};
+        \\}}
+    ;
+
+    const output_format_without_open_names =
         \\export function is{}(value: unknown): value is {} {{
         \\    return svt.isInterface<{}>(value, {{type: "{}"{}}});
         \\}}
@@ -654,7 +716,32 @@ fn outputTypeGuardForConstructor(allocator: *mem.Allocator, constructor: Constru
 
     const type_guard_output = try getDataTypeGuardFromType(allocator, constructor.parameter);
 
-    return try fmt.allocPrint(allocator, output_format, .{ tag, tag, tag, tag, type_guard_output });
+    return if (constructor_open_names.items.len > 0)
+        try fmt.allocPrint(
+            allocator,
+            output_format_with_open_names,
+            .{
+                tag,
+                open_names_output,
+                parameters_output,
+                tag,
+                open_names_output,
+                tag,
+                try mem.join(allocator, "", constructor_open_names.items),
+                tag,
+                open_names_output,
+                tag,
+                open_names_output,
+                tag,
+                type_guard_output,
+            },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            output_format_without_open_names,
+            .{ tag, tag, tag, tag, type_guard_output },
+        );
 }
 
 fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
@@ -749,7 +836,16 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             optional_format,
             .{try getNestedTypeGuardFromType(allocator, o.@"type".*)},
         ),
-        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+        .applied_name => |applied| applied: {
+            const open_name_predicates = try openNamePredicates(allocator, applied.open_names);
+            defer open_name_predicates.deinit();
+
+            break :applied try fmt.allocPrint(
+                allocator,
+                ", data: is{}({})",
+                .{ applied.name, try mem.join(allocator, ", ", open_name_predicates.items) },
+            );
+        },
     };
 }
 
@@ -869,7 +965,16 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             optional_format,
             .{try getNestedTypeGuardFromType(allocator, o.@"type".*)},
         ),
-        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+        .applied_name => |applied| applied: {
+            const open_name_predicates = try openNamePredicates(allocator, applied.open_names);
+            defer open_name_predicates.deinit();
+
+            break :applied try fmt.allocPrint(
+                allocator,
+                "is{}({})",
+                .{ applied.name, try mem.join(allocator, ", ", open_name_predicates.items) },
+            );
+        },
     };
 }
 
@@ -914,14 +1019,8 @@ fn outputCommonOpenNames(
     as: []const []const u8,
     bs: []const []const u8,
 ) ![]const u8 {
-    var common_names = ArrayList([]const u8).init(allocator);
+    const common_names = try commonOpenNames(allocator, as, bs);
     defer common_names.deinit();
-
-    for (as) |a| {
-        for (bs) |b| {
-            if (mem.eql(u8, a, b) and !isTranslatedName(a)) try common_names.append(a);
-        }
-    }
 
     return if (common_names.items.len == 0)
         ""
@@ -1031,34 +1130,65 @@ fn outputTaggedMaybeGenericStructure(
     );
 }
 
+fn openNamesFromType(
+    allocator: *mem.Allocator,
+    t: Type,
+    open_names: []const []const u8,
+) error{OutOfMemory}!ArrayList([]const u8) {
+    return switch (t) {
+        .pointer => |p| try openNamesFromType(allocator, p.@"type".*, open_names),
+        .array => |a| try openNamesFromType(allocator, a.@"type".*, open_names),
+        .slice => |s| try openNamesFromType(allocator, s.@"type".*, open_names),
+        .optional => |o| try openNamesFromType(allocator, o.@"type".*, open_names),
+
+        .applied_name => |applied| try commonOpenNames(allocator, open_names, applied.open_names),
+
+        .name => |name| name: {
+            var open_name_list = ArrayList([]const u8).init(allocator);
+
+            if (isStringEqualToOneOf(name, open_names)) {
+                try open_name_list.append(name);
+            }
+
+            break :name open_name_list;
+        },
+
+        .string, .empty => ArrayList([]const u8).init(allocator),
+    };
+}
+
+fn commonOpenNames(
+    allocator: *mem.Allocator,
+    as: []const []const u8,
+    bs: []const []const u8,
+) !ArrayList([]const u8) {
+    var common_names = ArrayList([]const u8).init(allocator);
+
+    for (as) |a| {
+        for (bs) |b| {
+            if (mem.eql(u8, a, b) and !isTranslatedName(a)) try common_names.append(a);
+        }
+    }
+
+    return common_names;
+}
+
 fn outputOpenNamesFromType(
     allocator: *mem.Allocator,
     t: Type,
     open_names: []const []const u8,
 ) error{OutOfMemory}![]const u8 {
-    return switch (t) {
-        .pointer => |pointer| try outputOpenNamesFromType(allocator, pointer.@"type".*, open_names),
-        .array => |a| try outputOpenNamesFromType(allocator, a.@"type".*, open_names),
-        .slice => |s| try outputOpenNamesFromType(allocator, s.@"type".*, open_names),
-        .optional => |o| try outputOpenNamesFromType(allocator, o.@"type".*, open_names),
+    const type_open_names = try openNamesFromType(allocator, t, open_names);
+    defer type_open_names.deinit();
 
-        // We need to check whether or not we have one of the generic names in the structure here
-        // and if we do, add it as a type parameter to the tagged structure.
-        // It's possible that the name is actually a concrete type and so it shouldn't show up as
-        // a type parameter for the tagged structure.
-        .applied_name => |applied_name| try outputCommonOpenNames(
+    return if (type_open_names.items.len == 0)
+        ""
+    else
+        try fmt.allocPrint(
             allocator,
-            open_names,
-            applied_name.open_names,
-        ),
-
-        .name => |n| if (isStringEqualToOneOf(n, open_names))
-            try fmt.allocPrint(allocator, "<{}>", .{n})
-        else
-            "",
-
-        .empty, .string => "",
-    };
+            "<{}>",
+            .{try mem.join(allocator, ", ", type_open_names.items)},
+        );
 }
 
 fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
@@ -1436,6 +1566,16 @@ test "Outputs `Maybe` union correctly" {
         \\export function Nothing(): Nothing {
         \\    return {type: "Nothing"};
         \\}
+        \\
+        \\export function isJust<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Just<T>> {
+        \\    return function isJustT(value: unknown): value is Just<T> {
+        \\        return svt.isInterface<Just<T>>(value, {type: "Just", data: isT});
+        \\    };
+        \\}
+        \\
+        \\export function isNothing(value: unknown): value is Nothing {
+        \\    return svt.isInterface<Nothing>(value, {type: "Nothing"});
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1475,6 +1615,18 @@ test "Outputs `Either` union correctly" {
         \\
         \\export function Right<T>(data: T): Right<T> {
         \\    return {type: "Right", data};
+        \\}
+        \\
+        \\export function isLeft<E>(isE: svt.TypePredicate<E>): svt.TypePredicate<Left<E>> {
+        \\    return function isLeftE(value: unknown): value is Left<E> {
+        \\        return svt.isInterface<Left<E>>(value, {type: "Left", data: isE});
+        \\    };
+        \\}
+        \\
+        \\export function isRight<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Right<T>> {
+        \\    return function isRightT(value: unknown): value is Right<T> {
+        \\        return svt.isInterface<Right<T>>(value, {type: "Right", data: isT});
+        \\    };
         \\}
     ;
 
@@ -1557,6 +1709,22 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\export function WithBare<E>(data: E): WithBare<E> {
         \\    return {type: "WithBare", data};
         \\}
+        \\
+        \\export function isWithConcrete(value: unknown): value is WithConcrete {
+        \\    return svt.isInterface<WithConcrete>(value, {type: "WithConcrete", data: isMaybe(svt.isString)});
+        \\}
+        \\
+        \\export function isWithGeneric<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<WithGeneric<T>> {
+        \\    return function isWithGenericT(value: unknown): value is WithGeneric<T> {
+        \\        return svt.isInterface<WithGeneric<T>>(value, {type: "WithGeneric", data: isMaybe(isT)});
+        \\    };
+        \\}
+        \\
+        \\export function isWithBare<E>(isE: svt.TypePredicate<E>): svt.TypePredicate<WithBare<E>> {
+        \\    return function isWithBareE(value: unknown): value is WithBare<E> {
+        \\        return svt.isInterface<WithBare<E>>(value, {type: "WithBare", data: isE});
+        \\    };
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1595,6 +1763,16 @@ test "Outputs `List` union correctly" {
         \\
         \\export function Cons<T>(data: List<T>): Cons<T> {
         \\    return {type: "Cons", data};
+        \\}
+        \\
+        \\export function isEmpty(value: unknown): value is Empty {
+        \\    return svt.isInterface<Empty>(value, {type: "Empty"});
+        \\}
+        \\
+        \\export function isCons<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Cons<T>> {
+        \\    return function isConsT(value: unknown): value is Cons<T> {
+        \\        return svt.isInterface<Cons<T>>(value, {type: "Cons", data: isList(isT)});
+        \\    };
         \\}
     ;
 
