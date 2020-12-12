@@ -169,6 +169,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     const validators_output = try outputValidatorsForConstructors(
         allocator,
         plain_union.constructors,
+        &[_][]const u8{},
     );
 
     const output_format =
@@ -288,8 +289,16 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     const union_validator_output = try outputValidatorForGenericUnion(allocator, generic_union);
 
+    const validators_output = try outputValidatorsForConstructors(
+        allocator,
+        generic_union.constructors,
+        generic_union.open_names,
+    );
+
     const output_format =
         \\export type {}{} = {};
+        \\
+        \\{}
         \\
         \\{}
         \\
@@ -314,6 +323,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
             union_type_guard_output,
             type_guards_output,
             union_validator_output,
+            validators_output,
         },
     );
 }
@@ -832,12 +842,13 @@ fn outputTypeGuardsForConstructors(
 fn outputValidatorsForConstructors(
     allocator: *mem.Allocator,
     constructors: []Constructor,
+    open_names: []const []const u8,
 ) ![]const u8 {
     var validators = ArrayList([]const u8).init(allocator);
     defer validators.deinit();
 
     for (constructors) |constructor| {
-        try validators.append(try outputValidatorForConstructor(allocator, constructor));
+        try validators.append(try outputValidatorForConstructor(allocator, constructor, open_names));
     }
 
     return try mem.join(allocator, "\n\n", validators.items);
@@ -988,18 +999,96 @@ fn outputTypeGuardForConstructor(
         );
 }
 
-fn outputValidatorForConstructor(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+fn outputValidatorForConstructor(
+    allocator: *mem.Allocator,
+    constructor: Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
     const tag = constructor.tag;
 
-    const output_format =
+    const constructor_open_names = try openNamesFromType(
+        allocator,
+        constructor.parameter,
+        open_names,
+    );
+    const open_names_validators = try openNameValidators(allocator, constructor_open_names.items);
+    defer open_names_validators.deinit();
+    const open_names_predicates_output = try mem.join(allocator, ", ", open_names_validators.items);
+
+    const open_names_output = try mem.join(allocator, ", ", constructor_open_names.items);
+    defer allocator.free(open_names_output);
+
+    const joined_open_names = try mem.join(allocator, "", constructor_open_names.items);
+    defer allocator.free(joined_open_names);
+
+    var open_name_validator_types = try allocator.alloc(
+        []const u8,
+        constructor_open_names.items.len,
+    );
+    for (open_name_validator_types) |*t, i| {
+        t.* = try fmt.allocPrint(
+            allocator,
+            "svt.Validator<{}>",
+            .{constructor_open_names.items[i]},
+        );
+    }
+    defer allocator.free(open_name_validator_types);
+
+    var parameter_outputs = try allocator.alloc([]const u8, constructor_open_names.items.len);
+    defer allocator.free(parameter_outputs);
+    for (parameter_outputs) |*o, i| {
+        o.* = try fmt.allocPrint(
+            allocator,
+            "{}: {}",
+            .{ open_names_validators.items[i], open_name_validator_types[i] },
+        );
+    }
+
+    const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
+    defer allocator.free(parameters_output);
+
+    const format_without_open_names =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
         \\    return svt.validate<{}>(value, {{type: "{}"{}}});
         \\}}
     ;
 
+    const format_with_open_names =
+        \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
+        \\    return function validate{}{}(value: unknown): svt.ValidationResult<{}<{}>> {{
+        \\        return svt.validate<{}<{}>>(value, {{type: "{}"{}}});
+        \\    }};
+        \\}}
+    ;
+
     const validator_output = try getDataValidatorFromType(allocator, constructor.parameter);
 
-    return try fmt.allocPrint(allocator, output_format, .{ tag, tag, tag, tag, validator_output });
+    return if (constructor_open_names.items.len == 0)
+        try fmt.allocPrint(
+            allocator,
+            format_without_open_names,
+            .{ tag, tag, tag, tag, validator_output },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            format_with_open_names,
+            .{
+                tag,
+                open_names_output,
+                parameters_output,
+                tag,
+                open_names_output,
+                tag,
+                joined_open_names,
+                tag,
+                open_names_output,
+                tag,
+                open_names_output,
+                tag,
+                validator_output,
+            },
+        );
 }
 
 fn getDataSpecificationFromType(
@@ -1128,7 +1217,16 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             optional_format,
             .{try getNestedValidatorFromType(allocator, o.@"type".*)},
         ),
-        .applied_name => debug.panic("Trying to get validator from type for: {}\n", .{t}),
+        .applied_name => |applied| applied: {
+            const open_name_validators = try openNameValidators(allocator, applied.open_names);
+            defer open_name_validators.deinit();
+
+            break :applied try fmt.allocPrint(
+                allocator,
+                ", data: validate{}({})",
+                .{ applied.name, try mem.join(allocator, ", ", open_name_validators.items) },
+            );
+        },
     };
 }
 
@@ -1254,7 +1352,16 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             optional_format,
             .{try getNestedValidatorFromType(allocator, o.@"type".*)},
         ),
-        .applied_name => debug.panic("Trying to get type guard from type for: {}\n", .{t}),
+        .applied_name => |applied| applied: {
+            const open_name_validators = try openNameValidators(allocator, applied.open_names);
+            defer open_name_validators.deinit();
+
+            break :applied try fmt.allocPrint(
+                allocator,
+                "validate{}({})",
+                .{ applied.name, try mem.join(allocator, ", ", open_name_validators.items) },
+            );
+        },
     };
 }
 
@@ -1840,6 +1947,16 @@ test "Outputs `Maybe` union correctly" {
         \\        return svt.validateOneOf<Maybe<T>>(value, [validateJust(validateT), validateNothing]);
         \\    };
         \\}
+        \\
+        \\export function validateJust<T>(validateT: svt.Validator<T>): svt.Validator<Just<T>> {
+        \\    return function validateJustT(value: unknown): svt.ValidationResult<Just<T>> {
+        \\        return svt.validate<Just<T>>(value, {type: "Just", data: validateT});
+        \\    };
+        \\}
+        \\
+        \\export function validateNothing(value: unknown): svt.ValidationResult<Nothing> {
+        \\    return svt.validate<Nothing>(value, {type: "Nothing"});
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -1902,6 +2019,18 @@ test "Outputs `Either` union correctly" {
         \\export function validateEither<E, T>(validateE: svt.Validator<E>, validateT: svt.Validator<T>): svt.Validator<Either<E, T>> {
         \\    return function validateEitherET(value: unknown): svt.ValidationResult<Either<E, T>> {
         \\        return svt.validateOneOf<Either<E, T>>(value, [validateLeft(validateE), validateRight(validateT)]);
+        \\    };
+        \\}
+        \\
+        \\export function validateLeft<E>(validateE: svt.Validator<E>): svt.Validator<Left<E>> {
+        \\    return function validateLeftE(value: unknown): svt.ValidationResult<Left<E>> {
+        \\        return svt.validate<Left<E>>(value, {type: "Left", data: validateE});
+        \\    };
+        \\}
+        \\
+        \\export function validateRight<T>(validateT: svt.Validator<T>): svt.Validator<Right<T>> {
+        \\    return function validateRightT(value: unknown): svt.ValidationResult<Right<T>> {
+        \\        return svt.validate<Right<T>>(value, {type: "Right", data: validateT});
         \\    };
         \\}
     ;
@@ -2013,6 +2142,22 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\        return svt.validateOneOf<WithMaybe<T, E>>(value, [validateWithConcrete, validateWithGeneric(validateT), validateWithBare(validateE)]);
         \\    };
         \\}
+        \\
+        \\export function validateWithConcrete(value: unknown): svt.ValidationResult<WithConcrete> {
+        \\    return svt.validate<WithConcrete>(value, {type: "WithConcrete", data: validateMaybe(svt.validateString)});
+        \\}
+        \\
+        \\export function validateWithGeneric<T>(validateT: svt.Validator<T>): svt.Validator<WithGeneric<T>> {
+        \\    return function validateWithGenericT(value: unknown): svt.ValidationResult<WithGeneric<T>> {
+        \\        return svt.validate<WithGeneric<T>>(value, {type: "WithGeneric", data: validateMaybe(validateT)});
+        \\    };
+        \\}
+        \\
+        \\export function validateWithBare<E>(validateE: svt.Validator<E>): svt.Validator<WithBare<E>> {
+        \\    return function validateWithBareE(value: unknown): svt.ValidationResult<WithBare<E>> {
+        \\        return svt.validate<WithBare<E>>(value, {type: "WithBare", data: validateE});
+        \\    };
+        \\}
     ;
 
     var expect_error: ExpectError = undefined;
@@ -2072,6 +2217,16 @@ test "Outputs `List` union correctly" {
         \\export function validateList<T>(validateT: svt.Validator<T>): svt.Validator<List<T>> {
         \\    return function validateListT(value: unknown): svt.ValidationResult<List<T>> {
         \\        return svt.validateOneOf<List<T>>(value, [validateEmpty, validateCons(validateT)]);
+        \\    };
+        \\}
+        \\
+        \\export function validateEmpty(value: unknown): svt.ValidationResult<Empty> {
+        \\    return svt.validate<Empty>(value, {type: "Empty"});
+        \\}
+        \\
+        \\export function validateCons<T>(validateT: svt.Validator<T>): svt.Validator<Cons<T>> {
+        \\    return function validateConsT(value: unknown): svt.ValidationResult<Cons<T>> {
+        \\        return svt.validate<Cons<T>>(value, {type: "Cons", data: validateList(validateT)});
         \\    };
         \\}
     ;
