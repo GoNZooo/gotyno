@@ -31,10 +31,17 @@ pub fn compile(
 ) !void {
     const out = io.getStdOut().writer();
     const compilation_start_time = time.nanoTimestamp();
-    var expect_error: ExpectError = undefined;
-    const parse_result = try parser.parse(allocator, allocator, file_contents, &expect_error);
     var compilation_arena = heap.ArenaAllocator.init(allocator);
     var compilation_allocator = &compilation_arena.allocator;
+
+    var expect_error: ExpectError = undefined;
+    const parse_result = try parser.parseWithDescribedError(
+        allocator,
+        allocator,
+        file_contents,
+        &expect_error,
+    );
+
     switch (parse_result) {
         .success => |success_result| {
             if (output_languages.typescript) {
@@ -69,10 +76,11 @@ pub fn compile(
         compilation_end_time - compilation_start_time,
     );
 
-    if (verbose) try out.print(
-        "Total compilation time: {d:.5} ms\n",
-        .{compilation_time_difference / 1000000.0},
-    );
+    if (verbose)
+        try out.print(
+            "Total compilation time: {d:.5} ms\n",
+            .{compilation_time_difference / 1000000.0},
+        );
 }
 
 test "test runs" {
