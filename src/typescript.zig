@@ -164,6 +164,8 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         &[_][]const u8{},
     );
 
+    const union_validator_output = try outputValidatorForPlainUnion(allocator, plain_union);
+
     const validators_output = try outputValidatorsForConstructors(
         allocator,
         plain_union.constructors,
@@ -171,6 +173,8 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 
     const output_format =
         \\export type {} = {};
+        \\
+        \\{}
         \\
         \\{}
         \\
@@ -193,6 +197,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
             constructors_output,
             union_type_guard_output,
             type_guards_output,
+            union_validator_output,
             validators_output,
         },
     );
@@ -215,6 +220,31 @@ fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
     ;
 
     return try fmt.allocPrint(allocator, format, .{ plain.name, plain.name, predicates_output });
+}
+
+fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
+    var validator_outputs = ArrayList([]const u8).init(allocator);
+    defer validator_outputs.deinit();
+
+    for (plain.constructors) |constructor| {
+        try validator_outputs.append(
+            try fmt.allocPrint(allocator, "validate{}", .{constructor.tag}),
+        );
+    }
+
+    const validators_output = try mem.join(allocator, ", ", validator_outputs.items);
+
+    const format =
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
+        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\}}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ plain.name, plain.name, plain.name, validators_output },
+    );
 }
 
 fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
@@ -1631,6 +1661,10 @@ test "Outputs `Event` union correctly" {
         \\
         \\export function isClose(value: unknown): value is Close {
         \\    return svt.isInterface<Close>(value, {type: "Close"});
+        \\}
+        \\
+        \\export function validateEvent(value: unknown): svt.ValidationResult<Event> {
+        \\    return svt.validateOneOf<Event>(value, [validateLogIn, validateLogOut, validateJoinChannels, validateSetEmails, validateClose]);
         \\}
         \\
         \\export function validateLogIn(value: unknown): svt.ValidationResult<LogIn> {
