@@ -68,6 +68,7 @@ fn compileInputs(
     allocator: *mem.Allocator,
     files: []const []const u8,
     output_languages: OutputLanguages,
+    verbose: bool,
 ) !void {
     const current_directory = fs.cwd();
 
@@ -86,6 +87,7 @@ fn compileInputs(
             file_contents,
             output_languages,
             current_directory,
+            verbose,
         );
     }
 }
@@ -101,6 +103,7 @@ pub fn main() anyerror!void {
         heap.page_allocator,
         compilation_options.inputs,
         compilation_options.outputs,
+        compilation_options.verbose,
     );
 }
 
