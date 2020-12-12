@@ -565,7 +565,7 @@ fn outputTypeGuardForGenericStructure(
     const format_with_open_names =
         \\export function is{}<{}>({}): svt.TypePredicate<{}<{}>> {{
         \\    return function is{}{}(value: unknown): value is {}<{}> {{
-        \\        return svt.isInstance<{}<{}>>(value, {{{}}});
+        \\        return svt.isInterface<{}<{}>>(value, {{{}}});
         \\    }};
         \\}}
     ;
@@ -1763,7 +1763,7 @@ test "Outputs `Node` struct correctly" {
         \\
         \\export function isNode<T, U>(isT: svt.TypePredicate<T>, isU: svt.TypePredicate<U>): svt.TypePredicate<Node<T, U>> {
         \\    return function isNodeTU(value: unknown): value is Node<T, U> {
-        \\        return svt.isInstance<Node<T, U>>(value, {data: isT, otherData: isU});
+        \\        return svt.isInterface<Node<T, U>>(value, {data: isT, otherData: isU});
         \\    };
         \\}
         \\
