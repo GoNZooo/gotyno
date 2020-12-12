@@ -149,17 +149,29 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 
     const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
 
-    const tagged_structures_output = try outputTaggedStructures(
+    const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
         allocator,
+        plain_union.name,
         plain_union.constructors,
     );
 
-    const constructors_output = try outputConstructors(allocator, plain_union.constructors);
+    const tagged_structures_output = try outputTaggedStructures(
+        allocator,
+        plain_union.name,
+        plain_union.constructors,
+    );
+
+    const constructors_output = try outputConstructors(
+        allocator,
+        plain_union.name,
+        plain_union.constructors,
+    );
 
     const union_type_guard_output = try outputTypeGuardForPlainUnion(allocator, plain_union);
 
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
+        plain_union.name,
         plain_union.constructors,
         &[_][]const u8{},
     );
@@ -168,12 +180,15 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 
     const validators_output = try outputValidatorsForConstructors(
         allocator,
+        plain_union.name,
         plain_union.constructors,
         &[_][]const u8{},
     );
 
     const output_format =
         \\export type {} = {};
+        \\
+        \\{}
         \\
         \\{}
         \\
@@ -194,6 +209,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         .{
             plain_union.name,
             constructor_names_output,
+            union_tag_enum_output,
             tagged_structures_output,
             constructors_output,
             union_type_guard_output,
@@ -202,6 +218,32 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
             validators_output,
         },
     );
+}
+
+fn outputUnionTagEnumerationForConstructors(
+    allocator: *mem.Allocator,
+    name: []const u8,
+    constructors: []Constructor,
+) ![]const u8 {
+    var enumeration_tag_outputs = ArrayList([]const u8).init(allocator);
+    defer enumeration_tag_outputs.deinit();
+
+    for (constructors) |constructor| {
+        try enumeration_tag_outputs.append(
+            try fmt.allocPrint(allocator, "    {} = \"{}\",", .{ constructor.tag, constructor.tag }),
+        );
+    }
+
+    const enumeration_tag_output = try mem.join(allocator, "\n", enumeration_tag_outputs.items);
+    defer allocator.free(enumeration_tag_output);
+
+    const format =
+        \\export enum {}Tag {{
+        \\{}
+        \\}}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ name, enumeration_tag_output });
 }
 
 fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
@@ -267,14 +309,22 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
     }
     const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
 
+    const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
+        allocator,
+        generic_union.name,
+        generic_union.constructors,
+    );
+
     const tagged_structures_output = try outputTaggedMaybeGenericStructures(
         allocator,
+        generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
     );
 
     const constructors_output = try outputGenericConstructors(
         allocator,
+        generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
     );
@@ -283,6 +333,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
+        generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
     );
@@ -291,12 +342,15 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     const validators_output = try outputValidatorsForConstructors(
         allocator,
+        generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
     );
 
     const output_format =
         \\export type {}{} = {};
+        \\
+        \\{}
         \\
         \\{}
         \\
@@ -318,6 +372,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
             generic_union.name,
             open_names,
             constructor_names_output,
+            union_tag_enum_output,
             tagged_structures_output,
             constructors_output,
             union_type_guard_output,
@@ -806,6 +861,7 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
 fn outputConstructors(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructors: []Constructor,
 ) ![]const u8 {
     var constructor_outputs = ArrayList([]const u8).init(allocator);
@@ -814,6 +870,7 @@ fn outputConstructors(
     for (constructors) |constructor| {
         try constructor_outputs.append(try outputConstructor(
             allocator,
+            union_name,
             constructor,
             &[_][]const u8{},
         ));
@@ -824,6 +881,7 @@ fn outputConstructors(
 
 fn outputTypeGuardsForConstructors(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -832,7 +890,7 @@ fn outputTypeGuardsForConstructors(
 
     for (constructors) |constructor| {
         try type_guards.append(
-            try outputTypeGuardForConstructor(allocator, constructor, open_names),
+            try outputTypeGuardForConstructor(allocator, union_name, constructor, open_names),
         );
     }
 
@@ -841,6 +899,7 @@ fn outputTypeGuardsForConstructors(
 
 fn outputValidatorsForConstructors(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -848,7 +907,12 @@ fn outputValidatorsForConstructors(
     defer validators.deinit();
 
     for (constructors) |constructor| {
-        try validators.append(try outputValidatorForConstructor(allocator, constructor, open_names));
+        try validators.append(try outputValidatorForConstructor(
+            allocator,
+            union_name,
+            constructor,
+            open_names,
+        ));
     }
 
     return try mem.join(allocator, "\n\n", validators.items);
@@ -856,6 +920,7 @@ fn outputValidatorsForConstructors(
 
 fn outputConstructor(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -874,15 +939,18 @@ fn outputConstructor(
         open_names,
     );
 
+    const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
+    defer allocator.free(enumeration_tag_output);
+
     const output_format_with_data =
         \\export function {}{}(data: {}): {}{} {{
-        \\    return {{type: "{}", data}};
+        \\    return {{type: {}, data}};
         \\}}
     ;
 
     const output_format_without_data =
         \\export function {}(): {} {{
-        \\    return {{type: "{}"}};
+        \\    return {{type: {}}};
         \\}}
     ;
 
@@ -890,10 +958,29 @@ fn outputConstructor(
         try fmt.allocPrint(
             allocator,
             output_format_with_data,
-            .{ tag, open_names_output, specification, tag, open_names_output, tag },
+            .{
+                tag,
+                open_names_output,
+                specification,
+                tag,
+                open_names_output,
+                enumeration_tag_output,
+            },
         )
     else
-        try fmt.allocPrint(allocator, output_format_without_data, .{ tag, tag, tag });
+        try fmt.allocPrint(
+            allocator,
+            output_format_without_data,
+            .{ tag, tag, enumeration_tag_output },
+        );
+}
+
+fn outputEnumerationTag(
+    allocator: *mem.Allocator,
+    union_name: []const u8,
+    tag: []const u8,
+) ![]const u8 {
+    return try fmt.allocPrint(allocator, "{}Tag.{}", .{ union_name, tag });
 }
 
 fn outputConstructorName(
@@ -913,6 +1000,7 @@ fn outputConstructorName(
 
 fn outputTypeGuardForConstructor(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -958,16 +1046,18 @@ fn outputTypeGuardForConstructor(
     const output_format_with_open_names =
         \\export function is{}{}({}): svt.TypePredicate<{}{}> {{
         \\    return function is{}{}(value: unknown): value is {}{} {{
-        \\        return svt.isInterface<{}{}>(value, {{type: "{}"{}}});
+        \\        return svt.isInterface<{}{}>(value, {{type: {}{}}});
         \\    }};
         \\}}
     ;
 
     const output_format_without_open_names =
         \\export function is{}(value: unknown): value is {} {{
-        \\    return svt.isInterface<{}>(value, {{type: "{}"{}}});
+        \\    return svt.isInterface<{}>(value, {{type: {}{}}});
         \\}}
     ;
+
+    const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
 
     const type_guard_output = try getDataTypeGuardFromType(allocator, constructor.parameter);
 
@@ -987,7 +1077,7 @@ fn outputTypeGuardForConstructor(
                 open_names_output,
                 tag,
                 open_names_output,
-                tag,
+                enumeration_tag_output,
                 type_guard_output,
             },
         )
@@ -995,12 +1085,13 @@ fn outputTypeGuardForConstructor(
         try fmt.allocPrint(
             allocator,
             output_format_without_open_names,
-            .{ tag, tag, tag, tag, type_guard_output },
+            .{ tag, tag, tag, enumeration_tag_output, type_guard_output },
         );
 }
 
 fn outputValidatorForConstructor(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -1047,27 +1138,29 @@ fn outputValidatorForConstructor(
     const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
     defer allocator.free(parameters_output);
 
+    const union_enum_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
+
+    const validator_output = try getDataValidatorFromType(allocator, constructor.parameter);
+
     const format_without_open_names =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validate<{}>(value, {{type: "{}"{}}});
+        \\    return svt.validate<{}>(value, {{type: {}{}}});
         \\}}
     ;
 
     const format_with_open_names =
         \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
         \\    return function validate{}{}(value: unknown): svt.ValidationResult<{}<{}>> {{
-        \\        return svt.validate<{}<{}>>(value, {{type: "{}"{}}});
+        \\        return svt.validate<{}<{}>>(value, {{type: {}{}}});
         \\    }};
         \\}}
     ;
-
-    const validator_output = try getDataValidatorFromType(allocator, constructor.parameter);
 
     return if (constructor_open_names.items.len == 0)
         try fmt.allocPrint(
             allocator,
             format_without_open_names,
-            .{ tag, tag, tag, tag, validator_output },
+            .{ tag, tag, tag, union_enum_tag_output, validator_output },
         )
     else
         try fmt.allocPrint(
@@ -1085,7 +1178,7 @@ fn outputValidatorForConstructor(
                 open_names_output,
                 tag,
                 open_names_output,
-                tag,
+                union_enum_tag_output,
                 validator_output,
             },
         );
@@ -1379,12 +1472,20 @@ fn outputCommonOpenNames(
         try fmt.allocPrint(allocator, "<{}>", .{try mem.join(allocator, ", ", common_names.items)});
 }
 
-fn outputTaggedStructures(allocator: *mem.Allocator, constructors: []Constructor) ![]const u8 {
+fn outputTaggedStructures(
+    allocator: *mem.Allocator,
+    union_name: []const u8,
+    constructors: []Constructor,
+) ![]const u8 {
     var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
     defer tagged_structures_outputs.deinit();
 
     for (constructors) |constructor| {
-        try tagged_structures_outputs.append(try outputTaggedStructure(allocator, constructor));
+        try tagged_structures_outputs.append(try outputTaggedStructure(
+            allocator,
+            union_name,
+            constructor,
+        ));
     }
 
     return try mem.join(allocator, "\n\n", tagged_structures_outputs.items);
@@ -1392,6 +1493,7 @@ fn outputTaggedStructures(allocator: *mem.Allocator, constructors: []Constructor
 
 fn outputTaggedMaybeGenericStructures(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -1400,7 +1502,7 @@ fn outputTaggedMaybeGenericStructures(
 
     for (constructors) |constructor| {
         try tagged_structures_outputs.append(
-            try outputTaggedMaybeGenericStructure(allocator, constructor, open_names),
+            try outputTaggedMaybeGenericStructure(allocator, union_name, constructor, open_names),
         );
     }
 
@@ -1409,6 +1511,7 @@ fn outputTaggedMaybeGenericStructures(
 
 fn outputGenericConstructors(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -1418,6 +1521,7 @@ fn outputGenericConstructors(
     for (constructors) |constructor| {
         try constructor_outputs.append(try outputConstructor(
             allocator,
+            union_name,
             constructor,
             open_names,
         ));
@@ -1426,19 +1530,25 @@ fn outputGenericConstructors(
     return try mem.join(allocator, "\n\n", constructor_outputs.items);
 }
 
-fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![]const u8 {
+fn outputTaggedStructure(
+    allocator: *mem.Allocator,
+    union_name: []const u8,
+    constructor: Constructor,
+) ![]const u8 {
     const parameter_output = try outputType(allocator, constructor.parameter);
+
+    const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
 
     const output_format_with_parameter =
         \\export type {} = {{
-        \\    type: "{}";
+        \\    type: {};
         \\    data: {};
         \\}};
     ;
 
     const output_format_without_parameter =
         \\export type {} = {{
-        \\    type: "{}";
+        \\    type: {};
         \\}};
     ;
 
@@ -1446,18 +1556,19 @@ fn outputTaggedStructure(allocator: *mem.Allocator, constructor: Constructor) ![
         try fmt.allocPrint(
             allocator,
             output_format_with_parameter,
-            .{ constructor.tag, constructor.tag, output },
+            .{ constructor.tag, enumeration_tag_output, output },
         )
     else
         try fmt.allocPrint(
             allocator,
             output_format_without_parameter,
-            .{ constructor.tag, constructor.tag },
+            .{ constructor.tag, enumeration_tag_output },
         );
 }
 
 fn outputTaggedMaybeGenericStructure(
     allocator: *mem.Allocator,
+    union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -1468,16 +1579,18 @@ fn outputTaggedMaybeGenericStructure(
     else
         "";
 
+    const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
+
     const output_format =
         \\export type {}{} = {{
-        \\    type: "{}";{}
+        \\    type: {};{}
         \\}};
     ;
 
     return fmt.allocPrint(
         allocator,
         output_format,
-        .{ constructor.tag, open_names_output, constructor.tag, parameter_output },
+        .{ constructor.tag, open_names_output, enumeration_tag_output, parameter_output },
     );
 }
 
@@ -1795,48 +1908,56 @@ test "Outputs `Event` union correctly" {
     const expected_output =
         \\export type Event = LogIn | LogOut | JoinChannels | SetEmails | Close;
         \\
+        \\export enum EventTag {
+        \\    LogIn = "LogIn",
+        \\    LogOut = "LogOut",
+        \\    JoinChannels = "JoinChannels",
+        \\    SetEmails = "SetEmails",
+        \\    Close = "Close",
+        \\}
+        \\
         \\export type LogIn = {
-        \\    type: "LogIn";
+        \\    type: EventTag.LogIn;
         \\    data: LogInData;
         \\};
         \\
         \\export type LogOut = {
-        \\    type: "LogOut";
+        \\    type: EventTag.LogOut;
         \\    data: UserId;
         \\};
         \\
         \\export type JoinChannels = {
-        \\    type: "JoinChannels";
+        \\    type: EventTag.JoinChannels;
         \\    data: Channel[];
         \\};
         \\
         \\export type SetEmails = {
-        \\    type: "SetEmails";
+        \\    type: EventTag.SetEmails;
         \\    data: Email[];
         \\};
         \\
         \\export type Close = {
-        \\    type: "Close";
+        \\    type: EventTag.Close;
         \\};
         \\
         \\export function LogIn(data: LogInData): LogIn {
-        \\    return {type: "LogIn", data};
+        \\    return {type: EventTag.LogIn, data};
         \\}
         \\
         \\export function LogOut(data: UserId): LogOut {
-        \\    return {type: "LogOut", data};
+        \\    return {type: EventTag.LogOut, data};
         \\}
         \\
         \\export function JoinChannels(data: Channel[]): JoinChannels {
-        \\    return {type: "JoinChannels", data};
+        \\    return {type: EventTag.JoinChannels, data};
         \\}
         \\
         \\export function SetEmails(data: Email[]): SetEmails {
-        \\    return {type: "SetEmails", data};
+        \\    return {type: EventTag.SetEmails, data};
         \\}
         \\
         \\export function Close(): Close {
-        \\    return {type: "Close"};
+        \\    return {type: EventTag.Close};
         \\}
         \\
         \\export function isEvent(value: unknown): value is Event {
@@ -1844,23 +1965,23 @@ test "Outputs `Event` union correctly" {
         \\}
         \\
         \\export function isLogIn(value: unknown): value is LogIn {
-        \\    return svt.isInterface<LogIn>(value, {type: "LogIn", data: isLogInData});
+        \\    return svt.isInterface<LogIn>(value, {type: EventTag.LogIn, data: isLogInData});
         \\}
         \\
         \\export function isLogOut(value: unknown): value is LogOut {
-        \\    return svt.isInterface<LogOut>(value, {type: "LogOut", data: isUserId});
+        \\    return svt.isInterface<LogOut>(value, {type: EventTag.LogOut, data: isUserId});
         \\}
         \\
         \\export function isJoinChannels(value: unknown): value is JoinChannels {
-        \\    return svt.isInterface<JoinChannels>(value, {type: "JoinChannels", data: svt.arrayOf(isChannel)});
+        \\    return svt.isInterface<JoinChannels>(value, {type: EventTag.JoinChannels, data: svt.arrayOf(isChannel)});
         \\}
         \\
         \\export function isSetEmails(value: unknown): value is SetEmails {
-        \\    return svt.isInterface<SetEmails>(value, {type: "SetEmails", data: svt.arrayOf(isEmail)});
+        \\    return svt.isInterface<SetEmails>(value, {type: EventTag.SetEmails, data: svt.arrayOf(isEmail)});
         \\}
         \\
         \\export function isClose(value: unknown): value is Close {
-        \\    return svt.isInterface<Close>(value, {type: "Close"});
+        \\    return svt.isInterface<Close>(value, {type: EventTag.Close});
         \\}
         \\
         \\export function validateEvent(value: unknown): svt.ValidationResult<Event> {
@@ -1868,23 +1989,23 @@ test "Outputs `Event` union correctly" {
         \\}
         \\
         \\export function validateLogIn(value: unknown): svt.ValidationResult<LogIn> {
-        \\    return svt.validate<LogIn>(value, {type: "LogIn", data: validateLogInData});
+        \\    return svt.validate<LogIn>(value, {type: EventTag.LogIn, data: validateLogInData});
         \\}
         \\
         \\export function validateLogOut(value: unknown): svt.ValidationResult<LogOut> {
-        \\    return svt.validate<LogOut>(value, {type: "LogOut", data: validateUserId});
+        \\    return svt.validate<LogOut>(value, {type: EventTag.LogOut, data: validateUserId});
         \\}
         \\
         \\export function validateJoinChannels(value: unknown): svt.ValidationResult<JoinChannels> {
-        \\    return svt.validate<JoinChannels>(value, {type: "JoinChannels", data: svt.validateArray(validateChannel)});
+        \\    return svt.validate<JoinChannels>(value, {type: EventTag.JoinChannels, data: svt.validateArray(validateChannel)});
         \\}
         \\
         \\export function validateSetEmails(value: unknown): svt.ValidationResult<SetEmails> {
-        \\    return svt.validate<SetEmails>(value, {type: "SetEmails", data: svt.validateArray(validateEmail)});
+        \\    return svt.validate<SetEmails>(value, {type: EventTag.SetEmails, data: svt.validateArray(validateEmail)});
         \\}
         \\
         \\export function validateClose(value: unknown): svt.ValidationResult<Close> {
-        \\    return svt.validate<Close>(value, {type: "Close"});
+        \\    return svt.validate<Close>(value, {type: EventTag.Close});
         \\}
     ;
 
@@ -1909,21 +2030,26 @@ test "Outputs `Maybe` union correctly" {
     const expected_output =
         \\export type Maybe<T> = Just<T> | Nothing;
         \\
+        \\export enum MaybeTag {
+        \\    Just = "Just",
+        \\    Nothing = "Nothing",
+        \\}
+        \\
         \\export type Just<T> = {
-        \\    type: "Just";
+        \\    type: MaybeTag.Just;
         \\    data: T;
         \\};
         \\
         \\export type Nothing = {
-        \\    type: "Nothing";
+        \\    type: MaybeTag.Nothing;
         \\};
         \\
         \\export function Just<T>(data: T): Just<T> {
-        \\    return {type: "Just", data};
+        \\    return {type: MaybeTag.Just, data};
         \\}
         \\
         \\export function Nothing(): Nothing {
-        \\    return {type: "Nothing"};
+        \\    return {type: MaybeTag.Nothing};
         \\}
         \\
         \\export function isMaybe<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Maybe<T>> {
@@ -1934,12 +2060,12 @@ test "Outputs `Maybe` union correctly" {
         \\
         \\export function isJust<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Just<T>> {
         \\    return function isJustT(value: unknown): value is Just<T> {
-        \\        return svt.isInterface<Just<T>>(value, {type: "Just", data: isT});
+        \\        return svt.isInterface<Just<T>>(value, {type: MaybeTag.Just, data: isT});
         \\    };
         \\}
         \\
         \\export function isNothing(value: unknown): value is Nothing {
-        \\    return svt.isInterface<Nothing>(value, {type: "Nothing"});
+        \\    return svt.isInterface<Nothing>(value, {type: MaybeTag.Nothing});
         \\}
         \\
         \\export function validateMaybe<T>(validateT: svt.Validator<T>): svt.Validator<Maybe<T>> {
@@ -1950,12 +2076,12 @@ test "Outputs `Maybe` union correctly" {
         \\
         \\export function validateJust<T>(validateT: svt.Validator<T>): svt.Validator<Just<T>> {
         \\    return function validateJustT(value: unknown): svt.ValidationResult<Just<T>> {
-        \\        return svt.validate<Just<T>>(value, {type: "Just", data: validateT});
+        \\        return svt.validate<Just<T>>(value, {type: MaybeTag.Just, data: validateT});
         \\    };
         \\}
         \\
         \\export function validateNothing(value: unknown): svt.ValidationResult<Nothing> {
-        \\    return svt.validate<Nothing>(value, {type: "Nothing"});
+        \\    return svt.validate<Nothing>(value, {type: MaybeTag.Nothing});
         \\}
     ;
 
@@ -1980,22 +2106,27 @@ test "Outputs `Either` union correctly" {
     const expected_output =
         \\export type Either<E, T> = Left<E> | Right<T>;
         \\
+        \\export enum EitherTag {
+        \\    Left = "Left",
+        \\    Right = "Right",
+        \\}
+        \\
         \\export type Left<E> = {
-        \\    type: "Left";
+        \\    type: EitherTag.Left;
         \\    data: E;
         \\};
         \\
         \\export type Right<T> = {
-        \\    type: "Right";
+        \\    type: EitherTag.Right;
         \\    data: T;
         \\};
         \\
         \\export function Left<E>(data: E): Left<E> {
-        \\    return {type: "Left", data};
+        \\    return {type: EitherTag.Left, data};
         \\}
         \\
         \\export function Right<T>(data: T): Right<T> {
-        \\    return {type: "Right", data};
+        \\    return {type: EitherTag.Right, data};
         \\}
         \\
         \\export function isEither<E, T>(isE: svt.TypePredicate<E>, isT: svt.TypePredicate<T>): svt.TypePredicate<Either<E, T>> {
@@ -2006,13 +2137,13 @@ test "Outputs `Either` union correctly" {
         \\
         \\export function isLeft<E>(isE: svt.TypePredicate<E>): svt.TypePredicate<Left<E>> {
         \\    return function isLeftE(value: unknown): value is Left<E> {
-        \\        return svt.isInterface<Left<E>>(value, {type: "Left", data: isE});
+        \\        return svt.isInterface<Left<E>>(value, {type: EitherTag.Left, data: isE});
         \\    };
         \\}
         \\
         \\export function isRight<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Right<T>> {
         \\    return function isRightT(value: unknown): value is Right<T> {
-        \\        return svt.isInterface<Right<T>>(value, {type: "Right", data: isT});
+        \\        return svt.isInterface<Right<T>>(value, {type: EitherTag.Right, data: isT});
         \\    };
         \\}
         \\
@@ -2024,13 +2155,13 @@ test "Outputs `Either` union correctly" {
         \\
         \\export function validateLeft<E>(validateE: svt.Validator<E>): svt.Validator<Left<E>> {
         \\    return function validateLeftE(value: unknown): svt.ValidationResult<Left<E>> {
-        \\        return svt.validate<Left<E>>(value, {type: "Left", data: validateE});
+        \\        return svt.validate<Left<E>>(value, {type: EitherTag.Left, data: validateE});
         \\    };
         \\}
         \\
         \\export function validateRight<T>(validateT: svt.Validator<T>): svt.Validator<Right<T>> {
         \\    return function validateRightT(value: unknown): svt.ValidationResult<Right<T>> {
-        \\        return svt.validate<Right<T>>(value, {type: "Right", data: validateT});
+        \\        return svt.validate<Right<T>>(value, {type: EitherTag.Right, data: validateT});
         \\    };
         \\}
     ;
@@ -2088,31 +2219,37 @@ test "Outputs struct with different `Maybe`s correctly" {
     const expected_output =
         \\export type WithMaybe<T, E> = WithConcrete | WithGeneric<T> | WithBare<E>;
         \\
+        \\export enum WithMaybeTag {
+        \\    WithConcrete = "WithConcrete",
+        \\    WithGeneric = "WithGeneric",
+        \\    WithBare = "WithBare",
+        \\}
+        \\
         \\export type WithConcrete = {
-        \\    type: "WithConcrete";
+        \\    type: WithMaybeTag.WithConcrete;
         \\    data: Maybe<string>;
         \\};
         \\
         \\export type WithGeneric<T> = {
-        \\    type: "WithGeneric";
+        \\    type: WithMaybeTag.WithGeneric;
         \\    data: Maybe<T>;
         \\};
         \\
         \\export type WithBare<E> = {
-        \\    type: "WithBare";
+        \\    type: WithMaybeTag.WithBare;
         \\    data: E;
         \\};
         \\
         \\export function WithConcrete(data: Maybe<string>): WithConcrete {
-        \\    return {type: "WithConcrete", data};
+        \\    return {type: WithMaybeTag.WithConcrete, data};
         \\}
         \\
         \\export function WithGeneric<T>(data: Maybe<T>): WithGeneric<T> {
-        \\    return {type: "WithGeneric", data};
+        \\    return {type: WithMaybeTag.WithGeneric, data};
         \\}
         \\
         \\export function WithBare<E>(data: E): WithBare<E> {
-        \\    return {type: "WithBare", data};
+        \\    return {type: WithMaybeTag.WithBare, data};
         \\}
         \\
         \\export function isWithMaybe<T, E>(isT: svt.TypePredicate<T>, isE: svt.TypePredicate<E>): svt.TypePredicate<WithMaybe<T, E>> {
@@ -2122,18 +2259,18 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\}
         \\
         \\export function isWithConcrete(value: unknown): value is WithConcrete {
-        \\    return svt.isInterface<WithConcrete>(value, {type: "WithConcrete", data: isMaybe(svt.isString)});
+        \\    return svt.isInterface<WithConcrete>(value, {type: WithMaybeTag.WithConcrete, data: isMaybe(svt.isString)});
         \\}
         \\
         \\export function isWithGeneric<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<WithGeneric<T>> {
         \\    return function isWithGenericT(value: unknown): value is WithGeneric<T> {
-        \\        return svt.isInterface<WithGeneric<T>>(value, {type: "WithGeneric", data: isMaybe(isT)});
+        \\        return svt.isInterface<WithGeneric<T>>(value, {type: WithMaybeTag.WithGeneric, data: isMaybe(isT)});
         \\    };
         \\}
         \\
         \\export function isWithBare<E>(isE: svt.TypePredicate<E>): svt.TypePredicate<WithBare<E>> {
         \\    return function isWithBareE(value: unknown): value is WithBare<E> {
-        \\        return svt.isInterface<WithBare<E>>(value, {type: "WithBare", data: isE});
+        \\        return svt.isInterface<WithBare<E>>(value, {type: WithMaybeTag.WithBare, data: isE});
         \\    };
         \\}
         \\
@@ -2144,18 +2281,18 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\}
         \\
         \\export function validateWithConcrete(value: unknown): svt.ValidationResult<WithConcrete> {
-        \\    return svt.validate<WithConcrete>(value, {type: "WithConcrete", data: validateMaybe(svt.validateString)});
+        \\    return svt.validate<WithConcrete>(value, {type: WithMaybeTag.WithConcrete, data: validateMaybe(svt.validateString)});
         \\}
         \\
         \\export function validateWithGeneric<T>(validateT: svt.Validator<T>): svt.Validator<WithGeneric<T>> {
         \\    return function validateWithGenericT(value: unknown): svt.ValidationResult<WithGeneric<T>> {
-        \\        return svt.validate<WithGeneric<T>>(value, {type: "WithGeneric", data: validateMaybe(validateT)});
+        \\        return svt.validate<WithGeneric<T>>(value, {type: WithMaybeTag.WithGeneric, data: validateMaybe(validateT)});
         \\    };
         \\}
         \\
         \\export function validateWithBare<E>(validateE: svt.Validator<E>): svt.Validator<WithBare<E>> {
         \\    return function validateWithBareE(value: unknown): svt.ValidationResult<WithBare<E>> {
-        \\        return svt.validate<WithBare<E>>(value, {type: "WithBare", data: validateE});
+        \\        return svt.validate<WithBare<E>>(value, {type: WithMaybeTag.WithBare, data: validateE});
         \\    };
         \\}
     ;
@@ -2181,21 +2318,26 @@ test "Outputs `List` union correctly" {
     const expected_output =
         \\export type List<T> = Empty | Cons<T>;
         \\
+        \\export enum ListTag {
+        \\    Empty = "Empty",
+        \\    Cons = "Cons",
+        \\}
+        \\
         \\export type Empty = {
-        \\    type: "Empty";
+        \\    type: ListTag.Empty;
         \\};
         \\
         \\export type Cons<T> = {
-        \\    type: "Cons";
+        \\    type: ListTag.Cons;
         \\    data: List<T>;
         \\};
         \\
         \\export function Empty(): Empty {
-        \\    return {type: "Empty"};
+        \\    return {type: ListTag.Empty};
         \\}
         \\
         \\export function Cons<T>(data: List<T>): Cons<T> {
-        \\    return {type: "Cons", data};
+        \\    return {type: ListTag.Cons, data};
         \\}
         \\
         \\export function isList<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<List<T>> {
@@ -2205,12 +2347,12 @@ test "Outputs `List` union correctly" {
         \\}
         \\
         \\export function isEmpty(value: unknown): value is Empty {
-        \\    return svt.isInterface<Empty>(value, {type: "Empty"});
+        \\    return svt.isInterface<Empty>(value, {type: ListTag.Empty});
         \\}
         \\
         \\export function isCons<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Cons<T>> {
         \\    return function isConsT(value: unknown): value is Cons<T> {
-        \\        return svt.isInterface<Cons<T>>(value, {type: "Cons", data: isList(isT)});
+        \\        return svt.isInterface<Cons<T>>(value, {type: ListTag.Cons, data: isList(isT)});
         \\    };
         \\}
         \\
@@ -2221,12 +2363,12 @@ test "Outputs `List` union correctly" {
         \\}
         \\
         \\export function validateEmpty(value: unknown): svt.ValidationResult<Empty> {
-        \\    return svt.validate<Empty>(value, {type: "Empty"});
+        \\    return svt.validate<Empty>(value, {type: ListTag.Empty});
         \\}
         \\
         \\export function validateCons<T>(validateT: svt.Validator<T>): svt.Validator<Cons<T>> {
         \\    return function validateConsT(value: unknown): svt.ValidationResult<Cons<T>> {
-        \\        return svt.validate<Cons<T>>(value, {type: "Cons", data: validateList(validateT)});
+        \\        return svt.validate<Cons<T>>(value, {type: ListTag.Cons, data: validateList(validateT)});
         \\    };
         \\}
     ;
