@@ -9,6 +9,6 @@
     "gotyno": "./scripts/cli.js"
   },
   "dependencies": {
-    "simple-validation-tools": "GoNZooo/simple-validation-tools#2ae3fce38ccfc44e13e30f884d92bce778c6ebfd"
+    "simple-validation-tools": "GoNZooo/simple-validation-tools#e5b2640ae7b472e25acd4170d36035111fc97595"
   }
 }
