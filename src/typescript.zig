@@ -116,7 +116,7 @@ fn outputEnumerationTypeGuard(
 
     const format =
         \\export function is{}(value: unknown): value is {} {{
-        \\    return [{}].includes(value);
+        \\    return [{}].some((v) => v === value);
         \\}}
     ;
 
@@ -132,7 +132,11 @@ fn outputEnumerationValidator(
     defer tag_outputs.deinit();
 
     for (fields) |field| {
-        try tag_outputs.append(try fmt.allocPrint(allocator, "{}.{}", .{ name, field.tag }));
+        try tag_outputs.append(try fmt.allocPrint(
+            allocator,
+            "svt.validateConstant<{}.{}>({}.{})",
+            .{ name, field.tag, name, field.tag },
+        ));
     }
 
     const tags_output = try mem.join(allocator, ", ", tag_outputs.items);
@@ -2674,11 +2678,11 @@ test "basic string-based enumeration is output correctly" {
         \\}
         \\
         \\export function isBackdropSize(value: unknown): value is BackdropSize {
-        \\    return [BackdropSize.w300, BackdropSize.w1280, BackdropSize.original].includes(value);
+        \\    return [BackdropSize.w300, BackdropSize.w1280, BackdropSize.original].some((v) => v === value);
         \\}
         \\
         \\export function validateBackdropSize(value: unknown): svt.ValidationResult<BackdropSize> {
-        \\    return svt.validateOneOf<BackdropSize>(value, [BackdropSize.w300, BackdropSize.w1280, BackdropSize.original]);
+        \\    return svt.validateOneOf<BackdropSize>(value, [svt.validateConstant<BackdropSize.w300>(BackdropSize.w300), svt.validateConstant<BackdropSize.w1280>(BackdropSize.w1280), svt.validateConstant<BackdropSize.original>(BackdropSize.original)]);
         \\}
     ;
 
