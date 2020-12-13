@@ -12,6 +12,8 @@ const tokenizer = @import("./freeform/tokenizer.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 
 const Definition = parser.Definition;
+const UntaggedUnion = parser.UntaggedUnion;
+const UntaggedUnionValue = parser.UntaggedUnionValue;
 const Enumeration = parser.Enumeration;
 const EnumerationField = parser.EnumerationField;
 const PlainStructure = parser.PlainStructure;
@@ -51,13 +53,83 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
                 .generic => |generic| try outputGenericUnion(allocator, generic),
             },
             .enumeration => |enumeration| try outputEnumeration(allocator, enumeration),
-            .untagged_union => unreachable,
+            .untagged_union => |u| try outputUntaggedUnion(allocator, u),
         };
 
         try outputs.append(output);
     }
 
     return try mem.join(allocator, "\n\n", outputs.items);
+}
+
+fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+    var value_union_outputs = ArrayList([]const u8).init(allocator);
+    defer value_union_outputs.deinit();
+
+    for (u.values) |value| {
+        try value_union_outputs.append(value.name);
+    }
+
+    const value_union_output = try mem.join(allocator, " | ", value_union_outputs.items);
+    defer allocator.free(value_union_output);
+
+    const type_guard_output = try outputTypeGuardForUntaggedUnion(allocator, u);
+
+    const validator_output = try outputValidatorForUntaggedUnion(allocator, u);
+
+    const format =
+        \\export type {} = {};
+        \\
+        \\{}
+        \\
+        \\{}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ u.name, value_union_output, type_guard_output, validator_output },
+    );
+}
+
+fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+    var predicate_outputs = ArrayList([]const u8).init(allocator);
+    defer predicate_outputs.deinit();
+
+    for (u.values) |value| {
+        try predicate_outputs.append(try fmt.allocPrint(allocator, "is{}", .{value.name}));
+    }
+
+    const predicates_output = try mem.join(allocator, ", ", predicate_outputs.items);
+    defer allocator.free(predicates_output);
+
+    const format =
+        \\export function is{}(value: unknown): value is {} {{
+        \\    return [{}].some((typePredicate) => typePredicate(value));
+        \\}}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ u.name, u.name, predicates_output });
+}
+
+fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+    var validator_outputs = ArrayList([]const u8).init(allocator);
+    defer validator_outputs.deinit();
+
+    for (u.values) |value| {
+        try validator_outputs.append(try fmt.allocPrint(allocator, "validate{}", .{value.name}));
+    }
+
+    const validators_output = try mem.join(allocator, ", ", validator_outputs.items);
+    defer allocator.free(validators_output);
+
+    const format =
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
+        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\}}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ u.name, u.name, u.name, validators_output });
 }
 
 fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]const u8 {
@@ -2698,6 +2770,44 @@ test "basic string-based enumeration is output correctly" {
     const output = try outputEnumeration(
         &allocator.allocator,
         parsed_definitions.success.definitions[0].enumeration,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "basic untagged union is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\untagged union KnownFor {
+        \\    KnownForMovie
+        \\    KnownForShow
+        \\}
+    ;
+
+    const expected_output =
+        \\export type KnownFor = KnownForMovie | KnownForShow;
+        \\
+        \\export function isKnownFor(value: unknown): value is KnownFor {
+        \\    return [isKnownForMovie, isKnownForShow].some((typePredicate) => typePredicate(value));
+        \\}
+        \\
+        \\export function validateKnownFor(value: unknown): svt.ValidationResult<KnownFor> {
+        \\    return svt.validateOneOf<KnownFor>(value, [validateKnownForMovie, validateKnownForShow]);
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output = try outputUntaggedUnion(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[0].untagged_union,
     );
 
     testing.expectEqualStrings(output, expected_output);
