@@ -22,6 +22,7 @@ pub const Definition = union(enum) {
     structure: Structure,
     @"union": Union,
     enumeration: Enumeration,
+    untagged_union: UntaggedUnion,
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
@@ -29,6 +30,39 @@ pub const Definition = union(enum) {
             .@"union" => |u| meta.activeTag(other) == .@"union" and u.isEqual(other.@"union"),
             .enumeration => |e| meta.activeTag(other) == .enumeration and
                 e.isEqual(other.enumeration),
+            .untagged_union => |u| meta.activeTag(other) == .untagged_union and
+                u.isEqual(other.untagged_union),
+        };
+    }
+};
+
+pub const UntaggedUnion = struct {
+    const Self = @This();
+
+    name: []const u8,
+    values: []UntaggedUnionValue,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (!mem.eql(u8, self.name, other.name)) return false;
+
+        if (self.values.len != other.values.len) return false;
+
+        for (self.values) |value, i| {
+            if (!value.isEqual(other.values[i])) return false;
+        }
+
+        return true;
+    }
+};
+
+pub const UntaggedUnionValue = union(enum) {
+    const Self = @This();
+
+    name: []const u8,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return switch (self) {
+            .name => |n| meta.activeTag(other) == .name and mem.eql(u8, n, other.name),
         };
     }
 };
@@ -41,6 +75,8 @@ pub const Enumeration = struct {
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
+
+        if (self.fields.len != other.fields.len) return false;
 
         for (self.fields) |field, i| {
             if (!field.isEqual(other.fields[i])) return false;
@@ -408,6 +444,16 @@ pub const DefinitionIterator = struct {
                         _ = try self.token_iterator.expect(Token.space, self.expect_error);
 
                         return Definition{ .enumeration = try self.parseEnumerationDefinition() };
+                    } else if (mem.eql(u8, s, "untagged")) {
+                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
+                        const union_keyword = (try self.token_iterator.expect(
+                            Token.symbol,
+                            self.expect_error,
+                        )).symbol;
+                        debug.assert(mem.eql(u8, union_keyword, "union"));
+                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
+
+                        return Definition{ .untagged_union = try self.parseUntaggedUnionDefinition() };
                     }
                 },
                 else => {},
@@ -415,6 +461,36 @@ pub const DefinitionIterator = struct {
         }
 
         return null;
+    }
+
+    fn parseUntaggedUnionDefinition(self: *Self) !UntaggedUnion {
+        const tokens = &self.token_iterator;
+
+        const name = (try tokens.expect(Token.name, self.expect_error)).name;
+
+        _ = try tokens.expect(Token.space, self.expect_error);
+        _ = try tokens.expect(Token.left_brace, self.expect_error);
+        _ = try tokens.expect(Token.newline, self.expect_error);
+
+        var values = ArrayList(UntaggedUnionValue).init(self.allocator);
+        var done_parsing_values = false;
+        while (!done_parsing_values) {
+            try tokens.skipMany(Token.space, 4, self.expect_error);
+            const value_name = (try tokens.expect(Token.name, self.expect_error)).name;
+
+            _ = try tokens.expect(Token.newline, self.expect_error);
+
+            if (try tokens.peek()) |t| {
+                switch (t) {
+                    .right_brace => done_parsing_values = true,
+                    else => {},
+                }
+            }
+
+            try values.append(UntaggedUnionValue{ .name = value_name });
+        }
+
+        return UntaggedUnion{ .name = name, .values = values.items };
     }
 
     fn parseEnumerationDefinition(self: *Self) !Enumeration {
@@ -1094,6 +1170,43 @@ test "Parsing basic string-based enumeration" {
     }
 }
 
+test "Parsing untagged union" {
+    var allocator = TestingAllocator{};
+
+    var expected_values = [_]UntaggedUnionValue{
+        .{ .name = "KnownForShow" },
+        .{ .name = "KnownForMovie" },
+    };
+
+    const expected_definitions = [_]Definition{.{
+        .untagged_union = UntaggedUnion{
+            .name = "KnownFor",
+            .values = &expected_values,
+        },
+    }};
+
+    const definition_buffer =
+        \\untagged union KnownFor {
+        \\    KnownForShow
+        \\    KnownForMovie
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    switch (parsed_definitions) {
+        .success => |parsed| {
+            expectEqualDefinitions(&expected_definitions, parsed.definitions);
+        },
+    }
+}
+
 test "Parsing invalid normal structure" {
     var allocator = TestingAllocator{};
     var expect_error: ExpectError = undefined;
@@ -1303,6 +1416,10 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
                 .enumeration => |e| {
                     expectEqualEnumerations(e, b.enumeration);
                 },
+
+                .untagged_union => |u| {
+                    expectEqualUntaggedUnions(u, b.untagged_union);
+                },
             }
         }
     }
@@ -1362,6 +1479,30 @@ fn expectEqualEnumerations(a: Enumeration, b: Enumeration) void {
             debug.print("Field at index {} is different:\n", .{i});
             debug.print("\tExpected: {}\n", .{field});
             testing_utilities.testPanic("\tGot: {}\n", .{b.fields[i]});
+        }
+    }
+}
+
+fn expectEqualUntaggedUnions(a: UntaggedUnion, b: UntaggedUnion) void {
+    if (!mem.eql(u8, a.name, b.name)) {
+        testing_utilities.testPanic(
+            "Untagged union names do not match: {} != {}\n",
+            .{ a.name, b.name },
+        );
+    }
+
+    if (a.values.len != b.values.len) {
+        testing_utilities.testPanic(
+            "Different amount of values for untagged unions: {} != {}\n",
+            .{ a.values.len, b.values.len },
+        );
+    }
+
+    for (a.values) |field, i| {
+        if (!field.isEqual(b.values[i])) {
+            debug.print("Value at index {} is different:\n", .{i});
+            debug.print("\tExpected: {}\n", .{field});
+            testing_utilities.testPanic("\tGot: {}\n", .{b.values[i]});
         }
     }
 }

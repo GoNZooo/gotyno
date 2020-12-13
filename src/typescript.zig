@@ -51,6 +51,7 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
                 .generic => |generic| try outputGenericUnion(allocator, generic),
             },
             .enumeration => |enumeration| try outputEnumeration(allocator, enumeration),
+            .untagged_union => unreachable,
         };
 
         try outputs.append(output);
