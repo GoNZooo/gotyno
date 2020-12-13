@@ -21,20 +21,58 @@ pub const Definition = union(enum) {
 
     structure: Structure,
     @"union": Union,
+    enumeration: Enumeration,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        switch (self) {
-            .structure => |structure| {
-                return meta.activeTag(other) == .structure and
-                    self.structure.isEqual(other.structure);
-            },
-            .@"union" => |u| {
-                return meta.activeTag(other) == .@"union" and
-                    self.@"union".isEqual(other.@"union");
-            },
+        return switch (self) {
+            .structure => |s| meta.activeTag(other) == .structure and s.isEqual(other.structure),
+            .@"union" => |u| meta.activeTag(other) == .@"union" and u.isEqual(other.@"union"),
+            .enumeration => |e| meta.activeTag(other) == .enumeration and
+                e.isEqual(other.enumeration),
+        };
+    }
+};
+
+pub const Enumeration = struct {
+    const Self = @This();
+
+    name: []const u8,
+    fields: []EnumerationField,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (!mem.eql(u8, self.name, other.name)) return false;
+
+        for (self.fields) |field, i| {
+            if (!field.isEqual(other.fields[i])) return false;
         }
 
         return true;
+    }
+};
+
+pub const EnumerationField = struct {
+    const Self = @This();
+
+    tag: []const u8,
+    value: EnumerationValue,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return mem.eql(u8, self.tag, other.tag) and self.value.isEqual(other.value);
+    }
+};
+
+pub const EnumerationValue = union(enum) {
+    const Self = @This();
+
+    string: []const u8,
+    unsigned_integer: u64,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return switch (self) {
+            .string => |s| meta.activeTag(other) == .string and mem.eql(u8, s, other.string),
+            .unsigned_integer => |ui| meta.activeTag(other) == .unsigned_integer and
+                ui == other.unsigned_integer,
+        };
     }
 };
 
@@ -366,6 +404,10 @@ pub const DefinitionIterator = struct {
                         _ = try self.token_iterator.expect(Token.space, self.expect_error);
 
                         return Definition{ .@"union" = try self.parseUnionDefinition() };
+                    } else if (mem.eql(u8, s, "enum")) {
+                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
+
+                        return Definition{ .enumeration = try self.parseEnumerationDefinition() };
                     }
                 },
                 else => {},
@@ -373,6 +415,55 @@ pub const DefinitionIterator = struct {
         }
 
         return null;
+    }
+
+    fn parseEnumerationDefinition(self: *Self) !Enumeration {
+        const tokens = &self.token_iterator;
+
+        const name = (try tokens.expect(Token.name, self.expect_error)).name;
+
+        _ = try tokens.expect(Token.space, self.expect_error);
+        _ = try tokens.expect(Token.left_brace, self.expect_error);
+        _ = try tokens.expect(Token.newline, self.expect_error);
+
+        var fields = ArrayList(EnumerationField).init(self.allocator);
+        var done_parsing_fields = false;
+        while (!done_parsing_fields) {
+            try tokens.skipMany(Token.space, 4, self.expect_error);
+            const tag = switch (try tokens.expectOneOf(
+                &[_]TokenTag{ .symbol, .name },
+                self.expect_error,
+            )) {
+                .symbol => |s| s,
+                .name => |n| n,
+                else => unreachable,
+            };
+
+            _ = try tokens.expect(Token.space, self.expect_error);
+            _ = try tokens.expect(Token.equals, self.expect_error);
+            _ = try tokens.expect(Token.space, self.expect_error);
+
+            const value = switch (try tokens.expectOneOf(
+                &[_]TokenTag{ .string, .unsigned_integer },
+                self.expect_error,
+            )) {
+                .string => |s| EnumerationValue{ .string = s },
+                .unsigned_integer => |ui| EnumerationValue{ .unsigned_integer = ui },
+                else => unreachable,
+            };
+
+            _ = try tokens.expect(Token.newline, self.expect_error);
+            if (try tokens.peek()) |t| {
+                switch (t) {
+                    .right_brace => done_parsing_fields = true,
+                    else => {},
+                }
+            }
+
+            try fields.append(EnumerationField{ .tag = tag, .value = value });
+        }
+
+        return Enumeration{ .name = name, .fields = fields.items };
     }
 
     pub fn parseStructureDefinition(self: *Self) !Structure {
@@ -964,6 +1055,45 @@ test "Parsing `List` union" {
     }
 }
 
+test "Parsing basic string-based enumeration" {
+    var allocator = TestingAllocator{};
+
+    var expected_fields = [_]EnumerationField{
+        .{ .tag = "w300", .value = EnumerationValue{ .string = "w300" } },
+        .{ .tag = "original", .value = EnumerationValue{ .string = "original" } },
+        .{ .tag = "number", .value = EnumerationValue{ .unsigned_integer = 42 } },
+    };
+
+    const expected_definitions = [_]Definition{.{
+        .enumeration = Enumeration{
+            .name = "BackdropSize",
+            .fields = &expected_fields,
+        },
+    }};
+
+    const definition_buffer =
+        \\enum BackdropSize {
+        \\    w300 = "w300"
+        \\    original = "original"
+        \\    number = 42
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    switch (parsed_definitions) {
+        .success => |parsed| {
+            expectEqualDefinitions(&expected_definitions, parsed.definitions);
+        },
+    }
+}
+
 test "Parsing invalid normal structure" {
     var allocator = TestingAllocator{};
     var expect_error: ExpectError = undefined;
@@ -1136,6 +1266,7 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
                         .plain => {},
                     }
                 },
+
                 .@"union" => |u| {
                     switch (u) {
                         .plain => |plain| {
@@ -1167,6 +1298,10 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
                             expectEqualOpenNames(generic.open_names, b.@"union".generic.open_names);
                         },
                     }
+                },
+
+                .enumeration => |e| {
+                    expectEqualEnumerations(e, b.enumeration);
                 },
             }
         }
@@ -1203,6 +1338,30 @@ fn expectEqualConstructors(as: []const Constructor, bs: []const Constructor) voi
                 "Different constructor at index {}:\n\tExpected: {}\n\tGot: {}\n",
                 .{ i, a, b },
             );
+        }
+    }
+}
+
+fn expectEqualEnumerations(a: Enumeration, b: Enumeration) void {
+    if (!mem.eql(u8, a.name, b.name)) {
+        testing_utilities.testPanic(
+            "Enumeration names do not match: {} != {}\n",
+            .{ a.name, b.name },
+        );
+    }
+
+    if (a.fields.len != b.fields.len) {
+        testing_utilities.testPanic(
+            "Different amount of fields for enumerations: {} != {}\n",
+            .{ a.fields.len, b.fields.len },
+        );
+    }
+
+    for (a.fields) |field, i| {
+        if (!field.isEqual(b.fields[i])) {
+            debug.print("Field at index {} is different:\n", .{i});
+            debug.print("\tExpected: {}\n", .{field});
+            testing_utilities.testPanic("\tGot: {}\n", .{b.fields[i]});
         }
     }
 }

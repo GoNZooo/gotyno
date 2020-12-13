@@ -48,6 +48,8 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
                 .plain => |plain| try outputPlainUnion(allocator, plain),
                 .generic => |generic| try outputGenericUnion(allocator, generic),
             },
+            // @TODO: add enumeration output
+            .enumeration => unreachable,
         };
 
         try outputs.append(output);
