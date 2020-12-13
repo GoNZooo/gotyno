@@ -12,6 +12,8 @@ const tokenizer = @import("./freeform/tokenizer.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 
 const Definition = parser.Definition;
+const Enumeration = parser.Enumeration;
+const EnumerationField = parser.EnumerationField;
 const PlainStructure = parser.PlainStructure;
 const GenericStructure = parser.GenericStructure;
 const PlainUnion = parser.PlainUnion;
@@ -48,14 +50,45 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
                 .plain => |plain| try outputPlainUnion(allocator, plain),
                 .generic => |generic| try outputGenericUnion(allocator, generic),
             },
-            // @TODO: add enumeration output
-            .enumeration => unreachable,
+            .enumeration => |enumeration| try outputEnumeration(allocator, enumeration),
         };
 
         try outputs.append(output);
     }
 
     return try mem.join(allocator, "\n\n", outputs.items);
+}
+
+fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]const u8 {
+    var field_outputs = ArrayList([]const u8).init(allocator);
+    defer field_outputs.deinit();
+
+    for (enumeration.fields) |field| {
+        try field_outputs.append(try outputEnumerationField(allocator, field));
+    }
+
+    const fields_output = try mem.join(allocator, "\n", field_outputs.items);
+    defer allocator.free(fields_output);
+
+    const format =
+        \\export enum {} {{
+        \\{}
+        \\}}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ enumeration.name, fields_output });
+}
+
+fn outputEnumerationField(allocator: *mem.Allocator, field: EnumerationField) ![]const u8 {
+    const value_output = switch (field.value) {
+        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .unsigned_integer => |ui| try fmt.allocPrint(allocator, "{}", .{ui}),
+    };
+    defer allocator.free(value_output);
+
+    const format = "    {} = {},";
+
+    return try fmt.allocPrint(allocator, format, .{ field.tag, value_output });
 }
 
 fn outputPlainStructure(
@@ -2549,6 +2582,41 @@ test "lowercase plain union has correct output" {
     const output = try outputPlainUnion(
         &allocator.allocator,
         parsed_definitions.success.definitions[0].@"union".plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "basic string-based enumeration is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\enum BackdropSize {
+        \\    w300 = "w300"
+        \\    w1280 = "w1280"
+        \\    original = "original"
+        \\}
+    ;
+
+    const expected_output =
+        \\export enum BackdropSize {
+        \\    w300 = "w300",
+        \\    w1280 = "w1280",
+        \\    original = "original",
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output = try outputEnumeration(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[0].enumeration,
     );
 
     testing.expectEqualStrings(output, expected_output);
