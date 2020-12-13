@@ -70,13 +70,81 @@ fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]con
     const fields_output = try mem.join(allocator, "\n", field_outputs.items);
     defer allocator.free(fields_output);
 
+    const type_guard_output = try outputEnumerationTypeGuard(
+        allocator,
+        enumeration.name,
+        enumeration.fields,
+    );
+
+    const validator_output = try outputEnumerationValidator(
+        allocator,
+        enumeration.name,
+        enumeration.fields,
+    );
+
     const format =
         \\export enum {} {{
         \\{}
         \\}}
+        \\
+        \\{}
+        \\
+        \\{}
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ enumeration.name, fields_output });
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ enumeration.name, fields_output, type_guard_output, validator_output },
+    );
+}
+
+fn outputEnumerationTypeGuard(
+    allocator: *mem.Allocator,
+    name: []const u8,
+    fields: []EnumerationField,
+) ![]const u8 {
+    var tag_outputs = ArrayList([]const u8).init(allocator);
+    defer tag_outputs.deinit();
+
+    for (fields) |field| {
+        try tag_outputs.append(try fmt.allocPrint(allocator, "{}.{}", .{ name, field.tag }));
+    }
+
+    const tags_output = try mem.join(allocator, ", ", tag_outputs.items);
+    defer allocator.free(tags_output);
+
+    const format =
+        \\export function is{}(value: unknown): value is {} {{
+        \\    return [{}].includes(value);
+        \\}}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ name, name, tags_output });
+}
+
+fn outputEnumerationValidator(
+    allocator: *mem.Allocator,
+    name: []const u8,
+    fields: []EnumerationField,
+) ![]const u8 {
+    var tag_outputs = ArrayList([]const u8).init(allocator);
+    defer tag_outputs.deinit();
+
+    for (fields) |field| {
+        try tag_outputs.append(try fmt.allocPrint(allocator, "{}.{}", .{ name, field.tag }));
+    }
+
+    const tags_output = try mem.join(allocator, ", ", tag_outputs.items);
+    defer allocator.free(tags_output);
+
+    const format =
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
+        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\}}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ name, name, name, tags_output });
 }
 
 fn outputEnumerationField(allocator: *mem.Allocator, field: EnumerationField) ![]const u8 {
@@ -2603,6 +2671,14 @@ test "basic string-based enumeration is output correctly" {
         \\    w300 = "w300",
         \\    w1280 = "w1280",
         \\    original = "original",
+        \\}
+        \\
+        \\export function isBackdropSize(value: unknown): value is BackdropSize {
+        \\    return [BackdropSize.w300, BackdropSize.w1280, BackdropSize.original].includes(value);
+        \\}
+        \\
+        \\export function validateBackdropSize(value: unknown): svt.ValidationResult<BackdropSize> {
+        \\    return svt.validateOneOf<BackdropSize>(value, [BackdropSize.w300, BackdropSize.w1280, BackdropSize.original]);
         \\}
     ;
 
