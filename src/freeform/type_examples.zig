@@ -50,8 +50,8 @@ pub const person_structure_and_event_union =
 
 pub const maybe_union =
     \\union Maybe <T>{
-    \\    Just: T
-    \\    Nothing
+    \\    just: T
+    \\    nothing
     \\}
 ;
 

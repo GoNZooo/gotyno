@@ -247,12 +247,12 @@ fn outputUnionTagEnumerationForConstructors(
 }
 
 fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
-    var predicate_outputs = ArrayList([]const u8).init(allocator);
+    var predicate_outputs = try predicatesFromConstructors(
+        allocator,
+        plain.constructors,
+        &[_][]const u8{},
+    );
     defer predicate_outputs.deinit();
-
-    for (plain.constructors) |constructor| {
-        try predicate_outputs.append(try fmt.allocPrint(allocator, "is{}", .{constructor.tag}));
-    }
 
     const predicates_output = try mem.join(allocator, ", ", predicate_outputs.items);
 
@@ -266,14 +266,12 @@ fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
 }
 
 fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
-    var validator_outputs = ArrayList([]const u8).init(allocator);
+    var validator_outputs = try validatorsFromConstructors(
+        allocator,
+        plain.constructors,
+        &[_][]const u8{},
+    );
     defer validator_outputs.deinit();
-
-    for (plain.constructors) |constructor| {
-        try validator_outputs.append(
-            try fmt.allocPrint(allocator, "validate{}", .{constructor.tag}),
-        );
-    }
 
     const validators_output = try mem.join(allocator, ", ", validator_outputs.items);
 
@@ -435,33 +433,12 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
         .{try mem.join(allocator, ", ", generic.open_names)},
     );
 
-    var predicate_list_outputs = ArrayList([]const u8).init(allocator);
+    var predicate_list_outputs = try predicatesFromConstructors(
+        allocator,
+        generic.constructors,
+        generic.open_names,
+    );
     defer predicate_list_outputs.deinit();
-    for (generic.constructors) |constructor| {
-        const constructor_open_names = try openNamesFromType(
-            allocator,
-            constructor.parameter,
-            generic.open_names,
-        );
-        defer constructor_open_names.deinit();
-        const constructor_open_name_predicates = try openNamePredicates(
-            allocator,
-            constructor_open_names.items,
-        );
-        defer constructor_open_name_predicates.deinit();
-
-        try predicate_list_outputs.append(if (constructor_open_names.items.len > 0)
-            try fmt.allocPrint(
-                allocator,
-                "is{}({})",
-                .{
-                    constructor.tag,
-                    try mem.join(allocator, ", ", constructor_open_name_predicates.items),
-                },
-            )
-        else
-            try fmt.allocPrint(allocator, "is{}", .{constructor.tag}));
-    }
 
     const predicates_output = try mem.join(allocator, ", ", predicate_list_outputs.items);
 
@@ -491,6 +468,43 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
             predicates_output,
         },
     );
+}
+
+fn predicatesFromConstructors(
+    allocator: *mem.Allocator,
+    constructors: []Constructor,
+    open_names: []const []const u8,
+) !ArrayList([]const u8) {
+    var predicate_list_outputs = ArrayList([]const u8).init(allocator);
+    for (constructors) |constructor| {
+        const constructor_open_names = try openNamesFromType(
+            allocator,
+            constructor.parameter,
+            open_names,
+        );
+        defer constructor_open_names.deinit();
+        const constructor_open_name_predicates = try openNamePredicates(
+            allocator,
+            constructor_open_names.items,
+        );
+        defer constructor_open_name_predicates.deinit();
+
+        const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+
+        try predicate_list_outputs.append(if (constructor_open_names.items.len > 0)
+            try fmt.allocPrint(
+                allocator,
+                "is{}({})",
+                .{
+                    titlecased_tag,
+                    try mem.join(allocator, ", ", constructor_open_name_predicates.items),
+                },
+            )
+        else
+            try fmt.allocPrint(allocator, "is{}", .{titlecased_tag}));
+    }
+
+    return predicate_list_outputs;
 }
 
 fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
@@ -524,33 +538,12 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
         .{try mem.join(allocator, ", ", generic.open_names)},
     );
 
-    var validator_list_outputs = ArrayList([]const u8).init(allocator);
+    var validator_list_outputs = try validatorsFromConstructors(
+        allocator,
+        generic.constructors,
+        generic.open_names,
+    );
     defer validator_list_outputs.deinit();
-    for (generic.constructors) |constructor| {
-        const constructor_open_names = try openNamesFromType(
-            allocator,
-            constructor.parameter,
-            generic.open_names,
-        );
-        defer constructor_open_names.deinit();
-        const constructor_open_name_validators = try openNameValidators(
-            allocator,
-            constructor_open_names.items,
-        );
-        defer constructor_open_name_validators.deinit();
-
-        try validator_list_outputs.append(if (constructor_open_names.items.len > 0)
-            try fmt.allocPrint(
-                allocator,
-                "validate{}({})",
-                .{
-                    constructor.tag,
-                    try mem.join(allocator, ", ", constructor_open_name_validators.items),
-                },
-            )
-        else
-            try fmt.allocPrint(allocator, "validate{}", .{constructor.tag}));
-    }
 
     const validators_output = try mem.join(allocator, ", ", validator_list_outputs.items);
 
@@ -582,6 +575,43 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
             validators_output,
         },
     );
+}
+
+fn validatorsFromConstructors(
+    allocator: *mem.Allocator,
+    constructors: []Constructor,
+    open_names: []const []const u8,
+) !ArrayList([]const u8) {
+    var validator_list_outputs = ArrayList([]const u8).init(allocator);
+    for (constructors) |constructor| {
+        const constructor_open_names = try openNamesFromType(
+            allocator,
+            constructor.parameter,
+            open_names,
+        );
+        defer constructor_open_names.deinit();
+        const constructor_open_name_validators = try openNameValidators(
+            allocator,
+            constructor_open_names.items,
+        );
+        defer constructor_open_name_validators.deinit();
+
+        const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+
+        try validator_list_outputs.append(if (constructor_open_names.items.len > 0)
+            try fmt.allocPrint(
+                allocator,
+                "validate{}({})",
+                .{
+                    titlecased_tag,
+                    try mem.join(allocator, ", ", constructor_open_name_validators.items),
+                },
+            )
+        else
+            try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag}));
+    }
+
+    return validator_list_outputs;
 }
 
 fn outputTypeGuardForGenericStructure(
@@ -1043,6 +1073,12 @@ fn outputTypeGuardForConstructor(
 
     const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
 
+    const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
+
+    const type_guard_output = try getDataTypeGuardFromType(allocator, constructor.parameter);
+
+    const titlecased_tag = try titleCaseWord(allocator, tag);
+
     const output_format_with_open_names =
         \\export function is{}{}({}): svt.TypePredicate<{}{}> {{
         \\    return function is{}{}(value: unknown): value is {}{} {{
@@ -1057,21 +1093,17 @@ fn outputTypeGuardForConstructor(
         \\}}
     ;
 
-    const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
-
-    const type_guard_output = try getDataTypeGuardFromType(allocator, constructor.parameter);
-
     return if (constructor_open_names.items.len > 0)
         try fmt.allocPrint(
             allocator,
             output_format_with_open_names,
             .{
-                tag,
+                titlecased_tag,
                 open_names_output,
                 parameters_output,
                 tag,
                 open_names_output,
-                tag,
+                titlecased_tag,
                 try mem.join(allocator, "", constructor_open_names.items),
                 tag,
                 open_names_output,
@@ -1085,7 +1117,7 @@ fn outputTypeGuardForConstructor(
         try fmt.allocPrint(
             allocator,
             output_format_without_open_names,
-            .{ tag, tag, tag, enumeration_tag_output, type_guard_output },
+            .{ titlecased_tag, tag, tag, enumeration_tag_output, type_guard_output },
         );
 }
 
@@ -1142,6 +1174,8 @@ fn outputValidatorForConstructor(
 
     const validator_output = try getDataValidatorFromType(allocator, constructor.parameter);
 
+    const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+
     const format_without_open_names =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
         \\    return svt.validate<{}>(value, {{type: {}{}}});
@@ -1160,19 +1194,19 @@ fn outputValidatorForConstructor(
         try fmt.allocPrint(
             allocator,
             format_without_open_names,
-            .{ tag, tag, tag, union_enum_tag_output, validator_output },
+            .{ titlecased_tag, tag, tag, union_enum_tag_output, validator_output },
         )
     else
         try fmt.allocPrint(
             allocator,
             format_with_open_names,
             .{
-                tag,
+                titlecased_tag,
                 open_names_output,
                 parameters_output,
                 tag,
                 open_names_output,
-                tag,
+                titlecased_tag,
                 joined_open_names,
                 tag,
                 open_names_output,
@@ -1826,6 +1860,10 @@ fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) 
     return false;
 }
 
+fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
+    return fmt.allocPrint(allocator, "{c}{}", .{ std.ascii.toUpper(word[0]), word[1..] });
+}
+
 test "Outputs `Person` struct correctly" {
     var allocator = TestingAllocator{};
 
@@ -2028,28 +2066,28 @@ test "Outputs `Maybe` union correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\export type Maybe<T> = Just<T> | Nothing;
+        \\export type Maybe<T> = just<T> | nothing;
         \\
         \\export enum MaybeTag {
-        \\    Just = "Just",
-        \\    Nothing = "Nothing",
+        \\    just = "just",
+        \\    nothing = "nothing",
         \\}
         \\
-        \\export type Just<T> = {
-        \\    type: MaybeTag.Just;
+        \\export type just<T> = {
+        \\    type: MaybeTag.just;
         \\    data: T;
         \\};
         \\
-        \\export type Nothing = {
-        \\    type: MaybeTag.Nothing;
+        \\export type nothing = {
+        \\    type: MaybeTag.nothing;
         \\};
         \\
-        \\export function Just<T>(data: T): Just<T> {
-        \\    return {type: MaybeTag.Just, data};
+        \\export function just<T>(data: T): just<T> {
+        \\    return {type: MaybeTag.just, data};
         \\}
         \\
-        \\export function Nothing(): Nothing {
-        \\    return {type: MaybeTag.Nothing};
+        \\export function nothing(): nothing {
+        \\    return {type: MaybeTag.nothing};
         \\}
         \\
         \\export function isMaybe<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Maybe<T>> {
@@ -2058,14 +2096,14 @@ test "Outputs `Maybe` union correctly" {
         \\    };
         \\}
         \\
-        \\export function isJust<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Just<T>> {
-        \\    return function isJustT(value: unknown): value is Just<T> {
-        \\        return svt.isInterface<Just<T>>(value, {type: MaybeTag.Just, data: isT});
+        \\export function isJust<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<just<T>> {
+        \\    return function isJustT(value: unknown): value is just<T> {
+        \\        return svt.isInterface<just<T>>(value, {type: MaybeTag.just, data: isT});
         \\    };
         \\}
         \\
-        \\export function isNothing(value: unknown): value is Nothing {
-        \\    return svt.isInterface<Nothing>(value, {type: MaybeTag.Nothing});
+        \\export function isNothing(value: unknown): value is nothing {
+        \\    return svt.isInterface<nothing>(value, {type: MaybeTag.nothing});
         \\}
         \\
         \\export function validateMaybe<T>(validateT: svt.Validator<T>): svt.Validator<Maybe<T>> {
@@ -2074,14 +2112,14 @@ test "Outputs `Maybe` union correctly" {
         \\    };
         \\}
         \\
-        \\export function validateJust<T>(validateT: svt.Validator<T>): svt.Validator<Just<T>> {
-        \\    return function validateJustT(value: unknown): svt.ValidationResult<Just<T>> {
-        \\        return svt.validate<Just<T>>(value, {type: MaybeTag.Just, data: validateT});
+        \\export function validateJust<T>(validateT: svt.Validator<T>): svt.Validator<just<T>> {
+        \\    return function validateJustT(value: unknown): svt.ValidationResult<just<T>> {
+        \\        return svt.validate<just<T>>(value, {type: MaybeTag.just, data: validateT});
         \\    };
         \\}
         \\
-        \\export function validateNothing(value: unknown): svt.ValidationResult<Nothing> {
-        \\    return svt.validate<Nothing>(value, {type: MaybeTag.Nothing});
+        \\export function validateNothing(value: unknown): svt.ValidationResult<nothing> {
+        \\    return svt.validate<nothing>(value, {type: MaybeTag.nothing});
         \\}
     ;
 
@@ -2416,6 +2454,99 @@ test "Outputs struct with optional float value correctly" {
     const output = try outputPlainStructure(
         &allocator.allocator,
         parsed_definitions.success.definitions[0].structure.plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "lowercase plain union has correct output" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\union BackdropSize {
+        \\    w300
+        \\    w1280
+        \\    original
+        \\}
+    ;
+
+    const expected_output =
+        \\export type BackdropSize = w300 | w1280 | original;
+        \\
+        \\export enum BackdropSizeTag {
+        \\    w300 = "w300",
+        \\    w1280 = "w1280",
+        \\    original = "original",
+        \\}
+        \\
+        \\export type w300 = {
+        \\    type: BackdropSizeTag.w300;
+        \\};
+        \\
+        \\export type w1280 = {
+        \\    type: BackdropSizeTag.w1280;
+        \\};
+        \\
+        \\export type original = {
+        \\    type: BackdropSizeTag.original;
+        \\};
+        \\
+        \\export function w300(): w300 {
+        \\    return {type: BackdropSizeTag.w300};
+        \\}
+        \\
+        \\export function w1280(): w1280 {
+        \\    return {type: BackdropSizeTag.w1280};
+        \\}
+        \\
+        \\export function original(): original {
+        \\    return {type: BackdropSizeTag.original};
+        \\}
+        \\
+        \\export function isBackdropSize(value: unknown): value is BackdropSize {
+        \\    return [isW300, isW1280, isOriginal].some((typePredicate) => typePredicate(value));
+        \\}
+        \\
+        \\export function isW300(value: unknown): value is w300 {
+        \\    return svt.isInterface<w300>(value, {type: BackdropSizeTag.w300});
+        \\}
+        \\
+        \\export function isW1280(value: unknown): value is w1280 {
+        \\    return svt.isInterface<w1280>(value, {type: BackdropSizeTag.w1280});
+        \\}
+        \\
+        \\export function isOriginal(value: unknown): value is original {
+        \\    return svt.isInterface<original>(value, {type: BackdropSizeTag.original});
+        \\}
+        \\
+        \\export function validateBackdropSize(value: unknown): svt.ValidationResult<BackdropSize> {
+        \\    return svt.validateOneOf<BackdropSize>(value, [validateW300, validateW1280, validateOriginal]);
+        \\}
+        \\
+        \\export function validateW300(value: unknown): svt.ValidationResult<w300> {
+        \\    return svt.validate<w300>(value, {type: BackdropSizeTag.w300});
+        \\}
+        \\
+        \\export function validateW1280(value: unknown): svt.ValidationResult<w1280> {
+        \\    return svt.validate<w1280>(value, {type: BackdropSizeTag.w1280});
+        \\}
+        \\
+        \\export function validateOriginal(value: unknown): svt.ValidationResult<original> {
+        \\    return svt.validate<original>(value, {type: BackdropSizeTag.original});
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output = try outputPlainUnion(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[0].@"union".plain,
     );
 
     testing.expectEqualStrings(output, expected_output);

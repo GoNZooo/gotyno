@@ -497,7 +497,7 @@ const expected_maybe_union_tokens = [_]Token{
     Token.space,
     Token.space,
     Token.space,
-    .{ .name = "Just" },
+    .{ .symbol = "just" },
     Token.colon,
     Token.space,
     .{ .name = "T" },
@@ -506,7 +506,7 @@ const expected_maybe_union_tokens = [_]Token{
     Token.space,
     Token.space,
     Token.space,
-    .{ .name = "Nothing" },
+    .{ .symbol = "nothing" },
     Token.newline,
     Token.right_brace,
 };

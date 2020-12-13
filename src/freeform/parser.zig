@@ -590,7 +590,14 @@ pub const DefinitionIterator = struct {
 
         _ = try tokens.skipMany(Token.space, 4, self.expect_error);
 
-        const tag = (try tokens.expect(Token.name, self.expect_error)).name;
+        const tag = switch (try tokens.expectOneOf(
+            &[_]TokenTag{ .name, .symbol },
+            self.expect_error,
+        )) {
+            .name => |n| n,
+            .symbol => |s| s,
+            else => unreachable,
+        };
 
         const colon_or_newline = try tokens.expectOneOf(
             &[_]TokenTag{ .colon, .newline },
@@ -856,8 +863,8 @@ test "Parsing `Maybe` union" {
     var allocator = TestingAllocator{};
 
     var expected_constructors = [_]Constructor{
-        .{ .tag = "Just", .parameter = Type{ .name = "T" } },
-        .{ .tag = "Nothing", .parameter = Type.empty },
+        .{ .tag = "just", .parameter = Type{ .name = "T" } },
+        .{ .tag = "nothing", .parameter = Type.empty },
     };
 
     const expected_definitions = [_]Definition{.{
