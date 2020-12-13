@@ -47,3 +47,30 @@ union Either <L, R>{
     Left: L
     Right: R
 }
+
+enum StillSize {
+    w92 = "w92"
+    w185 = "w185"
+    w300 = "w300"
+    h632 = "h632"
+    original = "original"
+}
+
+enum BackdropSize {
+    w300 = "w300"
+    w780 = "w780"
+    w1280 = "w1280"
+    original = "original"
+}
+
+struct ImageConfigurationData {
+    base_url: String
+    secure_base_url: String
+    still_sizes: []StillSize
+    backdrop_sizes: []BackdropSize
+}
+
+struct ConfigurationData {
+    images: ImageConfigurationData
+    change_keys: []String
+}

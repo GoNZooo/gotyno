@@ -282,3 +282,62 @@ export function validateRight<R>(validateR: svt.Validator<R>): svt.Validator<Rig
         return svt.validate<Right<R>>(value, {type: EitherTag.Right, data: validateR});
     };
 }
+
+export enum StillSize {
+    w92 = "w92",
+    w185 = "w185",
+    w300 = "w300",
+    h632 = "h632",
+    original = "original",
+}
+
+export function isStillSize(value: unknown): value is StillSize {
+    return [StillSize.w92, StillSize.w185, StillSize.w300, StillSize.h632, StillSize.original].some((v) => v === value);
+}
+
+export function validateStillSize(value: unknown): svt.ValidationResult<StillSize> {
+    return svt.validateOneOf<StillSize>(value, [svt.validateConstant<StillSize.w92>(StillSize.w92), svt.validateConstant<StillSize.w185>(StillSize.w185), svt.validateConstant<StillSize.w300>(StillSize.w300), svt.validateConstant<StillSize.h632>(StillSize.h632), svt.validateConstant<StillSize.original>(StillSize.original)]);
+}
+
+export enum BackdropSize {
+    w300 = "w300",
+    w780 = "w780",
+    w1280 = "w1280",
+    original = "original",
+}
+
+export function isBackdropSize(value: unknown): value is BackdropSize {
+    return [BackdropSize.w300, BackdropSize.w780, BackdropSize.w1280, BackdropSize.original].some((v) => v === value);
+}
+
+export function validateBackdropSize(value: unknown): svt.ValidationResult<BackdropSize> {
+    return svt.validateOneOf<BackdropSize>(value, [svt.validateConstant<BackdropSize.w300>(BackdropSize.w300), svt.validateConstant<BackdropSize.w780>(BackdropSize.w780), svt.validateConstant<BackdropSize.w1280>(BackdropSize.w1280), svt.validateConstant<BackdropSize.original>(BackdropSize.original)]);
+}
+
+export type ImageConfigurationData = {
+    base_url: string;
+    secure_base_url: string;
+    still_sizes: StillSize[];
+    backdrop_sizes: BackdropSize[];
+};
+
+export function isImageConfigurationData(value: unknown): value is ImageConfigurationData {
+    return svt.isInterface<ImageConfigurationData>(value, {base_url: svt.isString, secure_base_url: svt.isString, still_sizes: svt.arrayOf(isStillSize), backdrop_sizes: svt.arrayOf(isBackdropSize)});
+}
+
+export function validateImageConfigurationData(value: unknown): svt.ValidationResult<ImageConfigurationData> {
+    return svt.validate<ImageConfigurationData>(value, {base_url: svt.validateString, secure_base_url: svt.validateString, still_sizes: svt.validateArray(validateStillSize), backdrop_sizes: svt.validateArray(validateBackdropSize)});
+}
+
+export type ConfigurationData = {
+    images: ImageConfigurationData;
+    change_keys: string[];
+};
+
+export function isConfigurationData(value: unknown): value is ConfigurationData {
+    return svt.isInterface<ConfigurationData>(value, {images: isImageConfigurationData, change_keys: svt.arrayOf(svt.isString)});
+}
+
+export function validateConfigurationData(value: unknown): svt.ValidationResult<ConfigurationData> {
+    return svt.validate<ConfigurationData>(value, {images: validateImageConfigurationData, change_keys: svt.validateArray(svt.validateString)});
+}
