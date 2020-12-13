@@ -2,6 +2,6 @@
 # yarn lockfile v1
 
 
-simple-validation-tools@GoNZooo/simple-validation-tools#2ae3fce38ccfc44e13e30f884d92bce778c6ebfd:
-  version "1.0.0"
-  resolved "https://codeload.github.com/GoNZooo/simple-validation-tools/tar.gz/2ae3fce38ccfc44e13e30f884d92bce778c6ebfd"
+simple-validation-tools@GoNZooo/simple-validation-tools#d68d0b11e16f3cc04bb3abf06869f2415d4f4371:
+  version "1.2.0"
+  resolved "https://codeload.github.com/GoNZooo/simple-validation-tools/tar.gz/d68d0b11e16f3cc04bb3abf06869f2415d4f4371"
