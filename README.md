@@ -106,7 +106,7 @@ union Result<E, T>{
 #### Untagged
 
 Sometimes a union that carries no extra tags is required, though usually these
-will have to be identified somehow at run-time, perhaps via custom tags in their
+will have to be identified less automatically, perhaps via custom tags in their
 respective payload:
 
 ```
