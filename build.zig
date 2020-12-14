@@ -4,9 +4,6 @@ const Mode = std.builtin.Mode;
 
 const test_files = [_][]const u8{
     "typescript",
-    "freeform",
-    "freeform/tokenizer",
-    "freeform/parser",
 };
 
 pub fn build(b: *Builder) void {
