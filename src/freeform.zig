@@ -82,7 +82,3 @@ pub fn compile(
             .{compilation_time_difference / 1000000.0},
         );
 }
-
-test "test runs" {
-    testing.expectEqual(1 + 1, 2);
-}
