@@ -89,7 +89,7 @@ enum Colors {
 union InteractionEvent {
     Click: Coordinates
     KeyPress: KeyCode
-    Focus: *Element,
+    Focus: *Element
 }
 
 union Option <T>{
