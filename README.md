@@ -146,4 +146,6 @@ And running:
 
 ```
 $ ./zig-cache/bin/gotyno --verbose --typescript inputFile.gotyno
+# or
+$ ./zig-cache/bin/gotyno -v -ts inputFile.gotyno
 ```
