@@ -67,7 +67,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     defer value_union_outputs.deinit();
 
     for (u.values) |value| {
-        try value_union_outputs.append(value.name);
+        try value_union_outputs.append(translateName(value.name));
     }
 
     const value_union_output = try mem.join(allocator, " | ", value_union_outputs.items);
@@ -97,7 +97,8 @@ fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     defer predicate_outputs.deinit();
 
     for (u.values) |value| {
-        try predicate_outputs.append(try fmt.allocPrint(allocator, "is{}", .{value.name}));
+        const translated_name = try translatedTypeGuardName(allocator, value.name);
+        try predicate_outputs.append(translated_name);
     }
 
     const predicates_output = try mem.join(allocator, ", ", predicate_outputs.items);
@@ -117,7 +118,8 @@ fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     defer validator_outputs.deinit();
 
     for (u.values) |value| {
-        try validator_outputs.append(try fmt.allocPrint(allocator, "validate{}", .{value.name}));
+        const translated_name = try translatedValidatorName(allocator, value.name);
+        try validator_outputs.append(translated_name);
     }
 
     const validators_output = try mem.join(allocator, ", ", validator_outputs.items);
@@ -2782,18 +2784,20 @@ test "basic untagged union is output correctly" {
         \\untagged union KnownFor {
         \\    KnownForMovie
         \\    KnownForShow
+        \\    String
+        \\    F32
         \\}
     ;
 
     const expected_output =
-        \\export type KnownFor = KnownForMovie | KnownForShow;
+        \\export type KnownFor = KnownForMovie | KnownForShow | string | number;
         \\
         \\export function isKnownFor(value: unknown): value is KnownFor {
-        \\    return [isKnownForMovie, isKnownForShow].some((typePredicate) => typePredicate(value));
+        \\    return [isKnownForMovie, isKnownForShow, svt.isString, svt.isNumber].some((typePredicate) => typePredicate(value));
         \\}
         \\
         \\export function validateKnownFor(value: unknown): svt.ValidationResult<KnownFor> {
-        \\    return svt.validateOneOf<KnownFor>(value, [validateKnownForMovie, validateKnownForShow]);
+        \\    return svt.validateOneOf<KnownFor>(value, [validateKnownForMovie, validateKnownForShow, svt.validateString, svt.validateNumber]);
         \\}
     ;
 
