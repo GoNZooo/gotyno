@@ -378,12 +378,12 @@ export function validateKnownForShow(value: unknown): svt.ValidationResult<Known
     return svt.validate<KnownForShow>(value, {media_type: "tv", poster_path: svt.validateOptional(svt.validateString), id: svt.validateNumber, vote_average: svt.validateNumber, overview: svt.validateString, first_air_date: svt.validateOptional(svt.validateString), name: svt.validateOptional(svt.validateString)});
 }
 
-export type KnownFor = KnownForShow | KnownForMovie;
+export type KnownFor = KnownForShow | KnownForMovie | string | number;
 
 export function isKnownFor(value: unknown): value is KnownFor {
-    return [isKnownForShow, isKnownForMovie].some((typePredicate) => typePredicate(value));
+    return [isKnownForShow, isKnownForMovie, svt.isString, svt.isNumber].some((typePredicate) => typePredicate(value));
 }
 
 export function validateKnownFor(value: unknown): svt.ValidationResult<KnownFor> {
-    return svt.validateOneOf<KnownFor>(value, [validateKnownForShow, validateKnownForMovie]);
+    return svt.validateOneOf<KnownFor>(value, [validateKnownForShow, validateKnownForMovie, svt.validateString, svt.validateNumber]);
 }
