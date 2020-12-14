@@ -17,8 +17,8 @@ pub const OutputLanguages = struct {
     typescript: bool = false,
 };
 
-pub const OutputMap = struct {
-    typescript: ?[]const u8 = null,
+pub const CompilationTimes = struct {
+    typescript: ?i128 = null,
 };
 
 pub fn compile(
@@ -30,6 +30,7 @@ pub fn compile(
     verbose: bool,
 ) !void {
     const out = io.getStdOut().writer();
+    var compilation_times = CompilationTimes{};
     const compilation_start_time = time.nanoTimestamp();
     var compilation_arena = heap.ArenaAllocator.init(allocator);
     var compilation_allocator = &compilation_arena.allocator;
@@ -58,27 +59,29 @@ pub fn compile(
 
                 try directory.writeFile(typescript_filename, typescript_output);
                 const typescript_end_time = time.nanoTimestamp();
-                const compilation_time_difference = @intToFloat(
-                    f32,
-                    typescript_end_time - typescript_start_time,
-                );
-                if (verbose)
-                    try out.print(
-                        "TypeScript compilation time: {d:.5} ms\n",
-                        .{compilation_time_difference / 1000000.0},
-                    );
+                const compilation_time_difference = typescript_end_time - typescript_start_time;
+                compilation_times.typescript = compilation_time_difference;
             }
         },
     }
+
     const compilation_end_time = time.nanoTimestamp();
     const compilation_time_difference = @intToFloat(
         f32,
         compilation_end_time - compilation_start_time,
     );
 
-    if (verbose)
+    if (verbose) {
+        if (compilation_times.typescript) |t| {
+            try out.print(
+                "TypeScript compilation time: {d:.5} ms\n",
+                .{@intToFloat(f32, t) / 1000000.0},
+            );
+        }
+
         try out.print(
             "Total compilation time: {d:.5} ms\n",
             .{compilation_time_difference / 1000000.0},
         );
+    }
 }
