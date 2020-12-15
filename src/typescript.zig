@@ -44,6 +44,11 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
     try outputs.append("import * as svt from \"simple-validation-tools\";");
 
     for (definitions) |definition| {
+        // @TODO: pass down definitions to most of these such that they can use other definitions
+        // in their compilation, meaning we can refer/embed structures from other definitions, etc.
+        // Most obviously useful for import reference, struct embedding if one wants to support
+        // embedding tag fields (meaning we have to merge `tag_field: "..."` with some previously
+        // defined structure).
         const output = switch (definition) {
             .structure => |structure| switch (structure) {
                 .plain => |plain| try outputPlainStructure(allocator, plain),
