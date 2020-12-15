@@ -23,6 +23,7 @@ pub const Definition = union(enum) {
     @"union": Union,
     enumeration: Enumeration,
     untagged_union: UntaggedUnion,
+    import: Import,
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
@@ -32,7 +33,19 @@ pub const Definition = union(enum) {
                 e.isEqual(other.enumeration),
             .untagged_union => |u| meta.activeTag(other) == .untagged_union and
                 u.isEqual(other.untagged_union),
+            .import => |i| meta.activeTag(other) == .import and i.isEqual(other.import),
         };
+    }
+};
+
+pub const Import = struct {
+    const Self = @This();
+
+    name: []const u8,
+    alias: []const u8,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return mem.eql(u8, self.name, other.name) and mem.eql(u8, self.alias, other.alias);
     }
 };
 
@@ -437,15 +450,17 @@ pub const DefinitionIterator = struct {
     }
 
     pub fn next(self: *Self) !?Definition {
-        while (try self.token_iterator.next(.{})) |token| {
+        const tokens = &self.token_iterator;
+
+        while (try tokens.next(.{})) |token| {
             switch (token) {
                 .symbol => |s| {
                     if (mem.eql(u8, s, "struct")) {
-                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
+                        _ = try tokens.expect(Token.space, self.expect_error);
 
                         return Definition{ .structure = try self.parseStructureDefinition() };
                     } else if (mem.eql(u8, s, "union")) {
-                        const space_or_left_parenthesis = try self.token_iterator.expectOneOf(
+                        const space_or_left_parenthesis = try tokens.expectOneOf(
                             &[_]TokenTag{ .space, .left_parenthesis },
                             self.expect_error,
                         );
@@ -464,21 +479,59 @@ pub const DefinitionIterator = struct {
                             else => unreachable,
                         }
                     } else if (mem.eql(u8, s, "enum")) {
-                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
+                        _ = try tokens.expect(Token.space, self.expect_error);
 
                         return Definition{ .enumeration = try self.parseEnumerationDefinition() };
                     } else if (mem.eql(u8, s, "untagged")) {
-                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
-                        const union_keyword = (try self.token_iterator.expect(
+                        _ = try tokens.expect(Token.space, self.expect_error);
+                        const union_keyword = (try tokens.expect(
                             Token.symbol,
                             self.expect_error,
                         )).symbol;
                         debug.assert(mem.eql(u8, union_keyword, "union"));
-                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
+                        _ = try tokens.expect(Token.space, self.expect_error);
 
                         return Definition{
                             .untagged_union = try self.parseUntaggedUnionDefinition(),
                         };
+                    } else if (mem.eql(u8, s, "import")) {
+                        _ = try tokens.expect(Token.space, self.expect_error);
+
+                        const import_name = switch (try tokens.expectOneOf(
+                            &[_]TokenTag{ .symbol, .name },
+                            self.expect_error,
+                        )) {
+                            .symbol => |symbol| symbol,
+                            .name => |name| name,
+                            else => unreachable,
+                        };
+
+                        switch (try tokens.expectOneOf(
+                            &[_]TokenTag{ .newline, .space },
+                            self.expect_error,
+                        )) {
+                            .newline => return Definition{
+                                .import = Import{ .name = import_name, .alias = import_name },
+                            },
+                            .space => {
+                                _ = try tokens.expect(Token.equals, self.expect_error);
+                                _ = try tokens.expect(Token.space, self.expect_error);
+
+                                const import_alias = switch (try tokens.expectOneOf(
+                                    &[_]TokenTag{ .symbol, .name },
+                                    self.expect_error,
+                                )) {
+                                    .symbol => |symbol| symbol,
+                                    .name => |name| name,
+                                    else => unreachable,
+                                };
+
+                                return Definition{
+                                    .import = Import{ .name = import_name, .alias = import_alias },
+                                };
+                            },
+                            else => unreachable,
+                        }
                     }
                 },
                 else => {},
@@ -1259,6 +1312,45 @@ test "Parsing untagged union" {
     }
 }
 
+test "Parsing imports, without and with alias, respectively" {
+    var allocator = TestingAllocator{};
+
+    const expected_definitions = [_]Definition{
+        .{
+            .import = Import{
+                .name = "other",
+                .alias = "other",
+            },
+        },
+        .{
+            .import = Import{
+                .name = "importName",
+                .alias = "aliasedName",
+            },
+        },
+    };
+
+    const definition_buffer =
+        \\import other
+        \\import importName = aliasedName
+        \\
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    switch (parsed_definitions) {
+        .success => |parsed| {
+            expectEqualDefinitions(&expected_definitions, parsed.definitions);
+        },
+    }
+}
+
 test "Parsing invalid normal structure" {
     var allocator = TestingAllocator{};
     var expect_error: ExpectError = undefined;
@@ -1473,6 +1565,10 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
                 .untagged_union => |u| {
                     expectEqualUntaggedUnions(u, b.untagged_union);
                 },
+
+                .import => |import| {
+                    expectEqualImports(import, b.import);
+                },
             }
         }
     }
@@ -1557,5 +1653,21 @@ fn expectEqualUntaggedUnions(a: UntaggedUnion, b: UntaggedUnion) void {
             debug.print("\tExpected: {}\n", .{field});
             testing_utilities.testPanic("\tGot: {}\n", .{b.values[i]});
         }
+    }
+}
+
+fn expectEqualImports(a: Import, b: Import) void {
+    if (!mem.eql(u8, a.name, b.name)) {
+        testing_utilities.testPanic(
+            "Import names do not match: {} != {}\n",
+            .{ a.name, b.name },
+        );
+    }
+
+    if (!mem.eql(u8, a.alias, b.alias)) {
+        testing_utilities.testPanic(
+            "Import aliases do not match: {} != {}\n",
+            .{ a.alias, b.alias },
+        );
     }
 }
