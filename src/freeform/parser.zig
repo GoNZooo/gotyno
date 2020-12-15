@@ -323,7 +323,6 @@ pub const PlainUnion = struct {
     name: []const u8,
     constructors: []Constructor,
     tag_field: []const u8,
-    embedded_tag: bool,
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
@@ -812,7 +811,6 @@ pub const DefinitionIterator = struct {
             .name = try self.allocator.dupe(u8, definition_name),
             .constructors = constructors.items,
             .tag_field = options.tag_field,
-            .embedded_tag = options.embedded,
         };
     }
 
@@ -1026,6 +1024,7 @@ test "Parsing `Person` structure" {
     var hobbies_slice_type = Type{ .name = "String" };
     var comments_array_type = Type{ .name = "String" };
     var recruiter_pointer_type = Type{ .name = "Person" };
+
     const expected_definitions = [_]Definition{.{
         .structure = Structure{
             .plain = PlainStructure{
@@ -1120,7 +1119,6 @@ test "Parsing basic plain union" {
                 .name = "Event",
                 .constructors = &expected_constructors,
                 .tag_field = "type",
-                .embedded_tag = false,
             },
         },
     }};
@@ -1360,7 +1358,6 @@ test "Parsing unions with options" {
                     .name = "WithModifiedTag",
                     .constructors = &expected_constructors,
                     .tag_field = "kind",
-                    .embedded_tag = false,
                 },
             },
         },
@@ -1370,7 +1367,6 @@ test "Parsing unions with options" {
                     .name = "EmbeddedWithModifiedTag",
                     .constructors = &expected_constructors,
                     .tag_field = "other_kind",
-                    .embedded_tag = true,
                 },
             },
         },
@@ -1491,7 +1487,6 @@ test "Parsing multiple definitions works as it should" {
                     .name = "Event",
                     .constructors = &expected_constructors,
                     .tag_field = "type",
-                    .embedded_tag = false,
                 },
             },
         },
