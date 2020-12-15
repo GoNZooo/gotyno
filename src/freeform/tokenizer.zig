@@ -27,6 +27,8 @@ pub const Token = union(enum) {
     right_bracket,
     left_angle,
     right_angle,
+    left_parenthesis,
+    right_parenthesis,
     equals,
     semicolon,
     comma,
@@ -48,8 +50,10 @@ pub const Token = union(enum) {
             .left_bracket,
             .right_bracket,
             .left_angle,
-            .equals,
             .right_angle,
+            .left_parenthesis,
+            .right_parenthesis,
+            .equals,
             .semicolon,
             .comma,
             .colon,
@@ -78,6 +82,8 @@ pub const Token = union(enum) {
             .right_bracket,
             .left_angle,
             .right_angle,
+            .left_parenthesis,
+            .right_parenthesis,
             .equals,
             .semicolon,
             .colon,
@@ -152,7 +158,7 @@ pub const ExpectError = union(enum) {
 
 pub const TokenIterator = struct {
     const Self = @This();
-    const delimiters = ";:\" \t\n{}[]<>,";
+    const delimiters = ";:\" \t\n{}[]<>(),";
 
     buffer: []const u8,
     i: usize,
@@ -183,6 +189,8 @@ pub const TokenIterator = struct {
             ']' => Token.right_bracket,
             '<' => Token.left_angle,
             '>' => Token.right_angle,
+            '(' => Token.left_parenthesis,
+            ')' => Token.right_parenthesis,
             '=' => Token.equals,
             ';' => Token.semicolon,
             ',' => Token.comma,
