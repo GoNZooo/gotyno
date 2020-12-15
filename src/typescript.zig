@@ -341,12 +341,14 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         allocator,
         plain_union.name,
         plain_union.constructors,
+        plain_union.tag_field,
     );
 
     const constructors_output = try outputConstructors(
         allocator,
         plain_union.name,
         plain_union.constructors,
+        plain_union.tag_field,
     );
 
     const union_type_guard_output = try outputTypeGuardForPlainUnion(allocator, plain_union);
@@ -356,6 +358,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         plain_union.name,
         plain_union.constructors,
         &[_][]const u8{},
+        plain_union.tag_field,
     );
 
     const union_validator_output = try outputValidatorForPlainUnion(allocator, plain_union);
@@ -365,6 +368,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         plain_union.name,
         plain_union.constructors,
         &[_][]const u8{},
+        plain_union.tag_field,
     );
 
     const output_format =
@@ -500,6 +504,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
+        generic_union.tag_field,
     );
 
     const constructors_output = try outputGenericConstructors(
@@ -507,6 +512,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
+        generic_union.tag_field,
     );
 
     const union_type_guard_output = try outputTypeGuardForGenericUnion(allocator, generic_union);
@@ -516,6 +522,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
+        generic_union.tag_field,
     );
 
     const union_validator_output = try outputValidatorForGenericUnion(allocator, generic_union);
@@ -525,6 +532,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.name,
         generic_union.constructors,
         generic_union.open_names,
+        generic_union.tag_field,
     );
 
     const output_format =
@@ -1075,6 +1083,7 @@ fn outputConstructors(
     allocator: *mem.Allocator,
     union_name: []const u8,
     constructors: []Constructor,
+    tag_field: []const u8,
 ) ![]const u8 {
     var constructor_outputs = ArrayList([]const u8).init(allocator);
     defer constructor_outputs.deinit();
@@ -1085,6 +1094,7 @@ fn outputConstructors(
             union_name,
             constructor,
             &[_][]const u8{},
+            tag_field,
         ));
     }
 
@@ -1096,13 +1106,20 @@ fn outputTypeGuardsForConstructors(
     union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     var type_guards = ArrayList([]const u8).init(allocator);
     defer type_guards.deinit();
 
     for (constructors) |constructor| {
         try type_guards.append(
-            try outputTypeGuardForConstructor(allocator, union_name, constructor, open_names),
+            try outputTypeGuardForConstructor(
+                allocator,
+                union_name,
+                constructor,
+                open_names,
+                tag_field,
+            ),
         );
     }
 
@@ -1114,6 +1131,7 @@ fn outputValidatorsForConstructors(
     union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     var validators = ArrayList([]const u8).init(allocator);
     defer validators.deinit();
@@ -1124,6 +1142,7 @@ fn outputValidatorsForConstructors(
             union_name,
             constructor,
             open_names,
+            tag_field,
         ));
     }
 
@@ -1135,6 +1154,7 @@ fn outputConstructor(
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     const constructor_name = try outputConstructorName(allocator, constructor, open_names);
     const tag = constructor.tag;
@@ -1156,13 +1176,13 @@ fn outputConstructor(
 
     const output_format_with_data =
         \\export function {}{}(data: {}): {}{} {{
-        \\    return {{type: {}, data}};
+        \\    return {{{}: {}, data}};
         \\}}
     ;
 
     const output_format_without_data =
         \\export function {}(): {} {{
-        \\    return {{type: {}}};
+        \\    return {{{}: {}}};
         \\}}
     ;
 
@@ -1176,6 +1196,7 @@ fn outputConstructor(
                 specification,
                 tag,
                 open_names_output,
+                tag_field,
                 enumeration_tag_output,
             },
         )
@@ -1183,7 +1204,7 @@ fn outputConstructor(
         try fmt.allocPrint(
             allocator,
             output_format_without_data,
-            .{ tag, tag, enumeration_tag_output },
+            .{ tag, tag, tag_field, enumeration_tag_output },
         );
 }
 
@@ -1215,6 +1236,7 @@ fn outputTypeGuardForConstructor(
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     const tag = constructor.tag;
 
@@ -1264,14 +1286,14 @@ fn outputTypeGuardForConstructor(
     const output_format_with_open_names =
         \\export function is{}{}({}): svt.TypePredicate<{}{}> {{
         \\    return function is{}{}(value: unknown): value is {}{} {{
-        \\        return svt.isInterface<{}{}>(value, {{type: {}{}}});
+        \\        return svt.isInterface<{}{}>(value, {{{}: {}{}}});
         \\    }};
         \\}}
     ;
 
     const output_format_without_open_names =
         \\export function is{}(value: unknown): value is {} {{
-        \\    return svt.isInterface<{}>(value, {{type: {}{}}});
+        \\    return svt.isInterface<{}>(value, {{{}: {}{}}});
         \\}}
     ;
 
@@ -1291,6 +1313,7 @@ fn outputTypeGuardForConstructor(
                 open_names_output,
                 tag,
                 open_names_output,
+                tag_field,
                 enumeration_tag_output,
                 type_guard_output,
             },
@@ -1299,7 +1322,7 @@ fn outputTypeGuardForConstructor(
         try fmt.allocPrint(
             allocator,
             output_format_without_open_names,
-            .{ titlecased_tag, tag, tag, enumeration_tag_output, type_guard_output },
+            .{ titlecased_tag, tag, tag, tag_field, enumeration_tag_output, type_guard_output },
         );
 }
 
@@ -1308,6 +1331,7 @@ fn outputValidatorForConstructor(
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     const tag = constructor.tag;
 
@@ -1360,14 +1384,14 @@ fn outputValidatorForConstructor(
 
     const format_without_open_names =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validate<{}>(value, {{type: {}{}}});
+        \\    return svt.validate<{}>(value, {{{}: {}{}}});
         \\}}
     ;
 
     const format_with_open_names =
         \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
         \\    return function validate{}{}(value: unknown): svt.ValidationResult<{}<{}>> {{
-        \\        return svt.validate<{}<{}>>(value, {{type: {}{}}});
+        \\        return svt.validate<{}<{}>>(value, {{{}: {}{}}});
         \\    }};
         \\}}
     ;
@@ -1376,7 +1400,7 @@ fn outputValidatorForConstructor(
         try fmt.allocPrint(
             allocator,
             format_without_open_names,
-            .{ titlecased_tag, tag, tag, union_enum_tag_output, validator_output },
+            .{ titlecased_tag, tag, tag, tag_field, union_enum_tag_output, validator_output },
         )
     else
         try fmt.allocPrint(
@@ -1394,6 +1418,7 @@ fn outputValidatorForConstructor(
                 open_names_output,
                 tag,
                 open_names_output,
+                tag_field,
                 union_enum_tag_output,
                 validator_output,
             },
@@ -1692,6 +1717,7 @@ fn outputTaggedStructures(
     allocator: *mem.Allocator,
     union_name: []const u8,
     constructors: []Constructor,
+    tag_field: []const u8,
 ) ![]const u8 {
     var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
     defer tagged_structures_outputs.deinit();
@@ -1701,6 +1727,7 @@ fn outputTaggedStructures(
             allocator,
             union_name,
             constructor,
+            tag_field,
         ));
     }
 
@@ -1712,13 +1739,20 @@ fn outputTaggedMaybeGenericStructures(
     union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
     defer tagged_structures_outputs.deinit();
 
     for (constructors) |constructor| {
         try tagged_structures_outputs.append(
-            try outputTaggedMaybeGenericStructure(allocator, union_name, constructor, open_names),
+            try outputTaggedMaybeGenericStructure(
+                allocator,
+                union_name,
+                constructor,
+                open_names,
+                tag_field,
+            ),
         );
     }
 
@@ -1730,6 +1764,7 @@ fn outputGenericConstructors(
     union_name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     var constructor_outputs = ArrayList([]const u8).init(allocator);
     defer constructor_outputs.deinit();
@@ -1740,6 +1775,7 @@ fn outputGenericConstructors(
             union_name,
             constructor,
             open_names,
+            tag_field,
         ));
     }
 
@@ -1750,6 +1786,7 @@ fn outputTaggedStructure(
     allocator: *mem.Allocator,
     union_name: []const u8,
     constructor: Constructor,
+    tag_field: []const u8,
 ) ![]const u8 {
     const parameter_output = try outputType(allocator, constructor.parameter);
 
@@ -1757,14 +1794,14 @@ fn outputTaggedStructure(
 
     const output_format_with_parameter =
         \\export type {} = {{
-        \\    type: {};
+        \\    {}: {};
         \\    data: {};
         \\}};
     ;
 
     const output_format_without_parameter =
         \\export type {} = {{
-        \\    type: {};
+        \\    {}: {};
         \\}};
     ;
 
@@ -1772,13 +1809,13 @@ fn outputTaggedStructure(
         try fmt.allocPrint(
             allocator,
             output_format_with_parameter,
-            .{ constructor.tag, enumeration_tag_output, output },
+            .{ constructor.tag, tag_field, enumeration_tag_output, output },
         )
     else
         try fmt.allocPrint(
             allocator,
             output_format_without_parameter,
-            .{ constructor.tag, enumeration_tag_output },
+            .{ constructor.tag, tag_field, enumeration_tag_output },
         );
 }
 
@@ -1787,6 +1824,7 @@ fn outputTaggedMaybeGenericStructure(
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 ) ![]const u8 {
     const open_names_output = outputOpenNamesFromType(allocator, constructor.parameter, open_names);
 
@@ -1799,14 +1837,20 @@ fn outputTaggedMaybeGenericStructure(
 
     const output_format =
         \\export type {}{} = {{
-        \\    type: {};{}
+        \\    {}: {};{}
         \\}};
     ;
 
     return fmt.allocPrint(
         allocator,
         output_format,
-        .{ constructor.tag, open_names_output, enumeration_tag_output, parameter_output },
+        .{
+            constructor.tag,
+            open_names_output,
+            tag_field,
+            enumeration_tag_output,
+            parameter_output,
+        },
     );
 }
 
@@ -2777,7 +2821,7 @@ test "basic string-based enumeration is output correctly" {
     testing.expectEqualStrings(output, expected_output);
 }
 
-test "basic untagged union is output correctly" {
+test "Basic untagged union is output correctly" {
     var allocator = TestingAllocator{};
 
     const definition_buffer =
@@ -2812,6 +2856,167 @@ test "basic untagged union is output correctly" {
     const output = try outputUntaggedUnion(
         &allocator.allocator,
         parsed_definitions.success.definitions[0].untagged_union,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Tagged union with tag specifier is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\union(tag = kind) KnownFor {
+        \\    KnownForMovie: Movie
+        \\    KnownForShow: Show
+        \\}
+    ;
+
+    const expected_output =
+        \\export type KnownFor = KnownForMovie | KnownForShow;
+        \\
+        \\export enum KnownForTag {
+        \\    KnownForMovie = "KnownForMovie",
+        \\    KnownForShow = "KnownForShow",
+        \\}
+        \\
+        \\export type KnownForMovie = {
+        \\    kind: KnownForTag.KnownForMovie;
+        \\    data: Movie;
+        \\};
+        \\
+        \\export type KnownForShow = {
+        \\    kind: KnownForTag.KnownForShow;
+        \\    data: Show;
+        \\};
+        \\
+        \\export function KnownForMovie(data: Movie): KnownForMovie {
+        \\    return {kind: KnownForTag.KnownForMovie, data};
+        \\}
+        \\
+        \\export function KnownForShow(data: Show): KnownForShow {
+        \\    return {kind: KnownForTag.KnownForShow, data};
+        \\}
+        \\
+        \\export function isKnownFor(value: unknown): value is KnownFor {
+        \\    return [isKnownForMovie, isKnownForShow].some((typePredicate) => typePredicate(value));
+        \\}
+        \\
+        \\export function isKnownForMovie(value: unknown): value is KnownForMovie {
+        \\    return svt.isInterface<KnownForMovie>(value, {kind: KnownForTag.KnownForMovie, data: isMovie});
+        \\}
+        \\
+        \\export function isKnownForShow(value: unknown): value is KnownForShow {
+        \\    return svt.isInterface<KnownForShow>(value, {kind: KnownForTag.KnownForShow, data: isShow});
+        \\}
+        \\
+        \\export function validateKnownFor(value: unknown): svt.ValidationResult<KnownFor> {
+        \\    return svt.validateOneOf<KnownFor>(value, [validateKnownForMovie, validateKnownForShow]);
+        \\}
+        \\
+        \\export function validateKnownForMovie(value: unknown): svt.ValidationResult<KnownForMovie> {
+        \\    return svt.validate<KnownForMovie>(value, {kind: KnownForTag.KnownForMovie, data: validateMovie});
+        \\}
+        \\
+        \\export function validateKnownForShow(value: unknown): svt.ValidationResult<KnownForShow> {
+        \\    return svt.validate<KnownForShow>(value, {kind: KnownForTag.KnownForShow, data: validateShow});
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output = try outputPlainUnion(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[0].@"union".plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Tagged generic union with tag specifier is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\union(tag = kind) Option <T>{
+        \\    Some: T
+        \\    None
+        \\}
+    ;
+
+    const expected_output =
+        \\export type Option<T> = Some<T> | None;
+        \\
+        \\export enum OptionTag {
+        \\    Some = "Some",
+        \\    None = "None",
+        \\}
+        \\
+        \\export type Some<T> = {
+        \\    kind: OptionTag.Some;
+        \\    data: T;
+        \\};
+        \\
+        \\export type None = {
+        \\    kind: OptionTag.None;
+        \\};
+        \\
+        \\export function Some<T>(data: T): Some<T> {
+        \\    return {kind: OptionTag.Some, data};
+        \\}
+        \\
+        \\export function None(): None {
+        \\    return {kind: OptionTag.None};
+        \\}
+        \\
+        \\export function isOption<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Option<T>> {
+        \\    return function isOptionT(value: unknown): value is Option<T> {
+        \\        return [isSome(isT), isNone].some((typePredicate) => typePredicate(value));
+        \\    };
+        \\}
+        \\
+        \\export function isSome<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Some<T>> {
+        \\    return function isSomeT(value: unknown): value is Some<T> {
+        \\        return svt.isInterface<Some<T>>(value, {kind: OptionTag.Some, data: isT});
+        \\    };
+        \\}
+        \\
+        \\export function isNone(value: unknown): value is None {
+        \\    return svt.isInterface<None>(value, {kind: OptionTag.None});
+        \\}
+        \\
+        \\export function validateOption<T>(validateT: svt.Validator<T>): svt.Validator<Option<T>> {
+        \\    return function validateOptionT(value: unknown): svt.ValidationResult<Option<T>> {
+        \\        return svt.validateOneOf<Option<T>>(value, [validateSome(validateT), validateNone]);
+        \\    };
+        \\}
+        \\
+        \\export function validateSome<T>(validateT: svt.Validator<T>): svt.Validator<Some<T>> {
+        \\    return function validateSomeT(value: unknown): svt.ValidationResult<Some<T>> {
+        \\        return svt.validate<Some<T>>(value, {kind: OptionTag.Some, data: validateT});
+        \\    };
+        \\}
+        \\
+        \\export function validateNone(value: unknown): svt.ValidationResult<None> {
+        \\    return svt.validate<None>(value, {kind: OptionTag.None});
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output = try outputGenericUnion(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
