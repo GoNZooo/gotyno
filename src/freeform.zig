@@ -36,33 +36,29 @@ pub fn compile(
     var compilation_allocator = &compilation_arena.allocator;
 
     var expect_error: ExpectError = undefined;
-    const parse_result = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         allocator,
         allocator,
         file_contents,
         &expect_error,
     );
 
-    switch (parse_result) {
-        .success => |success_result| {
-            if (output_languages.typescript) {
-                const typescript_start_time = time.nanoTimestamp();
-                defer compilation_arena.deinit();
-                const typescript_filename = try typescript.outputFilename(
-                    compilation_allocator,
-                    filename,
-                );
-                const typescript_output = try typescript.compileDefinitions(
-                    compilation_allocator,
-                    success_result.definitions,
-                );
+    if (output_languages.typescript) {
+        const typescript_start_time = time.nanoTimestamp();
+        defer compilation_arena.deinit();
+        const typescript_filename = try typescript.outputFilename(
+            compilation_allocator,
+            filename,
+        );
+        const typescript_output = try typescript.compileDefinitions(
+            compilation_allocator,
+            definitions,
+        );
 
-                try directory.writeFile(typescript_filename, typescript_output);
-                const typescript_end_time = time.nanoTimestamp();
-                const compilation_time_difference = typescript_end_time - typescript_start_time;
-                compilation_times.typescript = compilation_time_difference;
-            }
-        },
+        try directory.writeFile(typescript_filename, typescript_output);
+        const typescript_end_time = time.nanoTimestamp();
+        const compilation_time_difference = typescript_end_time - typescript_start_time;
+        compilation_times.typescript = compilation_time_difference;
     }
 
     const compilation_end_time = time.nanoTimestamp();

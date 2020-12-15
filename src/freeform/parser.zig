@@ -361,16 +361,6 @@ pub const Constructor = struct {
     }
 };
 
-pub const ParseResult = union(enum) {
-    success: ParseSuccess,
-    // failure: ParseFailure,
-};
-
-pub const ParseSuccess = struct {
-    definitions: []Definition,
-    token_iterator: TokenIterator,
-};
-
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
 
 pub fn parse(
@@ -378,19 +368,14 @@ pub fn parse(
     error_allocator: *mem.Allocator,
     buffer: []const u8,
     expect_error: *ExpectError,
-) !ParseResult {
+) ![]Definition {
     var definitions = ArrayList(Definition).init(allocator);
     var definition_iterator = DefinitionIterator.init(allocator, buffer, expect_error);
     while (try definition_iterator.next()) |definition| {
         try definitions.append(definition);
     }
 
-    return ParseResult{
-        .success = ParseSuccess{
-            .definitions = definitions.items,
-            .token_iterator = definition_iterator.token_iterator,
-        },
-    };
+    return definitions.items;
 }
 
 pub fn parseWithDescribedError(
@@ -398,7 +383,7 @@ pub fn parseWithDescribedError(
     error_allocator: *mem.Allocator,
     buffer: []const u8,
     expect_error: *ExpectError,
-) !ParseResult {
+) ![]Definition {
     return parse(allocator, error_allocator, buffer, expect_error) catch |e| {
         switch (e) {
             error.UnexpectedToken => {
@@ -1061,16 +1046,15 @@ test "Parsing `Person` structure" {
             },
         },
     }};
+
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.person_structure,
         &expect_error,
     );
-    switch (parsed_definitions) {
-        .success => |parsed| expectEqualDefinitions(&expected_definitions, parsed.definitions),
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing basic generic structure" {
@@ -1091,16 +1075,14 @@ test "Parsing basic generic structure" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.node_structure,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| expectEqualDefinitions(&expected_definitions, parsed.definitions),
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing basic plain union" {
@@ -1133,16 +1115,14 @@ test "Parsing basic plain union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.event_union,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| expectEqualDefinitions(&expected_definitions, parsed.definitions),
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing `Maybe` union" {
@@ -1165,18 +1145,14 @@ test "Parsing `Maybe` union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.maybe_union,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| {
-            expectEqualDefinitions(&expected_definitions, parsed.definitions);
-        },
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing `Either` union" {
@@ -1199,18 +1175,14 @@ test "Parsing `Either` union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.either_union,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| {
-            expectEqualDefinitions(&expected_definitions, parsed.definitions);
-        },
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing `List` union" {
@@ -1239,18 +1211,14 @@ test "Parsing `List` union" {
     }};
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.list_union,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| {
-            expectEqualDefinitions(&expected_definitions, parsed.definitions);
-        },
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing basic string-based enumeration" {
@@ -1278,18 +1246,14 @@ test "Parsing basic string-based enumeration" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| {
-            expectEqualDefinitions(&expected_definitions, parsed.definitions);
-        },
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing untagged union" {
@@ -1315,18 +1279,14 @@ test "Parsing untagged union" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| {
-            expectEqualDefinitions(&expected_definitions, parsed.definitions);
-        },
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing imports, without and with alias, respectively" {
@@ -1354,18 +1314,14 @@ test "Parsing imports, without and with alias, respectively" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| {
-            expectEqualDefinitions(&expected_definitions, parsed.definitions);
-        },
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing unions with options" {
@@ -1410,18 +1366,14 @@ test "Parsing unions with options" {
     };
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    switch (parsed_definitions) {
-        .success => |parsed| {
-            expectEqualDefinitions(&expected_definitions, parsed.definitions);
-        },
-    }
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 test "Parsing invalid normal structure" {
@@ -1465,7 +1417,7 @@ test "Parsing multiple definitions works as it should" {
     var allocator = TestingAllocator{};
     var expect_error: ExpectError = undefined;
 
-    const parsing_results = try parseWithDescribedError(
+    const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.person_structure_and_event_union,
@@ -1534,7 +1486,7 @@ test "Parsing multiple definitions works as it should" {
         },
     };
 
-    expectEqualDefinitions(&expected_definitions, parsing_results.success.definitions);
+    expectEqualDefinitions(&expected_definitions, definitions);
 }
 
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {

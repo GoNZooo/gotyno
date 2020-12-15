@@ -2134,7 +2134,7 @@ test "Outputs `Person` struct correctly" {
             &allocator.allocator,
             type_examples.person_structure,
             &expect_error,
-        )).success.definitions[0].structure.plain,
+        ))[0].structure.plain,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2171,7 +2171,7 @@ test "Outputs `Node` struct correctly" {
             &allocator.allocator,
             type_examples.node_structure,
             &expect_error,
-        )).success.definitions[0].structure.generic,
+        ))[0].structure.generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2293,7 +2293,7 @@ test "Outputs `Event` union correctly" {
             &allocator.allocator,
             type_examples.event_union,
             &expect_error,
-        )).success.definitions[0].@"union".plain,
+        ))[0].@"union".plain,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2369,7 +2369,7 @@ test "Outputs `Maybe` union correctly" {
             &allocator.allocator,
             type_examples.maybe_union,
             &expect_error,
-        )).success.definitions[0].@"union".generic,
+        ))[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2450,7 +2450,7 @@ test "Outputs `Either` union correctly" {
             &allocator.allocator,
             type_examples.either_union,
             &expect_error,
-        )).success.definitions[0].@"union".generic,
+        ))[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2482,7 +2482,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
             &allocator.allocator,
             type_examples.structure_with_concrete_maybe,
             &expect_error,
-        )).success.definitions[0].structure.plain,
+        ))[0].structure.plain,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2581,7 +2581,7 @@ test "Outputs struct with different `Maybe`s correctly" {
             &allocator.allocator,
             type_examples.union_with_different_maybes,
             &expect_error,
-        )).success.definitions[0].@"union".generic,
+        ))[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2657,7 +2657,7 @@ test "Outputs `List` union correctly" {
             &allocator.allocator,
             type_examples.list_union,
             &expect_error,
-        )).success.definitions[0].@"union".generic,
+        ))[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -2681,17 +2681,14 @@ test "Outputs struct with optional float value correctly" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.structure_with_optional_float,
         &expect_error,
     );
 
-    const output = try outputPlainStructure(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[0].structure.plain,
-    );
+    const output = try outputPlainStructure(&allocator.allocator, definitions[0].structure.plain);
 
     testing.expectEqualStrings(output, expected_output);
 }
@@ -2774,17 +2771,14 @@ test "lowercase plain union has correct output" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    const output = try outputPlainUnion(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[0].@"union".plain,
-    );
+    const output = try outputPlainUnion(&allocator.allocator, definitions[0].@"union".plain);
 
     testing.expectEqualStrings(output, expected_output);
 }
@@ -2817,17 +2811,14 @@ test "basic string-based enumeration is output correctly" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    const output = try outputEnumeration(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[0].enumeration,
-    );
+    const output = try outputEnumeration(&allocator.allocator, definitions[0].enumeration);
 
     testing.expectEqualStrings(output, expected_output);
 }
@@ -2857,17 +2848,14 @@ test "Basic untagged union is output correctly" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    const output = try outputUntaggedUnion(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[0].untagged_union,
-    );
+    const output = try outputUntaggedUnion(&allocator.allocator, definitions[0].untagged_union);
 
     testing.expectEqualStrings(output, expected_output);
 }
@@ -2934,17 +2922,14 @@ test "Tagged union with tag specifier is output correctly" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    const output = try outputPlainUnion(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[0].@"union".plain,
-    );
+    const output = try outputPlainUnion(&allocator.allocator, definitions[0].@"union".plain);
 
     testing.expectEqualStrings(output, expected_output);
 }
@@ -3018,17 +3003,14 @@ test "Tagged generic union with tag specifier is output correctly" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    const output = try outputGenericUnion(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[0].@"union".generic,
-    );
+    const output = try outputGenericUnion(&allocator.allocator, definitions[0].@"union".generic);
 
     testing.expectEqualStrings(output, expected_output);
 }
@@ -3051,24 +3033,18 @@ test "Imports are output correctly" {
     ;
 
     var expect_error: ExpectError = undefined;
-    const parsed_definitions = try parser.parseWithDescribedError(
+    const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &expect_error,
     );
 
-    const output_1 = try outputImport(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[0].import,
-    );
+    const output_1 = try outputImport(&allocator.allocator, definitions[0].import);
 
     testing.expectEqualStrings(output_1, expected_output_1);
 
-    const output_2 = try outputImport(
-        &allocator.allocator,
-        parsed_definitions.success.definitions[1].import,
-    );
+    const output_2 = try outputImport(&allocator.allocator, definitions[1].import);
 
     testing.expectEqualStrings(output_2, expected_output_2);
 }
