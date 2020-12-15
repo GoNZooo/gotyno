@@ -288,14 +288,20 @@ pub const Union = union(enum) {
     }
 };
 
+pub const UnionOptions = struct {
+    tag_field: []const u8,
+};
+
 pub const PlainUnion = struct {
     const Self = @This();
 
     name: []const u8,
     constructors: []Constructor,
+    tag_field: []const u8,
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
+        if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
 
         for (self.constructors) |constructor, i| {
             if (!constructor.isEqual(other.constructors[i])) return false;
@@ -311,9 +317,11 @@ pub const GenericUnion = struct {
     name: []const u8,
     constructors: []Constructor,
     open_names: []const []const u8,
+    tag_field: []const u8,
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
+        if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
 
         for (self.constructors) |constructor, i| {
             if (!constructor.isEqual(other.constructors[i])) return false;
@@ -437,9 +445,24 @@ pub const DefinitionIterator = struct {
 
                         return Definition{ .structure = try self.parseStructureDefinition() };
                     } else if (mem.eql(u8, s, "union")) {
-                        _ = try self.token_iterator.expect(Token.space, self.expect_error);
+                        const space_or_left_parenthesis = try self.token_iterator.expectOneOf(
+                            &[_]TokenTag{ .space, .left_parenthesis },
+                            self.expect_error,
+                        );
 
-                        return Definition{ .@"union" = try self.parseUnionDefinition() };
+                        switch (space_or_left_parenthesis) {
+                            .space => return Definition{
+                                .@"union" = try self.parseUnionDefinition(
+                                    UnionOptions{ .tag_field = "type" },
+                                ),
+                            },
+                            .left_parenthesis => return Definition{
+                                .@"union" = try self.parseUnionDefinition(
+                                    try self.parseUnionOptions(),
+                                ),
+                            },
+                            else => unreachable,
+                        }
                     } else if (mem.eql(u8, s, "enum")) {
                         _ = try self.token_iterator.expect(Token.space, self.expect_error);
 
@@ -453,7 +476,9 @@ pub const DefinitionIterator = struct {
                         debug.assert(mem.eql(u8, union_keyword, "union"));
                         _ = try self.token_iterator.expect(Token.space, self.expect_error);
 
-                        return Definition{ .untagged_union = try self.parseUntaggedUnionDefinition() };
+                        return Definition{
+                            .untagged_union = try self.parseUntaggedUnionDefinition(),
+                        };
                     }
                 },
                 else => {},
@@ -461,6 +486,25 @@ pub const DefinitionIterator = struct {
         }
 
         return null;
+    }
+
+    fn parseUnionOptions(self: *Self) !UnionOptions {
+        const tokens = &self.token_iterator;
+        const symbol = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+
+        var options = UnionOptions{ .tag_field = "type" };
+
+        if (mem.eql(u8, symbol, "tag")) {
+            _ = try tokens.expect(Token.space, self.expect_error);
+            _ = try tokens.expect(Token.equals, self.expect_error);
+            _ = try tokens.expect(Token.space, self.expect_error);
+            options.tag_field = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+        }
+        _ = try tokens.expect(Token.right_parenthesis, self.expect_error);
+        _ = try tokens.expect(Token.space, self.expect_error);
+        debug.print("parsed options\n", .{});
+
+        return options;
     }
 
     fn parseUntaggedUnionDefinition(self: *Self) !UntaggedUnion {
@@ -651,7 +695,7 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    fn parseUnionDefinition(self: *Self) !Union {
+    fn parseUnionDefinition(self: *Self, options: UnionOptions) !Union {
         const tokens = &self.token_iterator;
 
         const definition_name = (try tokens.expect(Token.name, self.expect_error)).name;
@@ -665,10 +709,10 @@ pub const DefinitionIterator = struct {
 
         return switch (left_angle_or_left_brace) {
             .left_brace => Union{
-                .plain = try self.parsePlainUnionDefinition(definition_name),
+                .plain = try self.parsePlainUnionDefinition(definition_name, options),
             },
             .left_angle => Union{
-                .generic = try self.parseGenericUnionDefinition(definition_name),
+                .generic = try self.parseGenericUnionDefinition(definition_name, options),
             },
             else => debug.panic(
                 "Invalid follow-up token after `union` keyword: {}\n",
@@ -680,6 +724,7 @@ pub const DefinitionIterator = struct {
     pub fn parsePlainUnionDefinition(
         self: *Self,
         definition_name: []const u8,
+        options: UnionOptions,
     ) !PlainUnion {
         var constructors = ArrayList(Constructor).init(self.allocator);
         const tokens = &self.token_iterator;
@@ -702,12 +747,14 @@ pub const DefinitionIterator = struct {
         return PlainUnion{
             .name = try self.allocator.dupe(u8, definition_name),
             .constructors = constructors.items,
+            .tag_field = options.tag_field,
         };
     }
 
     pub fn parseGenericUnionDefinition(
         self: *Self,
         definition_name: []const u8,
+        options: UnionOptions,
     ) !GenericUnion {
         var constructors = ArrayList(Constructor).init(self.allocator);
         var open_names = ArrayList([]const u8).init(self.allocator);
@@ -749,6 +796,7 @@ pub const DefinitionIterator = struct {
             .name = try self.allocator.dupe(u8, definition_name),
             .constructors = constructors.items,
             .open_names = open_names.items,
+            .tag_field = options.tag_field,
         };
     }
 
@@ -1009,6 +1057,7 @@ test "Parsing basic plain union" {
             .plain = PlainUnion{
                 .name = "Event",
                 .constructors = &expected_constructors,
+                .tag_field = "type",
             },
         },
     }};
@@ -1040,6 +1089,7 @@ test "Parsing `Maybe` union" {
                 .name = "Maybe",
                 .constructors = &expected_constructors,
                 .open_names = &[_][]const u8{"T"},
+                .tag_field = "type",
             },
         },
     }};
@@ -1073,6 +1123,7 @@ test "Parsing `Either` union" {
                 .name = "Either",
                 .constructors = &expected_constructors,
                 .open_names = &[_][]const u8{ "E", "T" },
+                .tag_field = "type",
             },
         },
     }};
@@ -1112,6 +1163,7 @@ test "Parsing `List` union" {
                 .name = "List",
                 .constructors = &expected_constructors,
                 .open_names = &[_][]const u8{"T"},
+                .tag_field = "type",
             },
         },
     }};
@@ -1310,6 +1362,7 @@ test "Parsing multiple definitions works as it should" {
                 .plain = PlainUnion{
                     .name = "Event",
                     .constructors = &expected_constructors,
+                    .tag_field = "type",
                 },
             },
         },
