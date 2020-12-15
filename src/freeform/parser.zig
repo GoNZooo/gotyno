@@ -303,6 +303,7 @@ pub const Union = union(enum) {
 
 pub const UnionOptions = struct {
     tag_field: []const u8,
+    embedded: bool,
 };
 
 pub const PlainUnion = struct {
@@ -311,6 +312,7 @@ pub const PlainUnion = struct {
     name: []const u8,
     constructors: []Constructor,
     tag_field: []const u8,
+    embedded_tag: bool,
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
@@ -468,7 +470,7 @@ pub const DefinitionIterator = struct {
                         switch (space_or_left_parenthesis) {
                             .space => return Definition{
                                 .@"union" = try self.parseUnionDefinition(
-                                    UnionOptions{ .tag_field = "type" },
+                                    UnionOptions{ .tag_field = "type", .embedded = false },
                                 ),
                             },
                             .left_parenthesis => return Definition{
@@ -543,19 +545,32 @@ pub const DefinitionIterator = struct {
 
     fn parseUnionOptions(self: *Self) !UnionOptions {
         const tokens = &self.token_iterator;
-        const symbol = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
 
-        var options = UnionOptions{ .tag_field = "type" };
+        var options = UnionOptions{ .tag_field = "type", .embedded = false };
 
-        if (mem.eql(u8, symbol, "tag")) {
-            _ = try tokens.expect(Token.space, self.expect_error);
-            _ = try tokens.expect(Token.equals, self.expect_error);
-            _ = try tokens.expect(Token.space, self.expect_error);
-            options.tag_field = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+        var done_parsing_options = false;
+        while (!done_parsing_options) {
+            const symbol = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+            if (mem.eql(u8, symbol, "tag")) {
+                _ = try tokens.expect(Token.space, self.expect_error);
+                _ = try tokens.expect(Token.equals, self.expect_error);
+                _ = try tokens.expect(Token.space, self.expect_error);
+                options.tag_field = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+            } else if (mem.eql(u8, symbol, "embedded")) {
+                options.embedded = true;
+            }
+            if (try tokens.peek()) |t| {
+                switch (t) {
+                    .right_parenthesis => done_parsing_options = true,
+                    else => {
+                        _ = try tokens.expect(Token.comma, self.expect_error);
+                        _ = try tokens.expect(Token.space, self.expect_error);
+                    },
+                }
+            }
         }
         _ = try tokens.expect(Token.right_parenthesis, self.expect_error);
         _ = try tokens.expect(Token.space, self.expect_error);
-        debug.print("parsed options\n", .{});
 
         return options;
     }
@@ -801,6 +816,7 @@ pub const DefinitionIterator = struct {
             .name = try self.allocator.dupe(u8, definition_name),
             .constructors = constructors.items,
             .tag_field = options.tag_field,
+            .embedded_tag = options.embedded,
         };
     }
 
@@ -1111,6 +1127,7 @@ test "Parsing basic plain union" {
                 .name = "Event",
                 .constructors = &expected_constructors,
                 .tag_field = "type",
+                .embedded_tag = false,
             },
         },
     }};
@@ -1351,6 +1368,62 @@ test "Parsing imports, without and with alias, respectively" {
     }
 }
 
+test "Parsing unions with options" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\union(tag = kind) WithModifiedTag {
+        \\    one: Value
+        \\}
+        \\
+        \\union(embedded, tag = other_kind) EmbeddedWithModifiedTag {
+        \\    one: Value
+        \\}
+        \\
+    ;
+
+    var expected_constructors = [_]Constructor{
+        .{ .tag = "one", .parameter = Type{ .name = "Value" } },
+    };
+
+    const expected_definitions = [_]Definition{
+        .{
+            .@"union" = Union{
+                .plain = PlainUnion{
+                    .name = "WithModifiedTag",
+                    .constructors = &expected_constructors,
+                    .tag_field = "kind",
+                    .embedded_tag = false,
+                },
+            },
+        },
+        .{
+            .@"union" = Union{
+                .plain = PlainUnion{
+                    .name = "EmbeddedWithModifiedTag",
+                    .constructors = &expected_constructors,
+                    .tag_field = "other_kind",
+                    .embedded_tag = true,
+                },
+            },
+        },
+    };
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    switch (parsed_definitions) {
+        .success => |parsed| {
+            expectEqualDefinitions(&expected_definitions, parsed.definitions);
+        },
+    }
+}
+
 test "Parsing invalid normal structure" {
     var allocator = TestingAllocator{};
     var expect_error: ExpectError = undefined;
@@ -1455,6 +1528,7 @@ test "Parsing multiple definitions works as it should" {
                     .name = "Event",
                     .constructors = &expected_constructors,
                     .tag_field = "type",
+                    .embedded_tag = false,
                 },
             },
         },
