@@ -295,6 +295,13 @@ pub const Union = union(enum) {
 
     plain: PlainUnion,
     generic: GenericUnion,
+    // @TODO: add `UnionWithEmbeddedTag` or the like here, make it so it cannot be constructed
+    // without also passing a structure to it, meaning we'll have to actually have a struct we can
+    // refer to when we create the definition itself. That way we'll guarantee that we have
+    // something we can output.
+    // @NOTE: This will likely mean we have to keep a "so far" array of definitions that can be
+    // referenced when definitions are created, which will mean we can then reach into it to pull
+    // out an *already parsed* definition for a struct that will have the tag embedded in it.
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
