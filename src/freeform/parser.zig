@@ -141,6 +141,13 @@ pub const Structure = union(enum) {
             },
         }
     }
+
+    pub fn name(self: Self) []const u8 {
+        return switch (self) {
+            .plain => |plain| plain.name,
+            .generic => |generic| generic.name,
+        };
+    }
 };
 
 pub const PlainStructure = struct {
@@ -290,14 +297,18 @@ pub const Union = union(enum) {
     generic: GenericUnion,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        switch (self) {
-            .plain => |plain| {
-                return meta.activeTag(other) == .plain and plain.isEqual(other.plain);
-            },
-            .generic => |generic| {
-                return meta.activeTag(other) == .generic and generic.isEqual(other.generic);
-            },
-        }
+        return switch (self) {
+            .plain => |plain| meta.activeTag(other) == .plain and plain.isEqual(other.plain),
+            .generic => |generic| meta.activeTag(other) == .generic and
+                generic.isEqual(other.generic),
+        };
+    }
+
+    pub fn name(self: Self) []const u8 {
+        return switch (self) {
+            .plain => |plain| plain.name,
+            .generic => |generic| generic.name,
+        };
     }
 };
 
