@@ -12,6 +12,7 @@ const tokenizer = @import("./freeform/tokenizer.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 
 const Definition = parser.Definition;
+const Import = parser.Import;
 const UntaggedUnion = parser.UntaggedUnion;
 const UntaggedUnionValue = parser.UntaggedUnionValue;
 const Enumeration = parser.Enumeration;
@@ -54,12 +55,17 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
             },
             .enumeration => |enumeration| try outputEnumeration(allocator, enumeration),
             .untagged_union => |u| try outputUntaggedUnion(allocator, u),
+            .import => |i| try outputImport(allocator, i),
         };
 
         try outputs.append(output);
     }
 
     return try mem.join(allocator, "\n\n", outputs.items);
+}
+
+fn outputImport(allocator: *mem.Allocator, i: Import) ![]const u8 {
+    return try fmt.allocPrint(allocator, "import * as {} from \"{}\";", .{ i.alias, i.name });
 }
 
 fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
@@ -3020,4 +3026,44 @@ test "Tagged generic union with tag specifier is output correctly" {
     );
 
     testing.expectEqualStrings(output, expected_output);
+}
+
+test "Imports are output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\import other
+        \\import sourceFile = importAlias
+        \\
+    ;
+
+    const expected_output_1 =
+        \\import * as other from "other";
+    ;
+
+    const expected_output_2 =
+        \\import * as importAlias from "sourceFile";
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const parsed_definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output_1 = try outputImport(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[0].import,
+    );
+
+    testing.expectEqualStrings(output_1, expected_output_1);
+
+    const output_2 = try outputImport(
+        &allocator.allocator,
+        parsed_definitions.success.definitions[1].import,
+    );
+
+    testing.expectEqualStrings(output_2, expected_output_2);
 }
