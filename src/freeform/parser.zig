@@ -295,19 +295,13 @@ pub const Union = union(enum) {
 
     plain: PlainUnion,
     generic: GenericUnion,
-    // @TODO: add `UnionWithEmbeddedTag` or the like here, make it so it cannot be constructed
-    // without also passing a structure to it, meaning we'll have to actually have a struct we can
-    // refer to when we create the definition itself. That way we'll guarantee that we have
-    // something we can output.
-    // @NOTE: This will likely mean we have to keep a "so far" array of definitions that can be
-    // referenced when definitions are created, which will mean we can then reach into it to pull
-    // out an *already parsed* definition for a struct that will have the tag embedded in it.
+    embedded: EmbeddedUnion,
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
-            .plain => |plain| meta.activeTag(other) == .plain and plain.isEqual(other.plain),
-            .generic => |generic| meta.activeTag(other) == .generic and
-                generic.isEqual(other.generic),
+            .plain => |p| meta.activeTag(other) == .plain and p.isEqual(other.plain),
+            .generic => |g| meta.activeTag(other) == .generic and g.isEqual(other.generic),
+            .embedded => |e| meta.activeTag(other) == .embedded and e.isEqual(other.embedded),
         };
     }
 
@@ -315,6 +309,7 @@ pub const Union = union(enum) {
         return switch (self) {
             .plain => |plain| plain.name,
             .generic => |generic| generic.name,
+            .embedded => |embedded| embedded.name,
         };
     }
 };
@@ -364,6 +359,47 @@ pub const GenericUnion = struct {
         }
 
         return true;
+    }
+};
+
+pub const EmbeddedUnion = struct {
+    const Self = @This();
+
+    name: []const u8,
+    constructors: []ConstructorWithEmbeddedTypeTag,
+    open_names: []const []const u8,
+    tag_field: []const u8,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (!mem.eql(u8, self.name, other.name)) return false;
+        if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
+
+        for (self.constructors) |constructor, i| {
+            if (!constructor.isEqual(other.constructors[i])) return false;
+        }
+
+        for (self.open_names) |open_name, i| {
+            if (!mem.eql(u8, open_name, other.open_names[i])) return false;
+        }
+
+        return true;
+    }
+};
+
+const ConstructorWithEmbeddedTypeTag = struct {
+    const Self = @This();
+
+    tag: []const u8,
+    parameter: ?Structure,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (self.parameter) |parameter| {
+            if (other.parameter == null or !parameter.isEqual(other.parameter.?)) return false;
+        } else {
+            if (other.parameter != null) return false;
+        }
+
+        return mem.eql(u8, self.tag, other.tag);
     }
 };
 
@@ -428,6 +464,8 @@ pub fn parseWithDescribedError(
     };
 }
 
+const DefinitionMap = std.StringHashMap(Definition);
+
 /// `DefinitionIterator` is iterator that attempts to return the next definition in a source, based
 /// on a `TokenIterator` that it holds inside of its instance. It's an unapologetically stateful
 /// thing; most of what is going on in here depends entirely on the order methods are called and it
@@ -438,6 +476,11 @@ pub const DefinitionIterator = struct {
     token_iterator: TokenIterator,
     allocator: *mem.Allocator,
     expect_error: *ExpectError,
+
+    /// Holds all of the named definitions that have been parsed and is filled in each time a
+    /// definition is successfully parsed, making it possible to refer to already parsed definitions
+    /// when parsing later ones.
+    named_definitions: DefinitionMap,
 
     pub fn init(
         allocator: *mem.Allocator,
@@ -450,6 +493,7 @@ pub const DefinitionIterator = struct {
             .token_iterator = token_iterator,
             .allocator = allocator,
             .expect_error = expect_error,
+            .named_definitions = DefinitionMap.init(allocator),
         };
     }
 
@@ -462,7 +506,12 @@ pub const DefinitionIterator = struct {
                     if (mem.eql(u8, s, "struct")) {
                         _ = try tokens.expect(Token.space, self.expect_error);
 
-                        return Definition{ .structure = try self.parseStructureDefinition() };
+                        const definition = Definition{
+                            .structure = try self.parseStructureDefinition(),
+                        };
+                        try self.addDefinition(definition.structure.name(), definition);
+
+                        return definition;
                     } else if (mem.eql(u8, s, "union")) {
                         const space_or_left_parenthesis = try tokens.expectOneOf(
                             &[_]TokenTag{ .space, .left_parenthesis },
@@ -470,22 +519,44 @@ pub const DefinitionIterator = struct {
                         );
 
                         switch (space_or_left_parenthesis) {
-                            .space => return Definition{
-                                .@"union" = try self.parseUnionDefinition(
-                                    UnionOptions{ .tag_field = "type", .embedded = false },
-                                ),
+                            .space => {
+                                const definition = Definition{
+                                    .@"union" = try self.parseUnionDefinition(
+                                        UnionOptions{ .tag_field = "type", .embedded = false },
+                                    ),
+                                };
+                                try self.addDefinition(definition.@"union".name(), definition);
+
+                                return definition;
                             },
-                            .left_parenthesis => return Definition{
-                                .@"union" = try self.parseUnionDefinition(
-                                    try self.parseUnionOptions(),
-                                ),
+                            .left_parenthesis => {
+                                const options = try self.parseUnionOptions();
+
+                                const definition = if (options.embedded)
+                                    // @TODO: add parsing of embedded union here
+                                    Definition{
+                                        .@"union" = Union{
+                                            .embedded = try self.parseEmbeddedUnionDefinition(options),
+                                        },
+                                    }
+                                else
+                                    Definition{ .@"union" = try self.parseUnionDefinition(options) };
+
+                                try self.addDefinition(definition.@"union".name(), definition);
+
+                                return definition;
                             },
                             else => unreachable,
                         }
                     } else if (mem.eql(u8, s, "enum")) {
                         _ = try tokens.expect(Token.space, self.expect_error);
 
-                        return Definition{ .enumeration = try self.parseEnumerationDefinition() };
+                        const definition = Definition{
+                            .enumeration = try self.parseEnumerationDefinition(),
+                        };
+                        try self.addDefinition(definition.enumeration.name, definition);
+
+                        return definition;
                     } else if (mem.eql(u8, s, "untagged")) {
                         _ = try tokens.expect(Token.space, self.expect_error);
                         const union_keyword = (try tokens.expect(
@@ -495,47 +566,18 @@ pub const DefinitionIterator = struct {
                         debug.assert(mem.eql(u8, union_keyword, "union"));
                         _ = try tokens.expect(Token.space, self.expect_error);
 
-                        return Definition{
+                        const definition = Definition{
                             .untagged_union = try self.parseUntaggedUnionDefinition(),
                         };
+                        try self.addDefinition(definition.untagged_union.name, definition);
+
+                        return definition;
                     } else if (mem.eql(u8, s, "import")) {
                         _ = try tokens.expect(Token.space, self.expect_error);
 
-                        const import_name = switch (try tokens.expectOneOf(
-                            &[_]TokenTag{ .symbol, .name },
-                            self.expect_error,
-                        )) {
-                            .symbol => |symbol| symbol,
-                            .name => |name| name,
-                            else => unreachable,
-                        };
+                        const definition = Definition{ .import = try self.parseImport() };
 
-                        switch (try tokens.expectOneOf(
-                            &[_]TokenTag{ .newline, .space },
-                            self.expect_error,
-                        )) {
-                            .newline => return Definition{
-                                .import = Import{ .name = import_name, .alias = import_name },
-                            },
-                            .space => {
-                                _ = try tokens.expect(Token.equals, self.expect_error);
-                                _ = try tokens.expect(Token.space, self.expect_error);
-
-                                const import_alias = switch (try tokens.expectOneOf(
-                                    &[_]TokenTag{ .symbol, .name },
-                                    self.expect_error,
-                                )) {
-                                    .symbol => |symbol| symbol,
-                                    .name => |name| name,
-                                    else => unreachable,
-                                };
-
-                                return Definition{
-                                    .import = Import{ .name = import_name, .alias = import_alias },
-                                };
-                            },
-                            else => unreachable,
-                        }
+                        return definition;
                     }
                 },
                 else => {},
@@ -543,6 +585,42 @@ pub const DefinitionIterator = struct {
         }
 
         return null;
+    }
+
+    fn parseImport(self: *Self) !Import {
+        const tokens = &self.token_iterator;
+
+        const import_name = switch (try tokens.expectOneOf(
+            &[_]TokenTag{ .symbol, .name },
+            self.expect_error,
+        )) {
+            .symbol => |symbol| symbol,
+            .name => |name| name,
+            else => unreachable,
+        };
+
+        return switch (try tokens.expectOneOf(
+            &[_]TokenTag{ .newline, .space },
+            self.expect_error,
+        )) {
+            .newline => Import{ .name = import_name, .alias = import_name },
+            .space => with_alias: {
+                _ = try tokens.expect(Token.equals, self.expect_error);
+                _ = try tokens.expect(Token.space, self.expect_error);
+
+                const import_alias = switch (try tokens.expectOneOf(
+                    &[_]TokenTag{ .symbol, .name },
+                    self.expect_error,
+                )) {
+                    .symbol => |symbol| symbol,
+                    .name => |name| name,
+                    else => unreachable,
+                };
+
+                break :with_alias Import{ .name = import_name, .alias = import_alias };
+            },
+            else => unreachable,
+        };
     }
 
     fn parseUnionOptions(self: *Self) !UnionOptions {
@@ -714,7 +792,6 @@ pub const DefinitionIterator = struct {
 
         var open_names = ArrayList([]const u8).init(self.allocator);
 
-        const p = try tokens.peek();
         const first_name = try tokens.expect(Token.name, self.expect_error);
         try open_names.append(first_name.name);
         var open_names_done = false;
@@ -788,6 +865,77 @@ pub const DefinitionIterator = struct {
                 "Invalid follow-up token after `union` keyword: {}\n",
                 .{left_angle_or_left_brace},
             ),
+        };
+    }
+
+    fn parseEmbeddedUnionDefinition(self: *Self, options: UnionOptions) !EmbeddedUnion {
+        const tokens = &self.token_iterator;
+
+        const definition_name = (try tokens.expect(Token.name, self.expect_error)).name;
+
+        _ = try tokens.expect(Token.space, self.expect_error);
+
+        var open_names: [][]const u8 = &[_][]u8{};
+        const left_angle_or_left_brace = try tokens.expectOneOf(
+            &[_]TokenTag{ .left_angle, .left_brace },
+            self.expect_error,
+        );
+        switch (left_angle_or_left_brace) {
+            .left_angle => {
+                open_names = try self.parseOpenNames();
+                _ = try tokens.expect(Token.left_brace, self.expect_error);
+            },
+            .left_brace => {},
+            else => unreachable,
+        }
+
+        _ = try tokens.expect(Token.newline, self.expect_error);
+
+        var constructors = ArrayList(ConstructorWithEmbeddedTypeTag).init(self.allocator);
+        var done_parsing_constructors = false;
+        while (!done_parsing_constructors) {
+            try tokens.skipMany(Token.space, 4, self.expect_error);
+            const tag = (try tokens.expect(Token.name, self.expect_error)).name;
+
+            switch (try tokens.expectOneOf(&[_]TokenTag{ .colon, .newline }, self.expect_error)) {
+                .newline => try constructors.append(ConstructorWithEmbeddedTypeTag{
+                    .tag = tag,
+                    .parameter = null,
+                }),
+                .colon => {
+                    _ = try tokens.expect(Token.space, self.expect_error);
+
+                    const parameter_name = (try tokens.expect(Token.name, self.expect_error)).name;
+                    const parameter = switch (try self.getDefinition(parameter_name)) {
+                        .structure => |s| s,
+                        else => return error.InvalidPayloadForEmbeddedUnion,
+                    };
+
+                    try constructors.append(ConstructorWithEmbeddedTypeTag{
+                        .tag = tag,
+                        .parameter = parameter,
+                    });
+
+                    _ = try tokens.expect(Token.newline, self.expect_error);
+                },
+                else => unreachable,
+            }
+
+            if (try tokens.peek()) |t| {
+                switch (t) {
+                    .right_brace => done_parsing_constructors = true,
+                    else => {},
+                }
+            }
+        }
+
+        _ = try tokens.expect(Token.right_brace, self.expect_error);
+
+        return EmbeddedUnion{
+            .name = definition_name,
+            .constructors = constructors.items,
+            .open_names = open_names,
+            .tag_field = options.tag_field,
         };
     }
 
@@ -1023,6 +1171,22 @@ pub const DefinitionIterator = struct {
         _ = try tokens.expect(Token.newline, self.expect_error);
 
         return field;
+    }
+
+    fn addDefinition(self: *Self, name: []const u8, definition: Definition) !void {
+        const result = try self.named_definitions.getOrPut(name);
+
+        if (result.found_existing)
+            return error.DuplicateDefinitions
+        else
+            result.entry.*.value = definition;
+    }
+
+    fn getDefinition(self: Self, name: []const u8) !Definition {
+        return if (self.named_definitions.getEntry(name)) |definition|
+            definition.value
+        else
+            error.NoSuchDefinition;
     }
 };
 
@@ -1348,10 +1512,6 @@ test "Parsing unions with options" {
         \\    one: Value
         \\}
         \\
-        \\union(embedded, tag = other_kind) EmbeddedWithModifiedTag {
-        \\    one: Value
-        \\}
-        \\
     ;
 
     var expected_constructors = [_]Constructor{
@@ -1365,15 +1525,6 @@ test "Parsing unions with options" {
                     .name = "WithModifiedTag",
                     .constructors = &expected_constructors,
                     .tag_field = "kind",
-                },
-            },
-        },
-        .{
-            .@"union" = Union{
-                .plain = PlainUnion{
-                    .name = "EmbeddedWithModifiedTag",
-                    .constructors = &expected_constructors,
-                    .tag_field = "other_kind",
                 },
             },
         },
@@ -1404,7 +1555,11 @@ test "Parsing invalid normal structure" {
             error.OutOfMemory,
             error.Overflow,
             error.InvalidCharacter,
+            error.InvalidPayloadForEmbeddedUnion,
+            error.NoSuchDefinition,
+            error.DuplicateDefinitions,
             => unreachable,
+
             error.UnexpectedToken => {
                 switch (expect_error) {
                     .one_of => |one_of| {
@@ -1494,6 +1649,77 @@ test "Parsing multiple definitions works as it should" {
                     .name = "Event",
                     .constructors = &expected_constructors,
                     .tag_field = "type",
+                },
+            },
+        },
+    };
+
+    expectEqualDefinitions(&expected_definitions, definitions);
+}
+
+test "Parsing union with embedded type tag" {
+    var allocator = TestingAllocator{};
+    var expect_error: ExpectError = undefined;
+
+    const definition_buffer =
+        \\struct One {
+        \\    field1: String
+        \\}
+        \\
+        \\struct Two {
+        \\    field2: F32
+        \\}
+        \\
+        \\union(tag = media_type, embedded) Embedded {
+        \\    WithOne: One
+        \\    WithTwo: Two
+        \\    Empty
+        \\}
+    ;
+
+    const definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    var expected_struct_one_fields = [_]Field{
+        .{ .name = "field1", .@"type" = Type{ .name = "String" } },
+    };
+    var expected_struct_two_fields = [_]Field{
+        .{ .name = "field2", .@"type" = Type{ .name = "F32" } },
+    };
+
+    const expected_struct_one = Structure{
+        .plain = PlainStructure{
+            .name = "One",
+            .fields = &expected_struct_one_fields,
+        },
+    };
+    const expected_struct_two = Structure{
+        .plain = PlainStructure{
+            .name = "Two",
+            .fields = &expected_struct_two_fields,
+        },
+    };
+
+    var expected_constructors = [_]ConstructorWithEmbeddedTypeTag{
+        .{ .tag = "WithOne", .parameter = expected_struct_one },
+        .{ .tag = "WithTwo", .parameter = expected_struct_two },
+        .{ .tag = "Empty", .parameter = null },
+    };
+
+    const expected_definitions = [_]Definition{
+        .{ .structure = expected_struct_one },
+        .{ .structure = expected_struct_two },
+        .{
+            .@"union" = Union{
+                .embedded = EmbeddedUnion{
+                    .name = "Embedded",
+                    .constructors = &expected_constructors,
+                    .tag_field = "media_type",
+                    .open_names = &[_][]u8{},
                 },
             },
         },
@@ -1594,6 +1820,24 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
 
                             expectEqualOpenNames(generic.open_names, b.@"union".generic.open_names);
                         },
+                        .embedded => |embedded| {
+                            if (!mem.eql(u8, embedded.name, b.@"union".embedded.name)) {
+                                debug.print(
+                                    "\tNames: {} != {}\n",
+                                    .{ embedded.name, b.@"union".embedded.name },
+                                );
+                            }
+
+                            expectEqualEmbeddedConstructors(
+                                embedded.constructors,
+                                b.@"union".embedded.constructors,
+                            );
+
+                            expectEqualOpenNames(
+                                embedded.open_names,
+                                b.@"union".embedded.open_names,
+                            );
+                        },
                     }
                 },
 
@@ -1639,6 +1883,46 @@ fn expectEqualConstructors(as: []const Constructor, bs: []const Constructor) voi
     for (as) |a, i| {
         const b = bs[i];
         if (!a.isEqual(b)) {
+            testing_utilities.testPanic(
+                "Different constructor at index {}:\n\tExpected: {}\n\tGot: {}\n",
+                .{ i, a, b },
+            );
+        }
+    }
+}
+
+fn expectEqualEmbeddedConstructors(
+    as: []const ConstructorWithEmbeddedTypeTag,
+    bs: []const ConstructorWithEmbeddedTypeTag,
+) void {
+    for (as) |a, i| {
+        const b = bs[i];
+        if (!a.isEqual(b)) {
+            if (!mem.eql(u8, a.tag, b.tag)) {
+                testing_utilities.testPanic(
+                    "Embedded constructor tags do not match: {} != {}\n",
+                    .{ a.tag, b.tag },
+                );
+            }
+
+            if (a.parameter) |a_parameter| {
+                if (b.parameter) |b_parameter| {
+                    expectEqualFields(a_parameter.plain.fields, b_parameter.plain.fields);
+                } else {
+                    testing_utilities.testPanic(
+                        "Embedded constructor {} ({}) has parameter whereas {} does not\n",
+                        .{ i, a.tag, b.tag },
+                    );
+                }
+            } else {
+                if (b.parameter) |b_parameter| {
+                    testing_utilities.testPanic(
+                        "Embedded constructor {} ({}) has parameter whereas {} does not\n",
+                        .{ i, b.tag, a.tag },
+                    );
+                }
+            }
+
             testing_utilities.testPanic(
                 "Different constructor at index {}:\n\tExpected: {}\n\tGot: {}\n",
                 .{ i, a, b },
