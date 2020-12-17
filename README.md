@@ -133,6 +133,39 @@ In TypeScript, for example, the correct type guard and validator for this
 untagged union will be generated, and the literal string fields can still be
 used for identifying which type one has.
 
+#### Setting the tag key and embedding it in payload structures
+
+The above can also be accomplished by setting the tag key to be embedded in
+options passed to the `union` keyword (we can also set which key is used):
+
+```
+struct SomeType {
+    some_field: F32
+    some_other_field: ?String
+}
+
+struct SomeOtherType {
+    active: Boolean
+    some_other_field: ?String
+}
+
+union(tag = type_tag, embedded) Possible {
+    FirstConstructor: SomeType
+    SecondConstructor: SomeOtherType
+}
+```
+
+This effectively will create a structure where we get the field `type_tag`
+embedded in the payload structures (`SomeType` & `SomeOtherType`) with the
+values `"FirstConstructor"` and `"SecondConstructor"` respectively.
+
+Note that in order to embed a type key we obviously need the payload (if present)
+to be a structure type, otherwise we have no fields to merge the type tag field
+into.
+
+Both checks for existence of the referenced payload types and checks that they
+are structures are done during compilation.
+
 ## Note about MacOS releases
 
 Cross-compilation from Linux/Windows doesn't yet work for MacOS so sadly I have
