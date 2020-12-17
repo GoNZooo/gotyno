@@ -386,7 +386,7 @@ pub const EmbeddedUnion = struct {
     }
 };
 
-const ConstructorWithEmbeddedTypeTag = struct {
+pub const ConstructorWithEmbeddedTypeTag = struct {
     const Self = @This();
 
     tag: []const u8,

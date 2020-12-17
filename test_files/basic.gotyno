@@ -101,3 +101,26 @@ untagged union KnownFor {
     String
     F32
 }
+
+struct KnownForMovieWithoutTypeTag {
+    poster_path: ?String
+    id: U32
+    title: ?String
+    vote_average: F32
+    release_date: ?String
+    overview: String
+}
+
+struct KnownForShowWithoutTypeTag {
+    poster_path: ?String
+    id: U32
+    vote_average: F32
+    overview: String
+    first_air_date: ?String
+    name: ?String
+}
+
+union(tag = media_type, embedded) KnownForEmbedded {
+    Movie: KnownForMovieWithoutTypeTag
+    TV: KnownForShowWithoutTypeTag
+}

@@ -17,11 +17,14 @@ const UntaggedUnion = parser.UntaggedUnion;
 const UntaggedUnionValue = parser.UntaggedUnionValue;
 const Enumeration = parser.Enumeration;
 const EnumerationField = parser.EnumerationField;
+const Structure = parser.Structure;
 const PlainStructure = parser.PlainStructure;
 const GenericStructure = parser.GenericStructure;
 const PlainUnion = parser.PlainUnion;
+const EmbeddedUnion = parser.EmbeddedUnion;
 const GenericUnion = parser.GenericUnion;
 const Constructor = parser.Constructor;
+const ConstructorWithEmbeddedTypeTag = parser.ConstructorWithEmbeddedTypeTag;
 const Type = parser.Type;
 const Field = parser.Field;
 const ExpectError = tokenizer.ExpectError;
@@ -52,7 +55,7 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
             .@"union" => |u| switch (u) {
                 .plain => |plain| try outputPlainUnion(allocator, plain),
                 .generic => |generic| try outputGenericUnion(allocator, generic),
-                .embedded => |e| unreachable,
+                .embedded => |e| try outputEmbeddedUnion(allocator, e),
             },
             .enumeration => |enumeration| try outputEnumeration(allocator, enumeration),
             .untagged_union => |u| try outputUntaggedUnion(allocator, u),
@@ -339,6 +342,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
 
     const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
+        Constructor,
         allocator,
         plain_union.name,
         plain_union.constructors,
@@ -413,10 +417,264 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     );
 }
 
+fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]const u8 {
+    const ConstructorData = struct {
+        tag: []const u8,
+        fields: []Field,
+        structure: ?Structure,
+    };
+
+    var constructor_names = try allocator.alloc([]const u8, embedded.constructors.len);
+    defer allocator.free(constructor_names);
+    for (embedded.constructors) |constructor, i| {
+        constructor_names[i] = constructor.tag;
+    }
+
+    const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
+
+    const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
+        ConstructorWithEmbeddedTypeTag,
+        allocator,
+        embedded.name,
+        embedded.constructors,
+    );
+
+    var constructor_data = ArrayList(ConstructorData).init(allocator);
+    defer constructor_data.deinit();
+
+    var tagged_structure_outputs = ArrayList([]const u8).init(allocator);
+    defer tagged_structure_outputs.deinit();
+
+    var constructor_outputs = ArrayList([]const u8).init(allocator);
+    defer constructor_outputs.deinit();
+
+    var union_type_guards = ArrayList([]const u8).init(allocator);
+    defer union_type_guards.deinit();
+
+    var union_validators = ArrayList([]const u8).init(allocator);
+    defer union_validators.deinit();
+
+    var type_guard_outputs = ArrayList([]const u8).init(allocator);
+    defer type_guard_outputs.deinit();
+
+    var validator_outputs = ArrayList([]const u8).init(allocator);
+    defer validator_outputs.deinit();
+
+    for (embedded.constructors) |constructor| {
+        const fields_in_structure = if (constructor.parameter) |parameter| fields: {
+            switch (parameter) {
+                .plain => |p| break :fields p.fields,
+                .generic => |g| break :fields g.fields,
+            }
+        } else &[_]Field{};
+
+        const enumeration_tag = try outputEnumerationTag(
+            allocator,
+            embedded.name,
+            constructor.tag,
+        );
+
+        try tagged_structure_outputs.append(
+            try outputTaggedStructureForConstructorWithEmbeddedTag(
+                allocator,
+                fields_in_structure,
+                embedded.tag_field,
+                constructor.tag,
+                enumeration_tag,
+            ),
+        );
+
+        try constructor_outputs.append(
+            try outputConstructorWithEmbeddedTag(
+                allocator,
+                constructor.parameter,
+                constructor.tag,
+                embedded.tag_field,
+                enumeration_tag,
+            ),
+        );
+
+        try union_type_guards.append(try fmt.allocPrint(allocator, "is{}", .{constructor.tag}));
+        try union_validators.append(
+            try fmt.allocPrint(allocator, "validate{}", .{constructor.tag}),
+        );
+
+        try type_guard_outputs.append(
+            try outputTypeGuardForConstructorWithEmbeddedTypeTag(
+                allocator,
+                fields_in_structure,
+                constructor.tag,
+                embedded.tag_field,
+                enumeration_tag,
+            ),
+        );
+
+        try validator_outputs.append(
+            try outputValidatorForConstructorWithEmbeddedTypeTag(
+                allocator,
+                fields_in_structure,
+                constructor.tag,
+                embedded.tag_field,
+                enumeration_tag,
+            ),
+        );
+    }
+
+    const tagged_structures_output = try mem.join(
+        allocator,
+        "\n\n",
+        tagged_structure_outputs.items,
+    );
+    defer allocator.free(tagged_structures_output);
+
+    const constructors_output = try mem.join(allocator, "\n\n", constructor_outputs.items);
+    defer allocator.free(constructors_output);
+
+    const joined_union_type_guards = try mem.join(allocator, ", ", union_type_guards.items);
+    defer allocator.free(joined_union_type_guards);
+
+    const union_type_guard_format =
+        \\export function is{}(value: unknown): value is {} {{
+        \\    return [{}].some((typePredicate) => typePredicate(value));
+        \\}}
+    ;
+    const union_type_guard_output = try fmt.allocPrint(
+        allocator,
+        union_type_guard_format,
+        .{ embedded.name, embedded.name, joined_union_type_guards },
+    );
+    defer allocator.free(union_type_guard_output);
+
+    const type_guards_output = try mem.join(allocator, "\n\n", type_guard_outputs.items);
+    defer allocator.free(type_guards_output);
+
+    const joined_union_validators = try mem.join(allocator, ", ", union_validators.items);
+    defer allocator.free(joined_union_validators);
+    const union_validator_format =
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
+        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\}}
+    ;
+    const union_validator_output = try fmt.allocPrint(
+        allocator,
+        union_validator_format,
+        .{ embedded.name, embedded.name, embedded.name, joined_union_validators },
+    );
+    defer allocator.free(union_validator_output);
+
+    const validators_output = try mem.join(allocator, "\n\n", validator_outputs.items);
+    defer allocator.free(validators_output);
+
+    const output_format =
+        \\export type {} = {};
+        \\
+        \\{}
+        \\
+        \\{}
+        \\
+        \\{}
+        \\
+        \\{}
+        \\
+        \\{}
+        \\
+        \\{}
+        \\
+        \\{}
+    ;
+
+    return fmt.allocPrint(
+        allocator,
+        output_format,
+        .{
+            embedded.name,
+            constructor_names_output,
+            union_tag_enum_output,
+            tagged_structures_output,
+            constructors_output,
+            union_type_guard_output,
+            type_guards_output,
+            union_validator_output,
+            validators_output,
+        },
+    );
+}
+
+fn outputConstructorWithEmbeddedTag(
+    allocator: *mem.Allocator,
+    parameter: ?Structure,
+    tag: []const u8,
+    tag_field: []const u8,
+    enumeration_tag: []const u8,
+) ![]const u8 {
+    const constructor_format_with_payload =
+        \\export function {}(data: {}): {} {{
+        \\    return {{{}: {}, ...data}};
+        \\}}
+    ;
+    const constructor_format_without_payload =
+        \\export function {}(): {} {{
+        \\    return {{{}: {}}};
+        \\}}
+    ;
+
+    return if (parameter) |p|
+        try fmt.allocPrint(
+            allocator,
+            constructor_format_with_payload,
+            .{ tag, p.name(), tag, tag_field, enumeration_tag },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            constructor_format_without_payload,
+            .{ tag, tag, tag_field, enumeration_tag },
+        );
+}
+
+fn outputTaggedStructureForConstructorWithEmbeddedTag(
+    allocator: *mem.Allocator,
+    fields_in_structure: []Field,
+    tag_field: []const u8,
+    tag: []const u8,
+    enumeration_tag: []const u8,
+) ![]const u8 {
+    const tagged_structure_output_with_payload =
+        \\export type {} = {{
+        \\    {}: {};
+        \\{}
+        \\}};
+    ;
+    const tagged_structure_output_without_payload =
+        \\export type {} = {{
+        \\    {}: {};
+        \\}};
+    ;
+
+    return if (fields_in_structure.len != 0)
+        try fmt.allocPrint(
+            allocator,
+            tagged_structure_output_with_payload,
+            .{
+                tag,
+                tag_field,
+                enumeration_tag,
+                try outputStructureFields(allocator, fields_in_structure),
+            },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            tagged_structure_output_without_payload,
+            .{ tag, tag_field, enumeration_tag },
+        );
+}
+
 fn outputUnionTagEnumerationForConstructors(
+    comptime T: type,
     allocator: *mem.Allocator,
     name: []const u8,
-    constructors: []Constructor,
+    constructors: []T,
 ) ![]const u8 {
     var enumeration_tag_outputs = ArrayList([]const u8).init(allocator);
     defer enumeration_tag_outputs.deinit();
@@ -501,6 +759,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
     const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
 
     const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
+        Constructor,
         allocator,
         generic_union.name,
         generic_union.constructors,
@@ -1236,6 +1495,138 @@ fn outputConstructorName(
             try outputOpenNamesFromType(allocator, constructor.parameter, open_names),
         },
     );
+}
+
+fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
+    allocator: *mem.Allocator,
+    fields_in_structure: []Field,
+    tag: []const u8,
+    tag_field: []const u8,
+    enumeration_tag: []const u8,
+) ![]const u8 {
+    var field_type_guard_specifications = ArrayList([]const u8).init(allocator);
+    defer field_type_guard_specifications.deinit();
+
+    for (fields_in_structure) |f| {
+        const specification_format = "{}: {}";
+        try field_type_guard_specifications.append(
+            try fmt.allocPrint(
+                allocator,
+                specification_format,
+                .{ f.name, try getNestedTypeGuardFromType(allocator, f.@"type") },
+            ),
+        );
+    }
+
+    const type_guard_format_with_payload =
+        \\export function is{}(value: unknown): value is {} {{
+        \\    return svt.isInterface<{}>(value, {{{}: {}, {}}});
+        \\}}
+    ;
+    const type_guard_format_without_payload =
+        \\export function is{}(value: unknown): value is {} {{
+        \\    return svt.isInterface<{}>(value, {{{}: {}}});
+        \\}}
+    ;
+
+    const joined_specifications = try mem.join(
+        allocator,
+        ", ",
+        field_type_guard_specifications.items,
+    );
+    defer allocator.free(joined_specifications);
+
+    return if (fields_in_structure.len != 0)
+        try fmt.allocPrint(
+            allocator,
+            type_guard_format_with_payload,
+            .{
+                tag,
+                tag,
+                tag,
+                tag_field,
+                enumeration_tag,
+                joined_specifications,
+            },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            type_guard_format_without_payload,
+            .{
+                tag,
+                tag,
+                tag,
+                tag_field,
+                enumeration_tag,
+            },
+        );
+}
+
+fn outputValidatorForConstructorWithEmbeddedTypeTag(
+    allocator: *mem.Allocator,
+    fields_in_structure: []Field,
+    tag: []const u8,
+    tag_field: []const u8,
+    enumeration_tag: []const u8,
+) ![]const u8 {
+    var field_validator_specifications = ArrayList([]const u8).init(allocator);
+    defer field_validator_specifications.deinit();
+
+    for (fields_in_structure) |f| {
+        const specification_format = "{}: {}";
+        try field_validator_specifications.append(
+            try fmt.allocPrint(
+                allocator,
+                specification_format,
+                .{ f.name, try getNestedValidatorFromType(allocator, f.@"type") },
+            ),
+        );
+    }
+
+    const validator_format_with_payload =
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
+        \\    return svt.validate<{}>(value, {{{}: {}, {}}});
+        \\}}
+    ;
+    const validator_format_without_payload =
+        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
+        \\    return svt.validate<{}>(value, {{{}: {}}});
+        \\}}
+    ;
+
+    const joined_specifications = try mem.join(
+        allocator,
+        ", ",
+        field_validator_specifications.items,
+    );
+    defer allocator.free(joined_specifications);
+
+    return if (fields_in_structure.len != 0)
+        try fmt.allocPrint(
+            allocator,
+            validator_format_with_payload,
+            .{
+                tag,
+                tag,
+                tag,
+                tag_field,
+                enumeration_tag,
+                joined_specifications,
+            },
+        )
+    else
+        try fmt.allocPrint(
+            allocator,
+            validator_format_without_payload,
+            .{
+                tag,
+                tag,
+                tag,
+                tag_field,
+                enumeration_tag,
+            },
+        );
 }
 
 fn outputTypeGuardForConstructor(
@@ -3007,6 +3398,108 @@ test "Tagged generic union with tag specifier is output correctly" {
     );
 
     const output = try outputGenericUnion(&allocator.allocator, definitions[0].@"union".generic);
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Union with embedded tag is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct One {
+        \\    field1: String
+        \\}
+        \\
+        \\struct Two {
+        \\    field2: F32
+        \\    field3: Boolean
+        \\}
+        \\
+        \\union(tag = media_type, embedded) Embedded {
+        \\    WithOne: One
+        \\    WithTwo: Two
+        \\    Empty
+        \\}
+    ;
+
+    const expected_output =
+        \\export type Embedded = WithOne | WithTwo | Empty;
+        \\
+        \\export enum EmbeddedTag {
+        \\    WithOne = "WithOne",
+        \\    WithTwo = "WithTwo",
+        \\    Empty = "Empty",
+        \\}
+        \\
+        \\export type WithOne = {
+        \\    media_type: EmbeddedTag.WithOne;
+        \\    field1: string;
+        \\};
+        \\
+        \\export type WithTwo = {
+        \\    media_type: EmbeddedTag.WithTwo;
+        \\    field2: number;
+        \\    field3: boolean;
+        \\};
+        \\
+        \\export type Empty = {
+        \\    media_type: EmbeddedTag.Empty;
+        \\};
+        \\
+        \\export function WithOne(data: One): WithOne {
+        \\    return {media_type: EmbeddedTag.WithOne, ...data};
+        \\}
+        \\
+        \\export function WithTwo(data: Two): WithTwo {
+        \\    return {media_type: EmbeddedTag.WithTwo, ...data};
+        \\}
+        \\
+        \\export function Empty(): Empty {
+        \\    return {media_type: EmbeddedTag.Empty};
+        \\}
+        \\
+        \\export function isEmbedded(value: unknown): value is Embedded {
+        \\    return [isWithOne, isWithTwo, isEmpty].some((typePredicate) => typePredicate(value));
+        \\}
+        \\
+        \\export function isWithOne(value: unknown): value is WithOne {
+        \\    return svt.isInterface<WithOne>(value, {media_type: EmbeddedTag.WithOne, field1: svt.isString});
+        \\}
+        \\
+        \\export function isWithTwo(value: unknown): value is WithTwo {
+        \\    return svt.isInterface<WithTwo>(value, {media_type: EmbeddedTag.WithTwo, field2: svt.isNumber, field3: svt.isBoolean});
+        \\}
+        \\
+        \\export function isEmpty(value: unknown): value is Empty {
+        \\    return svt.isInterface<Empty>(value, {media_type: EmbeddedTag.Empty});
+        \\}
+        \\
+        \\export function validateEmbedded(value: unknown): svt.ValidationResult<Embedded> {
+        \\    return svt.validateOneOf<Embedded>(value, [validateWithOne, validateWithTwo, validateEmpty]);
+        \\}
+        \\
+        \\export function validateWithOne(value: unknown): svt.ValidationResult<WithOne> {
+        \\    return svt.validate<WithOne>(value, {media_type: EmbeddedTag.WithOne, field1: svt.validateString});
+        \\}
+        \\
+        \\export function validateWithTwo(value: unknown): svt.ValidationResult<WithTwo> {
+        \\    return svt.validate<WithTwo>(value, {media_type: EmbeddedTag.WithTwo, field2: svt.validateNumber, field3: svt.validateBoolean});
+        \\}
+        \\
+        \\export function validateEmpty(value: unknown): svt.ValidationResult<Empty> {
+        \\    return svt.validate<Empty>(value, {media_type: EmbeddedTag.Empty});
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output = try outputEmbeddedUnion(&allocator.allocator, definitions[2].@"union".embedded);
 
     testing.expectEqualStrings(output, expected_output);
 }
