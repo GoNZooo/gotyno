@@ -494,9 +494,17 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
             ),
         );
 
-        try union_type_guards.append(try fmt.allocPrint(allocator, "is{}", .{constructor.tag}));
+        try union_type_guards.append(try fmt.allocPrint(
+            allocator,
+            "is{}",
+            .{try titleCaseWord(allocator, constructor.tag)},
+        ));
         try union_validators.append(
-            try fmt.allocPrint(allocator, "validate{}", .{constructor.tag}),
+            try fmt.allocPrint(
+                allocator,
+                "validate{}",
+                .{try titleCaseWord(allocator, constructor.tag)},
+            ),
         );
 
         try type_guard_outputs.append(
@@ -1536,12 +1544,15 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
     );
     defer allocator.free(joined_specifications);
 
+    const titlecased_tag = try titleCaseWord(allocator, tag);
+    defer allocator.free(titlecased_tag);
+
     return if (fields_in_structure.len != 0)
         try fmt.allocPrint(
             allocator,
             type_guard_format_with_payload,
             .{
-                tag,
+                titlecased_tag,
                 tag,
                 tag,
                 tag_field,
@@ -1554,7 +1565,7 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
             allocator,
             type_guard_format_without_payload,
             .{
-                tag,
+                titlecased_tag,
                 tag,
                 tag,
                 tag_field,
@@ -1602,12 +1613,15 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
     );
     defer allocator.free(joined_specifications);
 
+    const titlecased_tag = try titleCaseWord(allocator, tag);
+    defer allocator.free(titlecased_tag);
+
     return if (fields_in_structure.len != 0)
         try fmt.allocPrint(
             allocator,
             validator_format_with_payload,
             .{
-                tag,
+                titlecased_tag,
                 tag,
                 tag,
                 tag_field,
@@ -1620,7 +1634,7 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
             allocator,
             validator_format_without_payload,
             .{
-                tag,
+                titlecased_tag,
                 tag,
                 tag,
                 tag_field,
@@ -3484,6 +3498,108 @@ test "Union with embedded tag is output correctly" {
         \\
         \\export function validateWithTwo(value: unknown): svt.ValidationResult<WithTwo> {
         \\    return svt.validate<WithTwo>(value, {media_type: EmbeddedTag.WithTwo, field2: svt.validateNumber, field3: svt.validateBoolean});
+        \\}
+        \\
+        \\export function validateEmpty(value: unknown): svt.ValidationResult<Empty> {
+        \\    return svt.validate<Empty>(value, {media_type: EmbeddedTag.Empty});
+        \\}
+    ;
+
+    var expect_error: ExpectError = undefined;
+    const definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &expect_error,
+    );
+
+    const output = try outputEmbeddedUnion(&allocator.allocator, definitions[2].@"union".embedded);
+
+    testing.expectEqualStrings(output, expected_output);
+}
+
+test "Union with embedded tag and lowercase constructors is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct One {
+        \\    field1: String
+        \\}
+        \\
+        \\struct Two {
+        \\    field2: F32
+        \\    field3: Boolean
+        \\}
+        \\
+        \\union(tag = media_type, embedded) Embedded {
+        \\    movie: One
+        \\    tv: Two
+        \\    Empty
+        \\}
+    ;
+
+    const expected_output =
+        \\export type Embedded = movie | tv | Empty;
+        \\
+        \\export enum EmbeddedTag {
+        \\    movie = "movie",
+        \\    tv = "tv",
+        \\    Empty = "Empty",
+        \\}
+        \\
+        \\export type movie = {
+        \\    media_type: EmbeddedTag.movie;
+        \\    field1: string;
+        \\};
+        \\
+        \\export type tv = {
+        \\    media_type: EmbeddedTag.tv;
+        \\    field2: number;
+        \\    field3: boolean;
+        \\};
+        \\
+        \\export type Empty = {
+        \\    media_type: EmbeddedTag.Empty;
+        \\};
+        \\
+        \\export function movie(data: One): movie {
+        \\    return {media_type: EmbeddedTag.movie, ...data};
+        \\}
+        \\
+        \\export function tv(data: Two): tv {
+        \\    return {media_type: EmbeddedTag.tv, ...data};
+        \\}
+        \\
+        \\export function Empty(): Empty {
+        \\    return {media_type: EmbeddedTag.Empty};
+        \\}
+        \\
+        \\export function isEmbedded(value: unknown): value is Embedded {
+        \\    return [isMovie, isTv, isEmpty].some((typePredicate) => typePredicate(value));
+        \\}
+        \\
+        \\export function isMovie(value: unknown): value is movie {
+        \\    return svt.isInterface<movie>(value, {media_type: EmbeddedTag.movie, field1: svt.isString});
+        \\}
+        \\
+        \\export function isTv(value: unknown): value is tv {
+        \\    return svt.isInterface<tv>(value, {media_type: EmbeddedTag.tv, field2: svt.isNumber, field3: svt.isBoolean});
+        \\}
+        \\
+        \\export function isEmpty(value: unknown): value is Empty {
+        \\    return svt.isInterface<Empty>(value, {media_type: EmbeddedTag.Empty});
+        \\}
+        \\
+        \\export function validateEmbedded(value: unknown): svt.ValidationResult<Embedded> {
+        \\    return svt.validateOneOf<Embedded>(value, [validateMovie, validateTv, validateEmpty]);
+        \\}
+        \\
+        \\export function validateMovie(value: unknown): svt.ValidationResult<movie> {
+        \\    return svt.validate<movie>(value, {media_type: EmbeddedTag.movie, field1: svt.validateString});
+        \\}
+        \\
+        \\export function validateTv(value: unknown): svt.ValidationResult<tv> {
+        \\    return svt.validate<tv>(value, {media_type: EmbeddedTag.tv, field2: svt.validateNumber, field3: svt.validateBoolean});
         \\}
         \\
         \\export function validateEmpty(value: unknown): svt.ValidationResult<Empty> {

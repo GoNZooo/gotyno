@@ -533,7 +533,6 @@ pub const DefinitionIterator = struct {
                                 const options = try self.parseUnionOptions();
 
                                 const definition = if (options.embedded)
-                                    // @TODO: add parsing of embedded union here
                                     Definition{
                                         .@"union" = Union{
                                             .embedded = try self.parseEmbeddedUnionDefinition(options),
@@ -895,7 +894,14 @@ pub const DefinitionIterator = struct {
         var done_parsing_constructors = false;
         while (!done_parsing_constructors) {
             try tokens.skipMany(Token.space, 4, self.expect_error);
-            const tag = (try tokens.expect(Token.name, self.expect_error)).name;
+            const tag = switch (try tokens.expectOneOf(
+                &[_]TokenTag{ .name, .symbol },
+                self.expect_error,
+            )) {
+                .name => |n| n,
+                .symbol => |s| s,
+                else => unreachable,
+            };
 
             switch (try tokens.expectOneOf(&[_]TokenTag{ .colon, .newline }, self.expect_error)) {
                 .newline => try constructors.append(ConstructorWithEmbeddedTypeTag{
