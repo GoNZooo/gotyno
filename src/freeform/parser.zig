@@ -16,6 +16,28 @@ const ExpectError = tokenizer.ExpectError;
 const TokenIterator = tokenizer.TokenIterator;
 const ArrayList = std.ArrayList;
 
+pub const ParsingError = union(enum) {
+    expect: ExpectError,
+    reference: ReferenceError,
+};
+
+pub const ReferenceError = union(enum) {
+    invalid_payload_type: InvalidPayload,
+    unknown_reference: UnknownReference,
+};
+
+pub const InvalidPayload = struct {
+    payload: Definition,
+    line: usize,
+    column: usize,
+};
+
+pub const UnknownReference = struct {
+    name: []const u8,
+    line: usize,
+    column: usize,
+};
+
 pub const Definition = union(enum) {
     const Self = @This();
 
@@ -420,11 +442,24 @@ pub fn parse(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
     buffer: []const u8,
-    expect_error: *ExpectError,
+    parsing_error: *ParsingError,
 ) ![]Definition {
     var definitions = ArrayList(Definition).init(allocator);
-    var definition_iterator = DefinitionIterator.init(allocator, buffer, expect_error);
-    while (try definition_iterator.next()) |definition| {
+    var expect_error: ExpectError = undefined;
+    var definition_iterator = DefinitionIterator.init(
+        allocator,
+        buffer,
+        parsing_error,
+        &expect_error,
+    );
+    while (definition_iterator.next() catch |e| switch (e) {
+        error.UnexpectedToken => {
+            definition_iterator.parsing_error.* = ParsingError{ .expect = expect_error };
+
+            return e;
+        },
+        else => return e,
+    }) |definition| {
         try definitions.append(definition);
     }
 
@@ -435,27 +470,56 @@ pub fn parseWithDescribedError(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
     buffer: []const u8,
-    expect_error: *ExpectError,
+    parsing_error: *ParsingError,
 ) ![]Definition {
-    return parse(allocator, error_allocator, buffer, expect_error) catch |e| {
+    return parse(allocator, error_allocator, buffer, parsing_error) catch |e| {
         switch (e) {
-            error.UnexpectedToken => {
-                switch (expect_error.*) {
-                    .token => |token| {
-                        debug.panic(
-                            "Unexpected token at {}:{}:\n\tExpected: {}\n\tGot: {}",
-                            .{ token.line, token.column, token.expectation, token.got },
-                        );
+            error.UnexpectedToken,
+            error.UnknownReference,
+            error.InvalidPayload,
+            error.UnexpectedEndOfTokenStream,
+            error.DuplicateDefinitions,
+            => {
+                switch (parsing_error.*) {
+                    .expect => |expect| switch (expect) {
+                        .token => |token| {
+                            debug.panic(
+                                "Unexpected token at {}:{}:\n\tExpected: {}\n\tGot: {}",
+                                .{ token.line, token.column, token.expectation, token.got },
+                            );
+                        },
+                        .one_of => |one_of| {
+                            debug.print(
+                                "Unexpected token at {}:{}:\n\tExpected one of: {}",
+                                .{ one_of.line, one_of.column, one_of.expectations[0] },
+                            );
+                            for (one_of.expectations[1..]) |expectation| {
+                                debug.print(", {}", .{expectation});
+                            }
+                            debug.panic("\n\tGot: {}\n", .{one_of.got});
+                        },
                     },
-                    .one_of => |one_of| {
-                        debug.print(
-                            "Unexpected token at {}:{}:\n\tExpected one of: {}",
-                            .{ one_of.line, one_of.column, one_of.expectations[0] },
-                        );
-                        for (one_of.expectations[1..]) |expectation| {
-                            debug.print(", {}", .{expectation});
-                        }
-                        debug.panic("\n\tGot: {}\n", .{one_of.got});
+                    .reference => |reference| switch (reference) {
+                        .invalid_payload_type => |invalid_payload| {
+                            debug.panic(
+                                "Invalid payload found at {}:{}, payload: {}\n",
+                                .{
+                                    invalid_payload.line,
+                                    invalid_payload.column,
+                                    invalid_payload.payload,
+                                },
+                            );
+                        },
+                        .unknown_reference => |unknown_reference| {
+                            debug.panic(
+                                "Unknown reference found at {}:{}, name: {}\n",
+                                .{
+                                    unknown_reference.line,
+                                    unknown_reference.column,
+                                    unknown_reference.name,
+                                },
+                            );
+                        },
                     },
                 }
             },
@@ -475,6 +539,7 @@ pub const DefinitionIterator = struct {
 
     token_iterator: TokenIterator,
     allocator: *mem.Allocator,
+    parsing_error: *ParsingError,
     expect_error: *ExpectError,
 
     /// Holds all of the named definitions that have been parsed and is filled in each time a
@@ -485,6 +550,7 @@ pub const DefinitionIterator = struct {
     pub fn init(
         allocator: *mem.Allocator,
         buffer: []const u8,
+        parsing_error: *ParsingError,
         expect_error: *ExpectError,
     ) Self {
         var token_iterator = tokenizer.TokenIterator.init(buffer);
@@ -492,8 +558,9 @@ pub const DefinitionIterator = struct {
         return DefinitionIterator{
             .token_iterator = token_iterator,
             .allocator = allocator,
-            .expect_error = expect_error,
+            .parsing_error = parsing_error,
             .named_definitions = DefinitionMap.init(allocator),
+            .expect_error = expect_error,
         };
     }
 
@@ -912,17 +979,48 @@ pub const DefinitionIterator = struct {
                     _ = try tokens.expect(Token.space, self.expect_error);
 
                     const parameter_name = (try tokens.expect(Token.name, self.expect_error)).name;
-                    const parameter = switch (try self.getDefinition(parameter_name)) {
-                        .structure => |s| s,
-                        else => return error.InvalidPayloadForEmbeddedUnion,
-                    };
+                    const definition_for_name = self.getDefinition(parameter_name);
+                    if (definition_for_name) |definition| {
+                        const parameter = switch (definition) {
+                            .structure => |s| s,
+                            else => {
+                                self.parsing_error.* = ParsingError{
+                                    .reference = ReferenceError{
+                                        .invalid_payload_type = InvalidPayload{
+                                            .line = self.token_iterator.line,
+                                            .column = self.token_iterator.column,
+                                            .payload = definition,
+                                        },
+                                    },
+                                };
 
-                    try constructors.append(ConstructorWithEmbeddedTypeTag{
-                        .tag = tag,
-                        .parameter = parameter,
-                    });
+                                return error.InvalidPayload;
+                            },
+                        };
 
-                    _ = try tokens.expect(Token.newline, self.expect_error);
+                        try constructors.append(ConstructorWithEmbeddedTypeTag{
+                            .tag = tag,
+                            .parameter = parameter,
+                        });
+
+                        _ = try tokens.expect(Token.newline, self.expect_error);
+                    } else {
+                        const line = self.token_iterator.line;
+                        const column = self.token_iterator.column;
+                        const name = parameter_name;
+
+                        self.parsing_error.* = ParsingError{
+                            .reference = ReferenceError{
+                                .unknown_reference = UnknownReference{
+                                    .line = line,
+                                    .column = column,
+                                    .name = name,
+                                },
+                            },
+                        };
+
+                        return error.UnknownReference;
+                    }
                 },
                 else => unreachable,
             }
@@ -1131,7 +1229,10 @@ pub const DefinitionIterator = struct {
                     .unsigned_integer => |ui| {
                         _ = try tokens.expect(Token.right_bracket, self.expect_error);
                         var array_type = try self.allocator.create(Type);
-                        const array_type_name = (try tokens.expect(Token.name, self.expect_error)).name;
+                        const array_type_name = (try tokens.expect(
+                            Token.name,
+                            self.expect_error,
+                        )).name;
                         array_type.* = Type{ .name = array_type_name };
                         break :field_type Type{ .array = Array{ .@"type" = array_type, .size = ui } };
                     },
@@ -1188,11 +1289,11 @@ pub const DefinitionIterator = struct {
             result.entry.*.value = definition;
     }
 
-    fn getDefinition(self: Self, name: []const u8) !Definition {
+    fn getDefinition(self: Self, name: []const u8) ?Definition {
         return if (self.named_definitions.getEntry(name)) |definition|
             definition.value
         else
-            error.NoSuchDefinition;
+            null;
     }
 };
 
@@ -1234,12 +1335,12 @@ test "Parsing `Person` structure" {
         },
     }};
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.person_structure,
-        &expect_error,
+        &parsing_error,
     );
     expectEqualDefinitions(&expected_definitions, definitions);
 }
@@ -1261,12 +1362,12 @@ test "Parsing basic generic structure" {
         },
     }};
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.node_structure,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1300,12 +1401,12 @@ test "Parsing basic plain union" {
         },
     }};
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.event_union,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1330,12 +1431,12 @@ test "Parsing `Maybe` union" {
         },
     }};
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.maybe_union,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1360,12 +1461,12 @@ test "Parsing `Either` union" {
         },
     }};
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.either_union,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1396,12 +1497,12 @@ test "Parsing `List` union" {
         },
     }};
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.list_union,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1431,12 +1532,12 @@ test "Parsing basic string-based enumeration" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1464,12 +1565,12 @@ test "Parsing untagged union" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1499,12 +1600,12 @@ test "Parsing imports, without and with alias, respectively" {
         \\
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
@@ -1536,67 +1637,96 @@ test "Parsing unions with options" {
         },
     };
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     expectEqualDefinitions(&expected_definitions, definitions);
 }
 
+test "Defining a union with embedded type tags referencing unknown payloads returns error" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct Two {
+        \\    field2: F32
+        \\    field3: Boolean
+        \\}
+        \\
+        \\union(tag = media_type, embedded) Embedded {
+        \\    movie: One
+        \\    tv: Two
+        \\    Empty
+        \\}
+    ;
+
+    var parsing_error: ParsingError = undefined;
+    const definitions = parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    testing.expectError(error.UnknownReference, definitions);
+    switch (parsing_error) {
+        .reference => |reference| switch (reference) {
+            .unknown_reference => |unknown_reference| {
+                testing.expectEqual(unknown_reference.line, 6);
+                testing.expectEqual(unknown_reference.column, 14);
+                testing.expectEqualStrings(unknown_reference.name, "One");
+            },
+
+            .invalid_payload_type => unreachable,
+        },
+        .expect => unreachable,
+    }
+}
+
 test "Parsing invalid normal structure" {
     var allocator = TestingAllocator{};
-    var expect_error: ExpectError = undefined;
-    _ = parse(
+    var parsing_error: ParsingError = undefined;
+    const definitions = parse(
         &allocator.allocator,
         &allocator.allocator,
         "struct Container T{",
-        &expect_error,
-    ) catch |e| {
-        switch (e) {
-            error.UnexpectedEndOfTokenStream,
-            error.OutOfMemory,
-            error.Overflow,
-            error.InvalidCharacter,
-            error.InvalidPayloadForEmbeddedUnion,
-            error.NoSuchDefinition,
-            error.DuplicateDefinitions,
-            => unreachable,
-
-            error.UnexpectedToken => {
-                switch (expect_error) {
-                    .one_of => |one_of| {
-                        testing.expectEqualSlices(
-                            TokenTag,
-                            &[_]TokenTag{ .left_angle, .left_brace },
-                            one_of.expectations,
-                        );
-                        testing.expect(one_of.got.isEqual(Token{ .name = "T" }));
-                    },
-                    .token => {
-                        testing_utilities.testPanic(
-                            "Invalid error for expecting one of: {}",
-                            .{expect_error},
-                        );
-                    },
-                }
+        &parsing_error,
+    );
+    testing.expectError(error.UnexpectedToken, definitions);
+    switch (parsing_error) {
+        .expect => |expect| switch (expect) {
+            .one_of => |one_of| {
+                testing.expectEqualSlices(
+                    TokenTag,
+                    &[_]TokenTag{ .left_angle, .left_brace },
+                    one_of.expectations,
+                );
+                testing.expect(one_of.got.isEqual(Token{ .name = "T" }));
             },
-        }
-    };
+            .token => {
+                testing_utilities.testPanic(
+                    "Invalid error for expecting one of: {}",
+                    .{parsing_error},
+                );
+            },
+        },
+        else => unreachable,
+    }
 }
 
 test "Parsing multiple definitions works as it should" {
     var allocator = TestingAllocator{};
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.person_structure_and_event_union,
-        &expect_error,
+        &parsing_error,
     );
 
     var hobbies_slice_type = Type{ .name = "String" };
@@ -1665,7 +1795,7 @@ test "Parsing multiple definitions works as it should" {
 
 test "Parsing union with embedded type tag" {
     var allocator = TestingAllocator{};
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const definition_buffer =
         \\struct One {
@@ -1687,7 +1817,7 @@ test "Parsing union with embedded type tag" {
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     var expected_struct_one_fields = [_]Field{

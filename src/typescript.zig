@@ -27,7 +27,7 @@ const Constructor = parser.Constructor;
 const ConstructorWithEmbeddedTypeTag = parser.ConstructorWithEmbeddedTypeTag;
 const Type = parser.Type;
 const Field = parser.Field;
-const ExpectError = tokenizer.ExpectError;
+const ParsingError = parser.ParsingError;
 
 const TestingAllocator = heap.GeneralPurposeAllocator(.{});
 
@@ -2526,7 +2526,7 @@ test "Outputs `Person` struct correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputPlainStructure(
         &allocator.allocator,
@@ -2534,7 +2534,7 @@ test "Outputs `Person` struct correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.person_structure,
-            &expect_error,
+            &parsing_error,
         ))[0].structure.plain,
     );
 
@@ -2563,7 +2563,7 @@ test "Outputs `Node` struct correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputGenericStructure(
         &allocator.allocator,
@@ -2571,7 +2571,7 @@ test "Outputs `Node` struct correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.node_structure,
-            &expect_error,
+            &parsing_error,
         ))[0].structure.generic,
     );
 
@@ -2685,7 +2685,7 @@ test "Outputs `Event` union correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputPlainUnion(
         &allocator.allocator,
@@ -2693,7 +2693,7 @@ test "Outputs `Event` union correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.event_union,
-            &expect_error,
+            &parsing_error,
         ))[0].@"union".plain,
     );
 
@@ -2761,7 +2761,7 @@ test "Outputs `Maybe` union correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputGenericUnion(
         &allocator.allocator,
@@ -2769,7 +2769,7 @@ test "Outputs `Maybe` union correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.maybe_union,
-            &expect_error,
+            &parsing_error,
         ))[0].@"union".generic,
     );
 
@@ -2842,7 +2842,7 @@ test "Outputs `Either` union correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputGenericUnion(
         &allocator.allocator,
@@ -2850,7 +2850,7 @@ test "Outputs `Either` union correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.either_union,
-            &expect_error,
+            &parsing_error,
         ))[0].@"union".generic,
     );
 
@@ -2874,7 +2874,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputPlainStructure(
         &allocator.allocator,
@@ -2882,7 +2882,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.structure_with_concrete_maybe,
-            &expect_error,
+            &parsing_error,
         ))[0].structure.plain,
     );
 
@@ -2973,7 +2973,7 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputGenericUnion(
         &allocator.allocator,
@@ -2981,7 +2981,7 @@ test "Outputs struct with different `Maybe`s correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.union_with_different_maybes,
-            &expect_error,
+            &parsing_error,
         ))[0].@"union".generic,
     );
 
@@ -3049,7 +3049,7 @@ test "Outputs `List` union correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
 
     const output = try outputGenericUnion(
         &allocator.allocator,
@@ -3057,7 +3057,7 @@ test "Outputs `List` union correctly" {
             &allocator.allocator,
             &allocator.allocator,
             type_examples.list_union,
-            &expect_error,
+            &parsing_error,
         ))[0].@"union".generic,
     );
 
@@ -3081,12 +3081,12 @@ test "Outputs struct with optional float value correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.structure_with_optional_float,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputPlainStructure(&allocator.allocator, definitions[0].structure.plain);
@@ -3171,12 +3171,12 @@ test "lowercase plain union has correct output" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputPlainUnion(&allocator.allocator, definitions[0].@"union".plain);
@@ -3211,12 +3211,12 @@ test "basic string-based enumeration is output correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputEnumeration(&allocator.allocator, definitions[0].enumeration);
@@ -3248,12 +3248,12 @@ test "Basic untagged union is output correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputUntaggedUnion(&allocator.allocator, definitions[0].untagged_union);
@@ -3322,12 +3322,12 @@ test "Tagged union with tag specifier is output correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputPlainUnion(&allocator.allocator, definitions[0].@"union".plain);
@@ -3403,12 +3403,12 @@ test "Tagged generic union with tag specifier is output correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputGenericUnion(&allocator.allocator, definitions[0].@"union".generic);
@@ -3505,12 +3505,12 @@ test "Union with embedded tag is output correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputEmbeddedUnion(&allocator.allocator, definitions[2].@"union".embedded);
@@ -3607,12 +3607,12 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
         \\}
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output = try outputEmbeddedUnion(&allocator.allocator, definitions[2].@"union".embedded);
@@ -3637,12 +3637,12 @@ test "Imports are output correctly" {
         \\import * as importAlias from "sourceFile";
     ;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
-        &expect_error,
+        &parsing_error,
     );
 
     const output_1 = try outputImport(&allocator.allocator, definitions[0].import);

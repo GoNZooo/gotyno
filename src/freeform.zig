@@ -12,6 +12,7 @@ pub const typescript = @import("./typescript.zig");
 
 const DefinitionIterator = parser.DefinitionIterator;
 const ExpectError = tokenizer.ExpectError;
+const ParsingError = parser.ParsingError;
 
 pub const OutputLanguages = struct {
     typescript: bool = false,
@@ -35,12 +36,12 @@ pub fn compile(
     var compilation_arena = heap.ArenaAllocator.init(allocator);
     var compilation_allocator = &compilation_arena.allocator;
 
-    var expect_error: ExpectError = undefined;
+    var parsing_error: ParsingError = undefined;
     const definitions = try parser.parseWithDescribedError(
         allocator,
         allocator,
         file_contents,
-        &expect_error,
+        &parsing_error,
     );
 
     if (output_languages.typescript) {
