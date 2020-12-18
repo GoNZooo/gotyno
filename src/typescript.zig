@@ -255,10 +255,13 @@ fn outputPlainStructure(
     const name = plain_structure.name;
 
     const fields_output = try outputStructureFields(allocator, plain_structure.fields);
+    defer allocator.free(fields_output);
 
     const type_guards_output = try outputTypeGuardForPlainStructure(allocator, plain_structure);
+    defer allocator.free(type_guards_output);
 
     const validator_output = try outputValidatorForPlainStructure(allocator, plain_structure);
+    defer allocator.free(validator_output);
 
     const output_format =
         \\export type {} = {{
@@ -313,23 +316,25 @@ fn outputGenericStructure(
 }
 
 fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
-    var fields_output: []const u8 = "";
+    var field_outputs = ArrayList([]const u8).init(allocator);
+    defer freeStringList(field_outputs);
 
     for (fields) |field, i| {
         const type_output = if (try outputType(allocator, field.@"type")) |output|
             output
         else
             debug.panic("Empty type is not valid for struct field\n", .{});
+        defer allocator.free(type_output);
 
         const line = if (i == (fields.len - 1))
             try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output })
         else
-            try fmt.allocPrint(allocator, "    {}: {};\n", .{ field.name, type_output });
+            try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output });
 
-        fields_output = try mem.concat(allocator, u8, &[_][]const u8{ fields_output, line });
+        try field_outputs.append(line);
     }
 
-    return fields_output;
+    return try mem.join(allocator, "\n", field_outputs.items);
 }
 
 fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const u8 {
@@ -852,6 +857,7 @@ fn outputTypeGuardForPlainStructure(
     const name = plain_structure.name;
 
     const checkers_output = try getTypeGuardsFromFields(allocator, plain_structure.fields);
+    defer allocator.free(checkers_output);
 
     const output_format =
         \\export function is{}(value: unknown): value is {} {{
@@ -1227,6 +1233,7 @@ fn outputValidatorForPlainStructure(
     const name = plain_structure.name;
 
     const validators_output = try getValidatorsFromFields(allocator, plain_structure.fields);
+    defer allocator.free(validators_output);
 
     const output_format =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
@@ -1243,10 +1250,11 @@ fn outputValidatorForPlainStructure(
 
 fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
     var fields_outputs = ArrayList([]const u8).init(allocator);
-    defer fields_outputs.deinit();
+    defer freeStringList(fields_outputs);
 
     for (fields) |field| {
         if (try getTypeGuardFromType(allocator, field.@"type")) |type_guard| {
+            defer allocator.free(type_guard);
             const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, type_guard });
             try fields_outputs.append(output);
         }
@@ -1257,10 +1265,11 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []Field) ![]const 
 
 fn getValidatorsFromFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
     var fields_outputs = ArrayList([]const u8).init(allocator);
-    defer fields_outputs.deinit();
+    defer freeStringList(fields_outputs);
 
     for (fields) |field| {
         if (try getValidatorFromType(allocator, field.@"type")) |validator| {
+            defer allocator.free(validator);
             const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, validator });
             try fields_outputs.append(output);
         }
@@ -1275,30 +1284,30 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try fmt.allocPrint(
-            allocator,
-            "{}",
-            .{try translatedTypeGuardName(allocator, n)},
-        ),
-        .array => |a| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedTypeGuardFromType(allocator, a.@"type".*)},
-        ),
-        .slice => |s| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedTypeGuardFromType(allocator, s.@"type".*)},
-        ),
+        .name => |n| try translatedTypeGuardName(allocator, n),
+        .array => |a| output: {
+            const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
+        .slice => |s| output: {
+            const nested_validator = try getNestedTypeGuardFromType(allocator, s.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
         .pointer => |p| try getNestedTypeGuardFromType(allocator, p.@"type".*),
-        .optional => |o| try fmt.allocPrint(
-            allocator,
-            optional_format,
-            .{try getNestedTypeGuardFromType(allocator, o.@"type".*)},
-        ),
+        .optional => |o| output: {
+            const nested_validator = try getNestedTypeGuardFromType(allocator, o.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
+        },
 
         .applied_name => |applied_name| output: {
             const open_name_predicates = try openNamePredicates(allocator, applied_name.open_names);
+            defer open_name_predicates.deinit();
 
             break :output try fmt.allocPrint(
                 allocator,
@@ -1317,27 +1326,26 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try fmt.allocPrint(
-            allocator,
-            "{}",
-            .{try translatedValidatorName(allocator, n)},
-        ),
-        .array => |a| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedValidatorFromType(allocator, a.@"type".*)},
-        ),
-        .slice => |s| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedValidatorFromType(allocator, s.@"type".*)},
-        ),
+        .name => |n| try translatedValidatorName(allocator, n),
+        .array => |a| output: {
+            const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
+        .slice => |s| output: {
+            const nested_validator = try getNestedValidatorFromType(allocator, s.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
         .pointer => |p| try getNestedValidatorFromType(allocator, p.@"type".*),
-        .optional => |o| try fmt.allocPrint(
-            allocator,
-            optional_format,
-            .{try getNestedValidatorFromType(allocator, o.@"type".*)},
-        ),
+        .optional => |o| output: {
+            const nested_validator = try getNestedValidatorFromType(allocator, o.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
+        },
 
         .applied_name => |applied_name| output: {
             const open_name_validators = try openNameValidators(allocator, applied_name.open_names);
@@ -2028,31 +2036,31 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for type guard\n", .{}),
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try fmt.allocPrint(
-            allocator,
-            "{}",
-            .{try translatedTypeGuardName(allocator, n)},
-        ),
-        .array => |a| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedTypeGuardFromType(allocator, a.@"type".*)},
-        ),
-        .slice => |s| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedTypeGuardFromType(allocator, s.@"type".*)},
-        ),
-        .pointer => |p| try fmt.allocPrint(
-            allocator,
-            "is{}",
-            .{try getNestedTypeGuardFromType(allocator, p.@"type".*)},
-        ),
-        .optional => |o| try fmt.allocPrint(
-            allocator,
-            optional_format,
-            .{try getNestedTypeGuardFromType(allocator, o.@"type".*)},
-        ),
+        .name => |n| try translatedTypeGuardName(allocator, n),
+        .array => |a| output: {
+            const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
+        .slice => |s| output: {
+            const nested_validator = try getNestedTypeGuardFromType(allocator, s.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
+        .pointer => |p| output: {
+            const nested_validator = try getNestedTypeGuardFromType(allocator, p.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, "is{}", .{nested_validator});
+        },
+        .optional => |o| output: {
+            const nested_validator = try getNestedTypeGuardFromType(allocator, o.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
+        },
         .applied_name => |applied| applied: {
             const open_name_predicates = try openNamePredicates(allocator, applied.open_names);
             defer open_name_predicates.deinit();
@@ -2073,39 +2081,41 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for validator\n", .{}),
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try fmt.allocPrint(
-            allocator,
-            "{}",
-            .{try translatedValidatorName(allocator, n)},
-        ),
-        .array => |a| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedValidatorFromType(allocator, a.@"type".*)},
-        ),
-        .slice => |s| try fmt.allocPrint(
-            allocator,
-            array_format,
-            .{try getNestedValidatorFromType(allocator, s.@"type".*)},
-        ),
-        .pointer => |p| try fmt.allocPrint(
-            allocator,
-            "is{}",
-            .{try getNestedValidatorFromType(allocator, p.@"type".*)},
-        ),
-        .optional => |o| try fmt.allocPrint(
-            allocator,
-            optional_format,
-            .{try getNestedValidatorFromType(allocator, o.@"type".*)},
-        ),
+        .name => |n| try translatedValidatorName(allocator, n),
+        .array => |a| output: {
+            const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
+        .slice => |s| output: {
+            const nested_validator = try getNestedValidatorFromType(allocator, s.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
+        },
+        .pointer => |p| output: {
+            const nested_validator = try getNestedValidatorFromType(allocator, p.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, "is{}", .{nested_validator});
+        },
+        .optional => |o| output: {
+            const nested_validator = try getNestedValidatorFromType(allocator, o.@"type".*);
+            defer allocator.free(nested_validator);
+
+            break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
+        },
         .applied_name => |applied| applied: {
             const open_name_validators = try openNameValidators(allocator, applied.open_names);
             defer open_name_validators.deinit();
+            const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
+            defer allocator.free(joined_validators);
 
             break :applied try fmt.allocPrint(
                 allocator,
                 "validate{}({})",
-                .{ applied.name, try mem.join(allocator, ", ", open_name_validators.items) },
+                .{ applied.name, joined_validators },
             );
         },
     };
@@ -2331,37 +2341,39 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
     return switch (t) {
         .empty => null,
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| translateName(n),
+        .name => |n| try allocator.dupe(u8, translateName(n)),
 
         .array => |a| output: {
             const embedded_type = switch (a.@"type".*) {
-                .name => |n| translateName(n),
+                .name => |n| try allocator.dupe(u8, translateName(n)),
                 .applied_name => |applied_name| try outputOpenNames(
                     allocator,
                     applied_name.open_names,
                 ),
                 else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
             };
+            defer allocator.free(embedded_type);
 
             break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
         },
 
         .slice => |s| output: {
             const embedded_type = switch (s.@"type".*) {
-                .name => |n| translateName(n),
+                .name => |n| try allocator.dupe(u8, translateName(n)),
                 .applied_name => |applied_name| try outputOpenNames(
                     allocator,
                     applied_name.open_names,
                 ),
                 else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
             };
+            defer allocator.free(embedded_type);
 
             break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
         },
 
         .pointer => |p| output: {
             const embedded_type = switch (p.@"type".*) {
-                .name => |n| translateName(n),
+                .name => |n| try allocator.dupe(u8, translateName(n)),
                 .applied_name => |applied_name| embedded_type: {
                     const open_names = try outputOpenNames(
                         allocator,
@@ -2376,13 +2388,14 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
                 },
                 else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
             };
+            defer allocator.free(embedded_type);
 
             break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
         },
 
         .optional => |o| output: {
             const embedded_type = switch (o.@"type".*) {
-                .name => |n| translateName(n),
+                .name => |n| try allocator.dupe(u8, translateName(n)),
                 .applied_name => |applied_name| embedded_type: {
                     const open_names = try outputOpenNames(
                         allocator,
@@ -2397,15 +2410,17 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
                 },
                 else => debug.panic("Invalid embedded type for optional: {}\n", .{o.@"type"}),
             };
+            defer allocator.free(embedded_type);
 
             break :output try fmt.allocPrint(allocator, "{} | null | undefined", .{embedded_type});
         },
 
-        .applied_name => |applied_name| try fmt.allocPrint(
-            allocator,
-            "{}{}",
-            .{ applied_name.name, try outputOpenNames(allocator, applied_name.open_names) },
-        ),
+        .applied_name => |applied_name| output: {
+            const open_names = try outputOpenNames(allocator, applied_name.open_names);
+            defer allocator.free(open_names);
+
+            break :output try fmt.allocPrint(allocator, "{}{}", .{ applied_name.name, open_names });
+        },
     };
 }
 
@@ -2470,22 +2485,22 @@ fn isTranslatedName(name: []const u8) bool {
 
 fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
     return if (mem.eql(u8, name, "String"))
-        "svt.isString"
+        try allocator.dupe(u8, "svt.isString")
     else if (isNumberType(name))
-        "svt.isNumber"
+        try allocator.dupe(u8, "svt.isNumber")
     else if (mem.eql(u8, name, "Boolean"))
-        "svt.isBoolean"
+        try allocator.dupe(u8, "svt.isBoolean")
     else
         try fmt.allocPrint(allocator, "is{}", .{name});
 }
 
 fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
     return if (mem.eql(u8, name, "String"))
-        "svt.validateString"
+        try allocator.dupe(u8, "svt.validateString")
     else if (isNumberType(name))
-        "svt.validateNumber"
+        try allocator.dupe(u8, "svt.validateNumber")
     else if (mem.eql(u8, name, "Boolean"))
-        "svt.validateBoolean"
+        try allocator.dupe(u8, "svt.validateBoolean")
     else
         try fmt.allocPrint(allocator, "validate{}", .{name});
 }
@@ -2500,6 +2515,11 @@ fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) 
 
 fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
     return fmt.allocPrint(allocator, "{c}{}", .{ std.ascii.toUpper(word[0]), word[1..] });
+}
+
+fn freeStringList(strings: ArrayList([]const u8)) void {
+    for (strings.items) |s| strings.allocator.free(s);
+    strings.deinit();
 }
 
 test "Outputs `Person` struct correctly" {
@@ -2528,17 +2548,23 @@ test "Outputs `Person` struct correctly" {
 
     var parsing_error: ParsingError = undefined;
 
+    var definitions = try parser.parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.person_structure,
+        &parsing_error,
+    );
+
     const output = try outputPlainStructure(
         &allocator.allocator,
-        (try parser.parse(
-            &allocator.allocator,
-            &allocator.allocator,
-            type_examples.person_structure,
-            &parsing_error,
-        )).definitions[0].structure.plain,
+        (definitions).definitions[0].structure.plain,
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Outputs `Node` struct correctly" {
@@ -3681,4 +3707,10 @@ test "Imports are output correctly" {
     allocator.allocator.free(output_1);
     allocator.allocator.free(output_2);
     _ = allocator.detectLeaks();
+}
+
+fn expectNoLeaks(allocator: *TestingAllocator) void {
+    if (allocator.detectLeaks()) {
+        debug.panic("Leak!", .{});
+    }
 }
