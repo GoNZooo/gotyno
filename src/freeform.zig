@@ -30,19 +30,19 @@ pub fn compile(
     directory: fs.Dir,
     verbose: bool,
 ) !void {
-    const out = io.getStdOut().writer();
     var compilation_times = CompilationTimes{};
     const compilation_start_time = time.nanoTimestamp();
     var compilation_arena = heap.ArenaAllocator.init(allocator);
     var compilation_allocator = &compilation_arena.allocator;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+    var definitions = try parser.parseWithDescribedError(
         allocator,
         allocator,
         file_contents,
         &parsing_error,
     );
+    defer definitions.deinit();
 
     if (output_languages.typescript) {
         const typescript_start_time = time.nanoTimestamp();
@@ -53,7 +53,7 @@ pub fn compile(
         );
         const typescript_output = try typescript.compileDefinitions(
             compilation_allocator,
-            definitions,
+            definitions.definitions,
         );
 
         try directory.writeFile(typescript_filename, typescript_output);
@@ -69,6 +69,7 @@ pub fn compile(
     );
 
     if (verbose) {
+        const out = io.getStdOut().writer();
         if (compilation_times.typescript) |t| {
             try out.print(
                 "TypeScript compilation time: {d:.5} ms\n",

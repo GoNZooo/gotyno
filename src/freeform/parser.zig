@@ -47,6 +47,16 @@ pub const Definition = union(enum) {
     untagged_union: UntaggedUnion,
     import: Import,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        switch (self.*) {
+            .structure => |*s| s.free(allocator),
+            .@"union" => |*u| u.free(allocator),
+            .enumeration => |*e| e.free(allocator),
+            .untagged_union => |*u| u.free(allocator),
+            .import => |*i| i.free(allocator),
+        }
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
             .structure => |s| meta.activeTag(other) == .structure and s.isEqual(other.structure),
@@ -66,6 +76,15 @@ pub const Import = struct {
     name: []const u8,
     alias: []const u8,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        if (self.name.ptr == self.alias.ptr) {
+            allocator.free(self.name);
+        } else {
+            allocator.free(self.name);
+            allocator.free(self.alias);
+        }
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         return mem.eql(u8, self.name, other.name) and mem.eql(u8, self.alias, other.alias);
     }
@@ -76,6 +95,12 @@ pub const UntaggedUnion = struct {
 
     name: []const u8,
     values: []UntaggedUnionValue,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        for (self.values) |*value| value.free(allocator);
+        allocator.free(self.values);
+    }
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
@@ -95,6 +120,10 @@ pub const UntaggedUnionValue = union(enum) {
 
     name: []const u8,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
             .name => |n| meta.activeTag(other) == .name and mem.eql(u8, n, other.name),
@@ -107,6 +136,12 @@ pub const Enumeration = struct {
 
     name: []const u8,
     fields: []EnumerationField,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        for (self.fields) |*field| field.free(allocator);
+        allocator.free(self.fields);
+    }
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
@@ -127,6 +162,11 @@ pub const EnumerationField = struct {
     tag: []const u8,
     value: EnumerationValue,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.tag);
+        self.value.free(allocator);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         return mem.eql(u8, self.tag, other.tag) and self.value.isEqual(other.value);
     }
@@ -137,6 +177,13 @@ pub const EnumerationValue = union(enum) {
 
     string: []const u8,
     unsigned_integer: u64,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        switch (self.*) {
+            .string => |s| allocator.free(s),
+            .unsigned_integer => {},
+        }
+    }
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
@@ -152,6 +199,13 @@ pub const Structure = union(enum) {
 
     plain: PlainStructure,
     generic: GenericStructure,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        switch (self.*) {
+            .plain => |*p| p.free(allocator),
+            .generic => |*g| g.free(allocator),
+        }
+    }
 
     pub fn isEqual(self: Self, other: Self) bool {
         switch (self) {
@@ -178,6 +232,12 @@ pub const PlainStructure = struct {
     name: []const u8,
     fields: []Field,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        for (self.fields) |*f| f.free(allocator);
+        allocator.free(self.fields);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) {
             return false;
@@ -197,6 +257,14 @@ pub const GenericStructure = struct {
     name: []const u8,
     fields: []Field,
     open_names: []const []const u8,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        for (self.fields) |*f| f.free(allocator);
+        allocator.free(self.fields);
+        for (self.open_names) |n| allocator.free(n);
+        allocator.free(self.open_names);
+    }
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) {
@@ -221,6 +289,11 @@ pub const Field = struct {
     name: []const u8,
     @"type": Type,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        self.@"type".free(allocator);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         return self.@"type".isEqual(other.@"type") and mem.eql(u8, self.name, other.name);
     }
@@ -237,6 +310,36 @@ pub const Type = union(enum) {
     pointer: Pointer,
     optional: Optional,
     applied_name: AppliedName,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        switch (self.*) {
+            .name => |n| allocator.free(n),
+            .string => |s| allocator.free(s),
+            .array => |*a| {
+                a.*.@"type".free(allocator);
+                allocator.destroy(a.*.@"type");
+            },
+            .slice => |*s| {
+                s.*.@"type".free(allocator);
+                allocator.destroy(s.*.@"type");
+            },
+            .optional => |*o| {
+                o.*.@"type".free(allocator);
+                allocator.destroy(o.*.@"type");
+            },
+            .pointer => |*p| {
+                p.*.@"type".free(allocator);
+                allocator.destroy(p.*.@"type");
+            },
+            .applied_name => |a| {
+                allocator.free(a.name);
+                for (a.open_names) |name| allocator.free(name);
+
+                allocator.free(a.open_names);
+            },
+            .empty => {},
+        }
+    }
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
@@ -319,6 +422,14 @@ pub const Union = union(enum) {
     generic: GenericUnion,
     embedded: EmbeddedUnion,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        switch (self.*) {
+            .plain => |*p| p.free(allocator),
+            .generic => |*g| g.free(allocator),
+            .embedded => |*e| e.free(allocator),
+        }
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
             .plain => |p| meta.activeTag(other) == .plain and p.isEqual(other.plain),
@@ -348,6 +459,13 @@ pub const PlainUnion = struct {
     constructors: []Constructor,
     tag_field: []const u8,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        for (self.constructors) |*c| c.free(allocator);
+        allocator.free(self.constructors);
+        allocator.free(self.tag_field);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
         if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
@@ -367,6 +485,15 @@ pub const GenericUnion = struct {
     constructors: []Constructor,
     open_names: []const []const u8,
     tag_field: []const u8,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        for (self.constructors) |*c| c.free(allocator);
+        allocator.free(self.constructors);
+        allocator.free(self.tag_field);
+        for (self.open_names) |n| allocator.free(n);
+        allocator.free(self.open_names);
+    }
 
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
@@ -392,6 +519,14 @@ pub const EmbeddedUnion = struct {
     open_names: []const []const u8,
     tag_field: []const u8,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        allocator.free(self.tag_field);
+        for (self.constructors) |*c| c.free(allocator);
+        allocator.free(self.constructors);
+        for (self.open_names) |n| allocator.free(n);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
         if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
@@ -414,6 +549,10 @@ pub const ConstructorWithEmbeddedTypeTag = struct {
     tag: []const u8,
     parameter: ?Structure,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.tag);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         if (self.parameter) |parameter| {
             if (other.parameter == null or !parameter.isEqual(other.parameter.?)) return false;
@@ -431,19 +570,37 @@ pub const Constructor = struct {
     tag: []const u8,
     parameter: Type,
 
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.tag);
+        self.*.parameter.free(allocator);
+    }
+
     pub fn isEqual(self: Self, other: Self) bool {
         return mem.eql(u8, self.tag, other.tag) and self.parameter.isEqual(other.parameter);
     }
 };
 
-const TestingAllocator = heap.GeneralPurposeAllocator(.{});
+const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
+
+pub const ParsedDefinitions = struct {
+    const Self = @This();
+
+    definitions: []Definition,
+    definition_iterator: DefinitionIterator,
+    allocator: *mem.Allocator,
+
+    pub fn deinit(self: *Self) void {
+        self.allocator.free(self.definitions);
+        self.definition_iterator.deinit();
+    }
+};
 
 pub fn parse(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
     buffer: []const u8,
     parsing_error: *ParsingError,
-) ![]Definition {
+) !ParsedDefinitions {
     var definitions = ArrayList(Definition).init(allocator);
     var expect_error: ExpectError = undefined;
     var definition_iterator = DefinitionIterator.init(
@@ -452,6 +609,7 @@ pub fn parse(
         parsing_error,
         &expect_error,
     );
+
     while (definition_iterator.next() catch |e| switch (e) {
         error.UnexpectedToken => {
             definition_iterator.parsing_error.* = ParsingError{ .expect = expect_error };
@@ -463,7 +621,11 @@ pub fn parse(
         try definitions.append(definition);
     }
 
-    return definitions.items;
+    return ParsedDefinitions{
+        .definitions = definitions.items,
+        .definition_iterator = definition_iterator,
+        .allocator = allocator,
+    };
 }
 
 pub fn parseWithDescribedError(
@@ -471,7 +633,7 @@ pub fn parseWithDescribedError(
     error_allocator: *mem.Allocator,
     buffer: []const u8,
     parsing_error: *ParsingError,
-) ![]Definition {
+) !ParsedDefinitions {
     return parse(allocator, error_allocator, buffer, parsing_error) catch |e| {
         switch (e) {
             error.UnexpectedToken,
@@ -547,6 +709,9 @@ pub const DefinitionIterator = struct {
     /// when parsing later ones.
     named_definitions: DefinitionMap,
 
+    /// We hold a list to the imports such that we can also free them properly.
+    imports: ArrayList(Import),
+
     pub fn init(
         allocator: *mem.Allocator,
         buffer: []const u8,
@@ -560,8 +725,68 @@ pub const DefinitionIterator = struct {
             .allocator = allocator,
             .parsing_error = parsing_error,
             .named_definitions = DefinitionMap.init(allocator),
+            .imports = ArrayList(Import).init(allocator),
             .expect_error = expect_error,
         };
+    }
+
+    pub fn deinit(self: *Self) void {
+        var definition_iterator = self.named_definitions.iterator();
+
+        for (self.imports.items) |*i| i.free(self.allocator);
+        self.imports.deinit();
+
+        //     .plain => |p| {
+        //         for (p.constructors) |*constructor| {
+        //             constructor.free(self.allocator);
+        //         }
+
+        //         self.allocator.free(p.constructors);
+        //         self.allocator.free(p.name);
+        //         self.allocator.free(p.tag_field);
+        //     },
+        //     .embedded => |e| {
+        //         self.allocator.free(e.constructors);
+        //         self.allocator.free(e.open_names);
+        //         self.allocator.free(e.tag_field);
+        //         self.allocator.free(e.name);
+        //     },
+        // },
+        // switch (s) {
+        //                     .plain => |p| {
+        //                         for (p.fields) |*field| {
+        //                             field.free(self.allocator);
+        //                         }
+
+        //                         self.allocator.free(p.fields);
+        //                         self.allocator.free(p.name);
+        //                     },
+        //                     .generic => |g| {
+        //                         for (g.fields) |*field| {
+        //                             field.free(self.allocator);
+        //                         }
+
+        //                         for (g.open_names) |name| self.allocator.free(name);
+
+        //                         self.allocator.free(g.open_names);
+        //                         self.allocator.free(g.fields);
+        //                         self.allocator.free(g.name);
+        //                     },
+        //                 }
+
+        while (definition_iterator.next()) |entry| {
+            entry.*.value.free(self.allocator);
+            // switch (entry.*.value) {
+            //     .@"union" => |*u| u.free(self.allocator),
+            //     .structure => |*s| s.free(self.allocator),
+            //     .enumeration => |*enumeration| enumeration.free(self.allocator),
+            //     .untagged_union => |*u| u.free(self.allocator),
+
+            //     .import => unreachable,
+            // }
+        }
+
+        self.named_definitions.deinit();
     }
 
     pub fn next(self: *Self) !?Definition {
@@ -589,7 +814,10 @@ pub const DefinitionIterator = struct {
                             .space => {
                                 const definition = Definition{
                                     .@"union" = try self.parseUnionDefinition(
-                                        UnionOptions{ .tag_field = "type", .embedded = false },
+                                        UnionOptions{
+                                            .tag_field = try self.allocator.dupe(u8, "type"),
+                                            .embedded = false,
+                                        },
                                     ),
                                 };
                                 try self.addDefinition(definition.@"union".name(), definition);
@@ -641,7 +869,9 @@ pub const DefinitionIterator = struct {
                     } else if (mem.eql(u8, s, "import")) {
                         _ = try tokens.expect(Token.space, self.expect_error);
 
-                        const definition = Definition{ .import = try self.parseImport() };
+                        const import = try self.parseImport();
+                        try self.imports.append(import);
+                        const definition = Definition{ .import = import };
 
                         return definition;
                     }
@@ -660,8 +890,8 @@ pub const DefinitionIterator = struct {
             &[_]TokenTag{ .symbol, .name },
             self.expect_error,
         )) {
-            .symbol => |symbol| symbol,
-            .name => |name| name,
+            .symbol => |symbol| try self.allocator.dupe(u8, symbol),
+            .name => |name| try self.allocator.dupe(u8, name),
             else => unreachable,
         };
 
@@ -678,8 +908,8 @@ pub const DefinitionIterator = struct {
                     &[_]TokenTag{ .symbol, .name },
                     self.expect_error,
                 )) {
-                    .symbol => |symbol| symbol,
-                    .name => |name| name,
+                    .symbol => |symbol| try self.allocator.dupe(u8, symbol),
+                    .name => |name| try self.allocator.dupe(u8, name),
                     else => unreachable,
                 };
 
@@ -692,7 +922,10 @@ pub const DefinitionIterator = struct {
     fn parseUnionOptions(self: *Self) !UnionOptions {
         const tokens = &self.token_iterator;
 
-        var options = UnionOptions{ .tag_field = "type", .embedded = false };
+        var options = UnionOptions{
+            .tag_field = try self.allocator.dupe(u8, "type"),
+            .embedded = false,
+        };
 
         var done_parsing_options = false;
         while (!done_parsing_options) {
@@ -701,7 +934,11 @@ pub const DefinitionIterator = struct {
                 _ = try tokens.expect(Token.space, self.expect_error);
                 _ = try tokens.expect(Token.equals, self.expect_error);
                 _ = try tokens.expect(Token.space, self.expect_error);
-                options.tag_field = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+                self.allocator.free(options.tag_field);
+                options.tag_field = try self.allocator.dupe(
+                    u8,
+                    (try tokens.expect(Token.symbol, self.expect_error)).symbol,
+                );
             } else if (mem.eql(u8, symbol, "embedded")) {
                 options.embedded = true;
             }
@@ -724,17 +961,24 @@ pub const DefinitionIterator = struct {
     fn parseUntaggedUnionDefinition(self: *Self) !UntaggedUnion {
         const tokens = &self.token_iterator;
 
-        const name = (try tokens.expect(Token.name, self.expect_error)).name;
+        const name = try self.allocator.dupe(
+            u8,
+            (try tokens.expect(Token.name, self.expect_error)).name,
+        );
 
         _ = try tokens.expect(Token.space, self.expect_error);
         _ = try tokens.expect(Token.left_brace, self.expect_error);
         _ = try tokens.expect(Token.newline, self.expect_error);
 
         var values = ArrayList(UntaggedUnionValue).init(self.allocator);
+        defer values.deinit();
         var done_parsing_values = false;
         while (!done_parsing_values) {
             try tokens.skipMany(Token.space, 4, self.expect_error);
-            const value_name = (try tokens.expect(Token.name, self.expect_error)).name;
+            const value_name = try self.allocator.dupe(
+                u8,
+                (try tokens.expect(Token.name, self.expect_error)).name,
+            );
 
             _ = try tokens.expect(Token.newline, self.expect_error);
 
@@ -748,13 +992,16 @@ pub const DefinitionIterator = struct {
             try values.append(UntaggedUnionValue{ .name = value_name });
         }
 
-        return UntaggedUnion{ .name = name, .values = values.items };
+        return UntaggedUnion{ .name = name, .values = values.toOwnedSlice() };
     }
 
     fn parseEnumerationDefinition(self: *Self) !Enumeration {
         const tokens = &self.token_iterator;
 
-        const name = (try tokens.expect(Token.name, self.expect_error)).name;
+        const name = try self.allocator.dupe(
+            u8,
+            (try tokens.expect(Token.name, self.expect_error)).name,
+        );
 
         _ = try tokens.expect(Token.space, self.expect_error);
         _ = try tokens.expect(Token.left_brace, self.expect_error);
@@ -768,8 +1015,8 @@ pub const DefinitionIterator = struct {
                 &[_]TokenTag{ .symbol, .name },
                 self.expect_error,
             )) {
-                .symbol => |s| s,
-                .name => |n| n,
+                .symbol => |s| try self.allocator.dupe(u8, s),
+                .name => |n| try self.allocator.dupe(u8, n),
                 else => unreachable,
             };
 
@@ -781,7 +1028,7 @@ pub const DefinitionIterator = struct {
                 &[_]TokenTag{ .string, .unsigned_integer },
                 self.expect_error,
             )) {
-                .string => |s| EnumerationValue{ .string = s },
+                .string => |s| EnumerationValue{ .string = try self.allocator.dupe(u8, s) },
                 .unsigned_integer => |ui| EnumerationValue{ .unsigned_integer = ui },
                 else => unreachable,
             };
@@ -802,7 +1049,10 @@ pub const DefinitionIterator = struct {
 
     pub fn parseStructureDefinition(self: *Self) !Structure {
         var tokens = &self.token_iterator;
-        const definition_name = (try tokens.expect(Token.name, self.expect_error)).name;
+        const definition_name = try self.allocator.dupe(
+            u8,
+            (try tokens.expect(Token.name, self.expect_error)).name,
+        );
 
         _ = try tokens.expect(Token.space, self.expect_error);
 
@@ -847,19 +1097,20 @@ pub const DefinitionIterator = struct {
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
 
-        return PlainStructure{
-            .name = try self.allocator.dupe(u8, definition_name),
-            .fields = fields.items,
-        };
+        return PlainStructure{ .name = definition_name, .fields = fields.items };
     }
 
     fn parseOpenNames(self: *Self) ![][]const u8 {
         const tokens = &self.token_iterator;
 
         var open_names = ArrayList([]const u8).init(self.allocator);
+        defer open_names.deinit();
 
-        const first_name = try tokens.expect(Token.name, self.expect_error);
-        try open_names.append(first_name.name);
+        const first_name = try self.allocator.dupe(
+            u8,
+            (try tokens.expect(Token.name, self.expect_error)).name,
+        );
+        try open_names.append(first_name);
         var open_names_done = false;
         while (!open_names_done) {
             const right_angle_or_comma = try tokens.expectOneOf(
@@ -873,7 +1124,7 @@ pub const DefinitionIterator = struct {
             }
         }
 
-        return open_names.items;
+        return open_names.toOwnedSlice();
     }
 
     pub fn parseGenericStructureDefinition(
@@ -902,7 +1153,7 @@ pub const DefinitionIterator = struct {
         _ = try tokens.expect(Token.right_brace, self.expect_error);
 
         return GenericStructure{
-            .name = try self.allocator.dupe(u8, definition_name),
+            .name = definition_name,
             .fields = fields.items,
             .open_names = open_names,
         };
@@ -911,7 +1162,10 @@ pub const DefinitionIterator = struct {
     fn parseUnionDefinition(self: *Self, options: UnionOptions) !Union {
         const tokens = &self.token_iterator;
 
-        const definition_name = (try tokens.expect(Token.name, self.expect_error)).name;
+        const definition_name = try self.allocator.dupe(
+            u8,
+            (try tokens.expect(Token.name, self.expect_error)).name,
+        );
 
         _ = try tokens.expect(Token.space, self.expect_error);
 
@@ -937,11 +1191,14 @@ pub const DefinitionIterator = struct {
     fn parseEmbeddedUnionDefinition(self: *Self, options: UnionOptions) !EmbeddedUnion {
         const tokens = &self.token_iterator;
 
-        const definition_name = (try tokens.expect(Token.name, self.expect_error)).name;
+        const definition_name = try self.allocator.dupe(
+            u8,
+            (try tokens.expect(Token.name, self.expect_error)).name,
+        );
 
         _ = try tokens.expect(Token.space, self.expect_error);
 
-        var open_names: [][]const u8 = &[_][]u8{};
+        var open_names = try self.allocator.alloc([]const u8, 0);
         const left_angle_or_left_brace = try tokens.expectOneOf(
             &[_]TokenTag{ .left_angle, .left_brace },
             self.expect_error,
@@ -965,8 +1222,8 @@ pub const DefinitionIterator = struct {
                 &[_]TokenTag{ .name, .symbol },
                 self.expect_error,
             )) {
-                .name => |n| n,
-                .symbol => |s| s,
+                .name => |n| try self.allocator.dupe(u8, n),
+                .symbol => |s| try self.allocator.dupe(u8, s),
                 else => unreachable,
             };
 
@@ -1067,7 +1324,7 @@ pub const DefinitionIterator = struct {
         _ = try tokens.expect(Token.right_brace, self.expect_error);
 
         return PlainUnion{
-            .name = try self.allocator.dupe(u8, definition_name),
+            .name = definition_name,
             .constructors = constructors.items,
             .tag_field = options.tag_field,
         };
@@ -1078,24 +1335,9 @@ pub const DefinitionIterator = struct {
         definition_name: []const u8,
         options: UnionOptions,
     ) !GenericUnion {
-        var constructors = ArrayList(Constructor).init(self.allocator);
-        var open_names = ArrayList([]const u8).init(self.allocator);
         const tokens = &self.token_iterator;
-
-        const first_name = try tokens.expect(Token.name, self.expect_error);
-        try open_names.append(first_name.name);
-        var open_names_done = false;
-        while (!open_names_done) {
-            const right_angle_or_comma = try tokens.expectOneOf(
-                &[_]TokenTag{ .right_angle, .comma },
-                self.expect_error,
-            );
-            switch (right_angle_or_comma) {
-                .right_angle => open_names_done = true,
-                .comma => try open_names.append(try self.parseAdditionalName()),
-                else => unreachable,
-            }
-        }
+        var constructors = ArrayList(Constructor).init(self.allocator);
+        var open_names = try self.parseOpenNames();
 
         _ = try tokens.expect(Token.left_brace, self.expect_error);
         _ = try tokens.expect(Token.newline, self.expect_error);
@@ -1115,9 +1357,9 @@ pub const DefinitionIterator = struct {
         _ = try tokens.expect(Token.right_brace, self.expect_error);
 
         return GenericUnion{
-            .name = try self.allocator.dupe(u8, definition_name),
+            .name = definition_name,
             .constructors = constructors.items,
-            .open_names = open_names.items,
+            .open_names = open_names,
             .tag_field = options.tag_field,
         };
     }
@@ -1131,8 +1373,8 @@ pub const DefinitionIterator = struct {
             &[_]TokenTag{ .name, .symbol },
             self.expect_error,
         )) {
-            .name => |n| n,
-            .symbol => |s| s,
+            .name => |n| try self.allocator.dupe(u8, n),
+            .symbol => |s| try self.allocator.dupe(u8, s),
             else => unreachable,
         };
 
@@ -1155,15 +1397,18 @@ pub const DefinitionIterator = struct {
     fn parseAdditionalName(self: *Self) ![]const u8 {
         const tokens = &self.token_iterator;
         _ = try tokens.expect(Token.space, self.expect_error);
-        const name = try tokens.expect(Token.name, self.expect_error);
+        const name = (try tokens.expect(Token.name, self.expect_error)).name;
 
-        return try self.allocator.dupe(u8, name.name);
+        return try self.allocator.dupe(u8, name);
     }
 
     fn parseStructureField(self: *Self) !Field {
         var tokens = &self.token_iterator;
         _ = try tokens.skipMany(Token.space, 4, self.expect_error);
-        const field_name = (try tokens.expect(Token.symbol, self.expect_error)).symbol;
+        const field_name = try self.allocator.dupe(
+            u8,
+            (try tokens.expect(Token.symbol, self.expect_error)).symbol,
+        );
         _ = try tokens.expect(Token.colon, self.expect_error);
         _ = try tokens.expect(Token.space, self.expect_error);
 
@@ -1181,7 +1426,6 @@ pub const DefinitionIterator = struct {
                 // we have an applied name
                 .left_angle => {
                     _ = try tokens.expect(Token.left_angle, self.expect_error);
-                    var names = ArrayList([]const u8).init(self.allocator);
                     const open_names = try self.parseOpenNames();
 
                     return AppliedName{ .name = name, .open_names = open_names };
@@ -1202,12 +1446,12 @@ pub const DefinitionIterator = struct {
         );
 
         const field = switch (field_type_start_token) {
-            .string => |s| Type{ .string = s },
+            .string => |s| Type{ .string = try self.allocator.dupe(u8, s) },
             .name => |name| field_type: {
                 if (try self.parseMaybeAppliedName(name)) |applied_name| {
                     break :field_type Type{ .applied_name = applied_name };
                 } else {
-                    break :field_type Type{ .name = name };
+                    break :field_type Type{ .name = try self.allocator.dupe(u8, name) };
                 }
             },
 
@@ -1221,7 +1465,10 @@ pub const DefinitionIterator = struct {
                     .right_bracket => {
                         var slice_type = try self.allocator.create(Type);
                         slice_type.* = Type{
-                            .name = (try tokens.expect(Token.name, self.expect_error)).name,
+                            .name = try self.allocator.dupe(
+                                u8,
+                                (try tokens.expect(Token.name, self.expect_error)).name,
+                            ),
                         };
 
                         break :field_type Type{ .slice = Slice{ .@"type" = slice_type } };
@@ -1229,10 +1476,13 @@ pub const DefinitionIterator = struct {
                     .unsigned_integer => |ui| {
                         _ = try tokens.expect(Token.right_bracket, self.expect_error);
                         var array_type = try self.allocator.create(Type);
-                        const array_type_name = (try tokens.expect(
-                            Token.name,
-                            self.expect_error,
-                        )).name;
+                        const array_type_name = try self.allocator.dupe(
+                            u8,
+                            (try tokens.expect(
+                                Token.name,
+                                self.expect_error,
+                            )).name,
+                        );
                         array_type.* = Type{ .name = array_type_name };
                         break :field_type Type{ .array = Array{ .@"type" = array_type, .size = ui } };
                     },
@@ -1247,7 +1497,10 @@ pub const DefinitionIterator = struct {
 
             .asterisk => field_type: {
                 var field_type = try self.allocator.create(Type);
-                const name = (try tokens.expect(Token.name, self.expect_error)).name;
+                const name = try self.allocator.dupe(
+                    u8,
+                    (try tokens.expect(Token.name, self.expect_error)).name,
+                );
                 field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
@@ -1336,13 +1589,17 @@ test "Parsing `Person` structure" {
     }};
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.person_structure,
         &parsing_error,
     );
-    expectEqualDefinitions(&expected_definitions, definitions);
+
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing basic generic structure" {
@@ -1363,14 +1620,17 @@ test "Parsing basic generic structure" {
     }};
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.node_structure,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing basic plain union" {
@@ -1402,14 +1662,17 @@ test "Parsing basic plain union" {
     }};
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.event_union,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing `Maybe` union" {
@@ -1432,14 +1695,17 @@ test "Parsing `Maybe` union" {
     }};
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.maybe_union,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing `Either` union" {
@@ -1462,14 +1728,17 @@ test "Parsing `Either` union" {
     }};
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.either_union,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing `List` union" {
@@ -1498,14 +1767,17 @@ test "Parsing `List` union" {
     }};
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.list_union,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing basic string-based enumeration" {
@@ -1533,14 +1805,17 @@ test "Parsing basic string-based enumeration" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing untagged union" {
@@ -1566,14 +1841,17 @@ test "Parsing untagged union" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing imports, without and with alias, respectively" {
@@ -1601,14 +1879,17 @@ test "Parsing imports, without and with alias, respectively" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing unions with options" {
@@ -1638,14 +1919,17 @@ test "Parsing unions with options" {
     };
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parseWithDescribedError(
+    var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Defining a union with embedded type tags referencing unknown payloads returns error" {
@@ -1665,7 +1949,7 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = parse(
+    var definitions = parse(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
@@ -1721,13 +2005,6 @@ test "Parsing invalid normal structure" {
 test "Parsing multiple definitions works as it should" {
     var allocator = TestingAllocator{};
     var parsing_error: ParsingError = undefined;
-
-    const definitions = try parseWithDescribedError(
-        &allocator.allocator,
-        &allocator.allocator,
-        type_examples.person_structure_and_event_union,
-        &parsing_error,
-    );
 
     var hobbies_slice_type = Type{ .name = "String" };
     var comments_array_type = Type{ .name = "String" };
@@ -1790,7 +2067,17 @@ test "Parsing multiple definitions works as it should" {
         },
     };
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    var definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.person_structure_and_event_union,
+        &parsing_error,
+    );
+
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 test "Parsing union with embedded type tag" {
@@ -1812,13 +2099,6 @@ test "Parsing union with embedded type tag" {
         \\    Empty
         \\}
     ;
-
-    const definitions = try parseWithDescribedError(
-        &allocator.allocator,
-        &allocator.allocator,
-        definition_buffer,
-        &parsing_error,
-    );
 
     var expected_struct_one_fields = [_]Field{
         .{ .name = "field1", .@"type" = Type{ .name = "String" } },
@@ -1861,7 +2141,17 @@ test "Parsing union with embedded type tag" {
         },
     };
 
-    expectEqualDefinitions(&expected_definitions, definitions);
+    var definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
 }
 
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
@@ -1886,6 +2176,13 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
 
     if (bs.len == 0) {
         testing_utilities.testPanic("Definition slice `bs` is zero length; invalid test\n", .{});
+    }
+
+    if (as.len != bs.len) {
+        testing_utilities.testPanic(
+            "Definition slices are different length: {} != {}\n",
+            .{ as.len, bs.len },
+        );
     }
 
     for (as) |a, i| {
@@ -1994,6 +2291,13 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
 }
 
 fn expectEqualFields(as: []const Field, bs: []const Field) void {
+    if (as.len != bs.len) {
+        testing_utilities.testPanic(
+            "Different number of fields found: {} != {}\n",
+            .{ as.len, bs.len },
+        );
+    }
+
     for (as) |a, i| {
         if (!a.isEqual(bs[i])) {
             testing_utilities.testPanic(
@@ -2005,6 +2309,13 @@ fn expectEqualFields(as: []const Field, bs: []const Field) void {
 }
 
 fn expectEqualOpenNames(as: []const []const u8, bs: []const []const u8) void {
+    if (as.len != bs.len) {
+        testing_utilities.testPanic(
+            "Different number of open names found: {} != {}\n",
+            .{ as.len, bs.len },
+        );
+    }
+
     for (as) |a, i| {
         if (!mem.eql(u8, a, bs[i])) {
             testing_utilities.testPanic(
@@ -2016,6 +2327,13 @@ fn expectEqualOpenNames(as: []const []const u8, bs: []const []const u8) void {
 }
 
 fn expectEqualConstructors(as: []const Constructor, bs: []const Constructor) void {
+    if (as.len != bs.len) {
+        testing_utilities.testPanic(
+            "Different number of constructors found: {} != {}\n",
+            .{ as.len, bs.len },
+        );
+    }
+
     for (as) |a, i| {
         const b = bs[i];
         if (!a.isEqual(b)) {
