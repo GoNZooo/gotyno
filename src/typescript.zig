@@ -3662,7 +3662,7 @@ test "Imports are output correctly" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
@@ -3676,4 +3676,9 @@ test "Imports are output correctly" {
     const output_2 = try outputImport(&allocator.allocator, definitions.definitions[1].import);
 
     testing.expectEqualStrings(output_2, expected_output_2);
+
+    definitions.deinit();
+    allocator.allocator.free(output_1);
+    allocator.allocator.free(output_2);
+    _ = allocator.detectLeaks();
 }
