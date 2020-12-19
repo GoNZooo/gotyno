@@ -74,18 +74,20 @@ fn outputImport(allocator: *mem.Allocator, i: Import) ![]const u8 {
 
 fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
     var value_union_outputs = ArrayList([]const u8).init(allocator);
-    defer value_union_outputs.deinit();
+    defer freeStringList(value_union_outputs);
 
     for (u.values) |value| {
-        try value_union_outputs.append(translateName(value.name));
+        try value_union_outputs.append(try allocator.dupe(u8, translateName(value.name)));
     }
 
     const value_union_output = try mem.join(allocator, " | ", value_union_outputs.items);
     defer allocator.free(value_union_output);
 
     const type_guard_output = try outputTypeGuardForUntaggedUnion(allocator, u);
+    defer allocator.free(type_guard_output);
 
     const validator_output = try outputValidatorForUntaggedUnion(allocator, u);
+    defer allocator.free(validator_output);
 
     const format =
         \\export type {} = {};
@@ -104,7 +106,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
 
 fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
     var predicate_outputs = ArrayList([]const u8).init(allocator);
-    defer predicate_outputs.deinit();
+    defer freeStringList(predicate_outputs);
 
     for (u.values) |value| {
         const translated_name = try translatedTypeGuardName(allocator, value.name);
@@ -125,7 +127,7 @@ fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
 
 fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
     var validator_outputs = ArrayList([]const u8).init(allocator);
-    defer validator_outputs.deinit();
+    defer freeStringList(validator_outputs);
 
     for (u.values) |value| {
         const translated_name = try translatedValidatorName(allocator, value.name);
@@ -3503,7 +3505,7 @@ test "Basic untagged union is output correctly" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
@@ -3516,6 +3518,10 @@ test "Basic untagged union is output correctly" {
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Tagged union with tag specifier is output correctly" {
