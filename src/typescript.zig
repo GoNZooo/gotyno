@@ -443,11 +443,13 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
 
     var constructor_names = try allocator.alloc([]const u8, embedded.constructors.len);
     defer allocator.free(constructor_names);
+    defer for (constructor_names) |n| allocator.free(n);
     for (embedded.constructors) |constructor, i| {
-        constructor_names[i] = constructor.tag;
+        constructor_names[i] = try allocator.dupe(u8, constructor.tag);
     }
 
     const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
+    defer allocator.free(constructor_names_output);
 
     const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
         ConstructorWithEmbeddedTypeTag,
@@ -455,41 +457,44 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
         embedded.name,
         embedded.constructors,
     );
+    defer allocator.free(union_tag_enum_output);
 
     var constructor_data = ArrayList(ConstructorData).init(allocator);
     defer constructor_data.deinit();
 
     var tagged_structure_outputs = ArrayList([]const u8).init(allocator);
-    defer tagged_structure_outputs.deinit();
+    defer freeStringList(tagged_structure_outputs);
 
     var constructor_outputs = ArrayList([]const u8).init(allocator);
-    defer constructor_outputs.deinit();
+    defer freeStringList(constructor_outputs);
 
     var union_type_guards = ArrayList([]const u8).init(allocator);
-    defer union_type_guards.deinit();
+    defer freeStringList(union_type_guards);
 
     var union_validators = ArrayList([]const u8).init(allocator);
-    defer union_validators.deinit();
+    defer freeStringList(union_validators);
 
     var type_guard_outputs = ArrayList([]const u8).init(allocator);
-    defer type_guard_outputs.deinit();
+    defer freeStringList(type_guard_outputs);
 
     var validator_outputs = ArrayList([]const u8).init(allocator);
-    defer validator_outputs.deinit();
+    defer freeStringList(validator_outputs);
 
     for (embedded.constructors) |constructor| {
         const fields_in_structure = if (constructor.parameter) |parameter| fields: {
             switch (parameter) {
-                .plain => |p| break :fields p.fields,
-                .generic => |g| break :fields g.fields,
+                .plain => |p| break :fields try allocator.dupe(Field, p.fields),
+                .generic => |g| break :fields try allocator.dupe(Field, g.fields),
             }
         } else &[_]Field{};
+        defer allocator.free(fields_in_structure);
 
         const enumeration_tag = try outputEnumerationTag(
             allocator,
             embedded.name,
             constructor.tag,
         );
+        defer allocator.free(enumeration_tag);
 
         try tagged_structure_outputs.append(
             try outputTaggedStructureForConstructorWithEmbeddedTag(
@@ -511,18 +516,11 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
             ),
         );
 
-        try union_type_guards.append(try fmt.allocPrint(
-            allocator,
-            "is{}",
-            .{try titleCaseWord(allocator, constructor.tag)},
-        ));
-        try union_validators.append(
-            try fmt.allocPrint(
-                allocator,
-                "validate{}",
-                .{try titleCaseWord(allocator, constructor.tag)},
-            ),
-        );
+        const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+        defer allocator.free(titlecased_tag);
+
+        try union_type_guards.append(try fmt.allocPrint(allocator, "is{}", .{titlecased_tag}));
+        try union_validators.append(try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag}));
 
         try type_guard_outputs.append(
             try outputTypeGuardForConstructorWithEmbeddedTypeTag(
@@ -575,11 +573,13 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
 
     const joined_union_validators = try mem.join(allocator, ", ", union_validators.items);
     defer allocator.free(joined_union_validators);
+
     const union_validator_format =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
         \\    return svt.validateOneOf<{}>(value, [{}]);
         \\}}
     ;
+
     const union_validator_output = try fmt.allocPrint(
         allocator,
         union_validator_format,
@@ -676,16 +676,14 @@ fn outputTaggedStructureForConstructorWithEmbeddedTag(
         \\}};
     ;
 
+    const structure_fields = try outputStructureFields(allocator, fields_in_structure);
+    defer allocator.free(structure_fields);
+
     return if (fields_in_structure.len != 0)
         try fmt.allocPrint(
             allocator,
             tagged_structure_output_with_payload,
-            .{
-                tag,
-                tag_field,
-                enumeration_tag,
-                try outputStructureFields(allocator, fields_in_structure),
-            },
+            .{ tag, tag_field, enumeration_tag, structure_fields },
         )
     else
         try fmt.allocPrint(
@@ -1614,16 +1612,15 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
     enumeration_tag: []const u8,
 ) ![]const u8 {
     var field_type_guard_specifications = ArrayList([]const u8).init(allocator);
-    defer field_type_guard_specifications.deinit();
+    defer freeStringList(field_type_guard_specifications);
 
     for (fields_in_structure) |f| {
         const specification_format = "{}: {}";
+        const nested = try getNestedTypeGuardFromType(allocator, f.@"type");
+        defer allocator.free(nested);
+
         try field_type_guard_specifications.append(
-            try fmt.allocPrint(
-                allocator,
-                specification_format,
-                .{ f.name, try getNestedTypeGuardFromType(allocator, f.@"type") },
-            ),
+            try fmt.allocPrint(allocator, specification_format, .{ f.name, nested }),
         );
     }
 
@@ -1683,15 +1680,18 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
     enumeration_tag: []const u8,
 ) ![]const u8 {
     var field_validator_specifications = ArrayList([]const u8).init(allocator);
-    defer field_validator_specifications.deinit();
+    defer freeStringList(field_validator_specifications);
 
     for (fields_in_structure) |f| {
         const specification_format = "{}: {}";
+        const nested = try getNestedValidatorFromType(allocator, f.@"type");
+        defer allocator.free(nested);
+
         try field_validator_specifications.append(
             try fmt.allocPrint(
                 allocator,
                 specification_format,
-                .{ f.name, try getNestedValidatorFromType(allocator, f.@"type") },
+                .{ f.name, nested },
             ),
         );
     }
@@ -3783,7 +3783,7 @@ test "Union with embedded tag is output correctly" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
@@ -3796,6 +3796,10 @@ test "Union with embedded tag is output correctly" {
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Union with embedded tag and lowercase constructors is output correctly" {
