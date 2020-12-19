@@ -3036,17 +3036,23 @@ test "Outputs `Either` union correctly" {
 
     var parsing_error: ParsingError = undefined;
 
+    var definitions = try parser.parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.either_union,
+        &parsing_error,
+    );
+
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try parser.parse(
-            &allocator.allocator,
-            &allocator.allocator,
-            type_examples.either_union,
-            &parsing_error,
-        )).definitions[0].@"union".generic,
+        definitions.definitions[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Outputs struct with concrete `Maybe` correctly" {
