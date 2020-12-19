@@ -146,7 +146,7 @@ fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
 
 fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]const u8 {
     var field_outputs = ArrayList([]const u8).init(allocator);
-    defer field_outputs.deinit();
+    defer freeStringList(field_outputs);
 
     for (enumeration.fields) |field| {
         try field_outputs.append(try outputEnumerationField(allocator, field));
@@ -160,12 +160,14 @@ fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]con
         enumeration.name,
         enumeration.fields,
     );
+    defer allocator.free(type_guard_output);
 
     const validator_output = try outputEnumerationValidator(
         allocator,
         enumeration.name,
         enumeration.fields,
     );
+    defer allocator.free(validator_output);
 
     const format =
         \\export enum {} {{
@@ -190,7 +192,7 @@ fn outputEnumerationTypeGuard(
     fields: []EnumerationField,
 ) ![]const u8 {
     var tag_outputs = ArrayList([]const u8).init(allocator);
-    defer tag_outputs.deinit();
+    defer freeStringList(tag_outputs);
 
     for (fields) |field| {
         try tag_outputs.append(try fmt.allocPrint(allocator, "{}.{}", .{ name, field.tag }));
@@ -214,7 +216,7 @@ fn outputEnumerationValidator(
     fields: []EnumerationField,
 ) ![]const u8 {
     var tag_outputs = ArrayList([]const u8).init(allocator);
-    defer tag_outputs.deinit();
+    defer freeStringList(tag_outputs);
 
     for (fields) |field| {
         try tag_outputs.append(try fmt.allocPrint(
@@ -3457,7 +3459,7 @@ test "basic string-based enumeration is output correctly" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
@@ -3470,6 +3472,10 @@ test "basic string-based enumeration is output correctly" {
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Basic untagged union is output correctly" {
