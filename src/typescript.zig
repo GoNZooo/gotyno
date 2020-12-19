@@ -322,25 +322,19 @@ fn outputGenericStructure(
 }
 
 fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
-    var field_outputs = ArrayList([]const u8).init(allocator);
-    defer freeStringList(field_outputs);
+    var lines = ArrayList([]const u8).init(allocator);
+    defer freeStringList(lines);
 
     for (fields) |field, i| {
-        const type_output = if (try outputType(allocator, field.@"type")) |output|
-            output
-        else
+        if (try outputType(allocator, field.@"type")) |output| {
+            defer allocator.free(output);
+            const line = try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, output });
+            try lines.append(line);
+        } else
             debug.panic("Empty type is not valid for struct field\n", .{});
-        defer allocator.free(type_output);
-
-        const line = if (i == (fields.len - 1))
-            try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output })
-        else
-            try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, type_output });
-
-        try field_outputs.append(line);
     }
 
-    return try mem.join(allocator, "\n", field_outputs.items);
+    return try mem.join(allocator, "\n", lines.items);
 }
 
 fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const u8 {
@@ -770,14 +764,18 @@ fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
 
 fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
     const open_names = try outputOpenNames(allocator, generic_union.open_names);
+    defer allocator.free(open_names);
 
     var constructor_names = try allocator.alloc([]const u8, generic_union.constructors.len);
+    defer allocator.free(constructor_names);
+    defer for (constructor_names) |n| allocator.free(n);
     for (generic_union.constructors) |constructor, i| {
         const maybe_names = try outputOpenNamesFromType(
             allocator,
             constructor.parameter,
             generic_union.open_names,
         );
+        defer allocator.free(maybe_names);
 
         constructor_names[i] = try fmt.allocPrint(
             allocator,
@@ -785,7 +783,9 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
             .{ constructor.tag, maybe_names },
         );
     }
+
     const constructor_names_output = try mem.join(allocator, " | ", constructor_names);
+    defer allocator.free(constructor_names_output);
 
     const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
         Constructor,
@@ -793,6 +793,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.name,
         generic_union.constructors,
     );
+    defer allocator.free(union_tag_enum_output);
 
     const tagged_structures_output = try outputTaggedMaybeGenericStructures(
         allocator,
@@ -801,6 +802,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.open_names,
         generic_union.tag_field,
     );
+    defer allocator.free(tagged_structures_output);
 
     const constructors_output = try outputGenericConstructors(
         allocator,
@@ -809,8 +811,10 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.open_names,
         generic_union.tag_field,
     );
+    defer allocator.free(constructors_output);
 
     const union_type_guard_output = try outputTypeGuardForGenericUnion(allocator, generic_union);
+    defer allocator.free(union_type_guard_output);
 
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
@@ -819,8 +823,10 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.open_names,
         generic_union.tag_field,
     );
+    defer allocator.free(type_guards_output);
 
     const union_validator_output = try outputValidatorForGenericUnion(allocator, generic_union);
+    defer allocator.free(union_validator_output);
 
     const validators_output = try outputValidatorsForConstructors(
         allocator,
@@ -829,6 +835,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         generic_union.open_names,
         generic_union.tag_field,
     );
+    defer allocator.free(validators_output);
 
     const output_format =
         \\export type {}{} = {};
@@ -890,8 +897,11 @@ fn outputTypeGuardForPlainStructure(
 
 fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
     const open_names_predicates = try openNamePredicates(allocator, generic.open_names);
+    defer freeStringList(open_names_predicates);
 
     var open_name_predicate_types = try allocator.alloc([]const u8, generic.open_names.len);
+    defer allocator.free(open_name_predicate_types);
+    defer for (open_name_predicate_types) |t| allocator.free(t);
     for (open_name_predicate_types) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
@@ -899,10 +909,10 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
             .{generic.open_names[i]},
         );
     }
-    defer allocator.free(open_name_predicate_types);
 
     var parameter_outputs = try allocator.alloc([]const u8, generic.open_names.len);
     defer allocator.free(parameter_outputs);
+    defer for (parameter_outputs) |o| allocator.free(o);
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
@@ -912,23 +922,30 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     }
 
     const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
+    defer allocator.free(parameters_output);
+
+    const joined_open_names_with_comma = try mem.join(allocator, ", ", generic.open_names);
+    defer allocator.free(joined_open_names_with_comma);
 
     const open_names_output = try fmt.allocPrint(
         allocator,
         "{}",
-        .{try mem.join(allocator, ", ", generic.open_names)},
+        .{joined_open_names_with_comma},
     );
+    defer allocator.free(open_names_output);
 
     var predicate_list_outputs = try predicatesFromConstructors(
         allocator,
         generic.constructors,
         generic.open_names,
     );
-    defer predicate_list_outputs.deinit();
+    defer freeStringList(predicate_list_outputs);
 
     const predicates_output = try mem.join(allocator, ", ", predicate_list_outputs.items);
+    defer allocator.free(predicates_output);
 
     const joined_open_names = try mem.join(allocator, "", generic.open_names);
+    defer allocator.free(joined_open_names);
 
     const format =
         \\export function is{}<{}>({}): svt.TypePredicate<{}<{}>> {{
@@ -969,12 +986,13 @@ fn predicatesFromConstructors(
             constructor.parameter,
             open_names,
         );
-        defer constructor_open_names.deinit();
+        defer freeStringList(constructor_open_names);
+
         const constructor_open_name_predicates = try openNamePredicates(
             allocator,
             constructor_open_names.items,
         );
-        defer constructor_open_name_predicates.deinit();
+        defer freeStringList(constructor_open_name_predicates);
 
         const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
         defer allocator.free(titlecased_tag);
@@ -986,14 +1004,16 @@ fn predicatesFromConstructors(
         );
         defer allocator.free(joined_predicates);
 
-        try predicate_list_outputs.append(if (constructor_open_names.items.len > 0)
+        const output = if (constructor_open_names.items.len > 0)
             try fmt.allocPrint(
                 allocator,
                 "is{}({})",
                 .{ titlecased_tag, joined_predicates },
             )
         else
-            try fmt.allocPrint(allocator, "is{}", .{titlecased_tag}));
+            try fmt.allocPrint(allocator, "is{}", .{titlecased_tag});
+
+        try predicate_list_outputs.append(output);
     }
 
     return predicate_list_outputs;
@@ -1001,8 +1021,11 @@ fn predicatesFromConstructors(
 
 fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
     const open_name_validators = try openNameValidators(allocator, generic.open_names);
+    defer freeStringList(open_name_validators);
 
     var open_name_validator_types = try allocator.alloc([]const u8, generic.open_names.len);
+    defer allocator.free(open_name_validator_types);
+    defer for (open_name_validator_types) |t| allocator.free(t);
     for (open_name_validator_types) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
@@ -1010,10 +1033,10 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
             .{generic.open_names[i]},
         );
     }
-    defer allocator.free(open_name_validator_types);
 
     var parameter_outputs = try allocator.alloc([]const u8, generic.open_names.len);
     defer allocator.free(parameter_outputs);
+    defer for (parameter_outputs) |o| allocator.free(o);
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
@@ -1023,23 +1046,26 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     }
 
     const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
+    defer allocator.free(parameters_output);
 
-    const open_names_output = try fmt.allocPrint(
-        allocator,
-        "{}",
-        .{try mem.join(allocator, ", ", generic.open_names)},
-    );
+    const joined_open_names_with_comma = try mem.join(allocator, ", ", generic.open_names);
+    defer allocator.free(joined_open_names_with_comma);
+
+    const open_names_output = try fmt.allocPrint(allocator, "{}", .{joined_open_names_with_comma});
+    defer allocator.free(open_names_output);
 
     var validator_list_outputs = try validatorsFromConstructors(
         allocator,
         generic.constructors,
         generic.open_names,
     );
-    defer validator_list_outputs.deinit();
+    defer freeStringList(validator_list_outputs);
 
     const validators_output = try mem.join(allocator, ", ", validator_list_outputs.items);
+    defer allocator.free(validators_output);
 
     const joined_open_names = try mem.join(allocator, "", generic.open_names);
+    defer allocator.free(joined_open_names);
 
     const format =
         \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
@@ -1082,12 +1108,15 @@ fn validatorsFromConstructors(
             constructor.parameter,
             open_names,
         );
-        defer constructor_open_names.deinit();
+        defer freeStringList(constructor_open_names);
+
+        const has_open_names = constructor_open_names.items.len > 0;
+
         const constructor_open_name_validators = try openNameValidators(
             allocator,
             constructor_open_names.items,
         );
-        defer constructor_open_name_validators.deinit();
+        defer freeStringList(constructor_open_name_validators);
 
         const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
         defer allocator.free(titlecased_tag);
@@ -1099,7 +1128,7 @@ fn validatorsFromConstructors(
         );
         defer allocator.free(joined_validators);
 
-        try validator_list_outputs.append(if (constructor_open_names.items.len > 0)
+        const output = if (has_open_names)
             try fmt.allocPrint(
                 allocator,
                 "validate{}({})",
@@ -1109,7 +1138,9 @@ fn validatorsFromConstructors(
                 },
             )
         else
-            try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag}));
+            try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
+
+        try validator_list_outputs.append(output);
     }
 
     return validator_list_outputs;
@@ -1400,11 +1431,14 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
         .applied_name => |applied_name| output: {
             const open_name_validators = try openNameValidators(allocator, applied_name.open_names);
+            defer freeStringList(open_name_validators);
+            const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
+            defer allocator.free(joined_validators);
 
             break :output try fmt.allocPrint(
                 allocator,
                 "validate{}({})",
-                .{ applied_name.name, try mem.join(allocator, ", ", open_name_validators.items) },
+                .{ applied_name.name, joined_validators },
             );
         },
 
@@ -1503,6 +1537,7 @@ fn outputConstructor(
         constructor.parameter,
         open_names,
     );
+    defer allocator.free(open_names_output);
 
     const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
     defer allocator.free(enumeration_tag_output);
@@ -1716,7 +1751,7 @@ fn outputTypeGuardForConstructor(
         constructor.parameter,
         open_names,
     );
-    defer constructor_open_names.deinit();
+    defer freeStringList(constructor_open_names);
 
     const open_names_output = try outputOpenNamesFromType(
         allocator,
@@ -1726,7 +1761,7 @@ fn outputTypeGuardForConstructor(
     defer allocator.free(open_names_output);
 
     const open_names_predicates = try openNamePredicates(allocator, constructor_open_names.items);
-    defer open_names_predicates.deinit();
+    defer freeStringList(open_names_predicates);
 
     var open_name_predicate_types = try allocator.alloc(
         []const u8,
@@ -1825,8 +1860,11 @@ fn outputValidatorForConstructor(
         constructor.parameter,
         open_names,
     );
+    defer freeStringList(constructor_open_names);
+
     const open_names_validators = try openNameValidators(allocator, constructor_open_names.items);
-    defer open_names_validators.deinit();
+    defer freeStringList(open_names_validators);
+
     const open_names_predicates_output = try mem.join(allocator, ", ", open_names_validators.items);
     defer allocator.free(open_names_predicates_output);
 
@@ -2263,7 +2301,7 @@ fn outputTaggedMaybeGenericStructures(
     tag_field: []const u8,
 ) ![]const u8 {
     var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
-    defer tagged_structures_outputs.deinit();
+    defer freeStringList(tagged_structures_outputs);
 
     for (constructors) |constructor| {
         try tagged_structures_outputs.append(
@@ -2288,7 +2326,7 @@ fn outputGenericConstructors(
     tag_field: []const u8,
 ) ![]const u8 {
     var constructor_outputs = ArrayList([]const u8).init(allocator);
-    defer constructor_outputs.deinit();
+    defer freeStringList(constructor_outputs);
 
     for (constructors) |constructor| {
         try constructor_outputs.append(try outputConstructor(
@@ -2349,14 +2387,21 @@ fn outputTaggedMaybeGenericStructure(
     open_names: []const []const u8,
     tag_field: []const u8,
 ) ![]const u8 {
-    const open_names_output = outputOpenNamesFromType(allocator, constructor.parameter, open_names);
+    const open_names_output = try outputOpenNamesFromType(
+        allocator,
+        constructor.parameter,
+        open_names,
+    );
+    defer allocator.free(open_names_output);
 
-    const parameter_output = if (try outputType(allocator, constructor.parameter)) |output|
-        try fmt.allocPrint(allocator, "\n    data: {};", .{output})
-    else
-        "";
+    const parameter_output = if (try outputType(allocator, constructor.parameter)) |output| p: {
+        defer allocator.free(output);
+        break :p try fmt.allocPrint(allocator, "\n    data: {};", .{output});
+    } else "";
+    defer allocator.free(parameter_output);
 
     const enumeration_tag_output = try outputEnumerationTag(allocator, union_name, constructor.tag);
+    defer allocator.free(enumeration_tag_output);
 
     const output_format =
         \\export type {}{} = {{
@@ -2394,7 +2439,9 @@ fn openNamesFromType(
             var open_name_list = ArrayList([]const u8).init(allocator);
 
             if (isStringEqualToOneOf(name, open_names)) {
-                try open_name_list.append(name);
+                const n = try allocator.dupe(u8, name);
+
+                try open_name_list.append(n);
             }
 
             break :name open_name_list;
@@ -2413,7 +2460,9 @@ fn commonOpenNames(
 
     for (as) |a| {
         for (bs) |b| {
-            if (mem.eql(u8, a, b) and !isTranslatedName(a)) try common_names.append(a);
+            if (mem.eql(u8, a, b) and !isTranslatedName(a)) {
+                try common_names.append(try allocator.dupe(u8, a));
+            }
         }
     }
 
@@ -2426,16 +2475,15 @@ fn outputOpenNamesFromType(
     open_names: []const []const u8,
 ) error{OutOfMemory}![]const u8 {
     const type_open_names = try openNamesFromType(allocator, t, open_names);
-    defer type_open_names.deinit();
+    defer freeStringList(type_open_names);
+
+    const joined_open_names = try mem.join(allocator, ", ", type_open_names.items);
+    defer allocator.free(joined_open_names);
 
     return if (type_open_names.items.len == 0)
         ""
     else
-        try fmt.allocPrint(
-            allocator,
-            "<{}>",
-            .{try mem.join(allocator, ", ", type_open_names.items)},
-        );
+        try fmt.allocPrint(allocator, "<{}>", .{joined_open_names});
 }
 
 fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
@@ -2901,17 +2949,23 @@ test "Outputs `Maybe` union correctly" {
 
     var parsing_error: ParsingError = undefined;
 
+    var definitions = try parser.parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.maybe_union,
+        &parsing_error,
+    );
+
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try parser.parse(
-            &allocator.allocator,
-            &allocator.allocator,
-            type_examples.maybe_union,
-            &parsing_error,
-        )).definitions[0].@"union".generic,
+        definitions.definitions[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Outputs `Either` union correctly" {
