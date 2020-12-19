@@ -3892,7 +3892,7 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
@@ -3905,6 +3905,10 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Imports are output correctly" {
