@@ -42,7 +42,7 @@ pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const 
 
 pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) ![]const u8 {
     var outputs = ArrayList([]const u8).init(allocator);
-    defer outputs.deinit();
+    defer freeStringList(outputs);
 
     try outputs.append("import * as svt from \"simple-validation-tools\";");
 
