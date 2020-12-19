@@ -3586,7 +3586,7 @@ test "Tagged union with tag specifier is output correctly" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         definition_buffer,
@@ -3599,6 +3599,10 @@ test "Tagged union with tag specifier is output correctly" {
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Tagged generic union with tag specifier is output correctly" {
