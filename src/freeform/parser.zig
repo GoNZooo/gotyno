@@ -736,55 +736,7 @@ pub const DefinitionIterator = struct {
         for (self.imports.items) |*i| i.free(self.allocator);
         self.imports.deinit();
 
-        //     .plain => |p| {
-        //         for (p.constructors) |*constructor| {
-        //             constructor.free(self.allocator);
-        //         }
-
-        //         self.allocator.free(p.constructors);
-        //         self.allocator.free(p.name);
-        //         self.allocator.free(p.tag_field);
-        //     },
-        //     .embedded => |e| {
-        //         self.allocator.free(e.constructors);
-        //         self.allocator.free(e.open_names);
-        //         self.allocator.free(e.tag_field);
-        //         self.allocator.free(e.name);
-        //     },
-        // },
-        // switch (s) {
-        //                     .plain => |p| {
-        //                         for (p.fields) |*field| {
-        //                             field.free(self.allocator);
-        //                         }
-
-        //                         self.allocator.free(p.fields);
-        //                         self.allocator.free(p.name);
-        //                     },
-        //                     .generic => |g| {
-        //                         for (g.fields) |*field| {
-        //                             field.free(self.allocator);
-        //                         }
-
-        //                         for (g.open_names) |name| self.allocator.free(name);
-
-        //                         self.allocator.free(g.open_names);
-        //                         self.allocator.free(g.fields);
-        //                         self.allocator.free(g.name);
-        //                     },
-        //                 }
-
-        while (definition_iterator.next()) |entry| {
-            entry.*.value.free(self.allocator);
-            // switch (entry.*.value) {
-            //     .@"union" => |*u| u.free(self.allocator),
-            //     .structure => |*s| s.free(self.allocator),
-            //     .enumeration => |*enumeration| enumeration.free(self.allocator),
-            //     .untagged_union => |*u| u.free(self.allocator),
-
-            //     .import => unreachable,
-            // }
-        }
+        while (definition_iterator.next()) |entry| entry.*.value.free(self.allocator);
 
         self.named_definitions.deinit();
     }
