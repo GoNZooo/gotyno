@@ -3311,7 +3311,8 @@ test "Outputs struct with optional float value correctly" {
     ;
 
     var parsing_error: ParsingError = undefined;
-    const definitions = try parser.parseWithDescribedError(
+
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.structure_with_optional_float,
@@ -3324,6 +3325,10 @@ test "Outputs struct with optional float value correctly" {
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "lowercase plain union has correct output" {
