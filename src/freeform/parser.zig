@@ -2108,6 +2108,80 @@ test "Parsing union with embedded type tag" {
     _ = allocator.detectLeaks();
 }
 
+test "Parsing union with embedded type tag and lowercase tags" {
+    var allocator = TestingAllocator{};
+    var parsing_error: ParsingError = undefined;
+
+    const definition_buffer =
+        \\struct One {
+        \\    field1: String
+        \\}
+        \\
+        \\struct Two {
+        \\    field2: F32
+        \\}
+        \\
+        \\union(tag = media_type, embedded) Embedded {
+        \\    withOne: One
+        \\    withTwo: Two
+        \\    empty
+        \\}
+    ;
+
+    var expected_struct_one_fields = [_]Field{
+        .{ .name = "field1", .@"type" = Type{ .name = "String" } },
+    };
+    var expected_struct_two_fields = [_]Field{
+        .{ .name = "field2", .@"type" = Type{ .name = "F32" } },
+    };
+
+    const expected_struct_one = Structure{
+        .plain = PlainStructure{
+            .name = "One",
+            .fields = &expected_struct_one_fields,
+        },
+    };
+    const expected_struct_two = Structure{
+        .plain = PlainStructure{
+            .name = "Two",
+            .fields = &expected_struct_two_fields,
+        },
+    };
+
+    var expected_constructors = [_]ConstructorWithEmbeddedTypeTag{
+        .{ .tag = "withOne", .parameter = expected_struct_one },
+        .{ .tag = "withTwo", .parameter = expected_struct_two },
+        .{ .tag = "empty", .parameter = null },
+    };
+
+    const expected_definitions = [_]Definition{
+        .{ .structure = expected_struct_one },
+        .{ .structure = expected_struct_two },
+        .{
+            .@"union" = Union{
+                .embedded = EmbeddedUnion{
+                    .name = "Embedded",
+                    .constructors = &expected_constructors,
+                    .tag_field = "media_type",
+                    .open_names = &[_][]u8{},
+                },
+            },
+        },
+    };
+
+    var definitions = try parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+
+    definitions.deinit();
+    _ = allocator.detectLeaks();
+}
+
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
     const Names = struct {
         a: []const u8,
