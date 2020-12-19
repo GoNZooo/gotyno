@@ -1428,7 +1428,10 @@ pub const DefinitionIterator = struct {
                     _ = try tokens.expect(Token.left_angle, self.expect_error);
                     const open_names = try self.parseOpenNames();
 
-                    return AppliedName{ .name = name, .open_names = open_names };
+                    return AppliedName{
+                        .name = try self.allocator.dupe(u8, name),
+                        .open_names = open_names,
+                    };
                 },
                 else => {},
             }
@@ -1497,14 +1500,12 @@ pub const DefinitionIterator = struct {
 
             .asterisk => field_type: {
                 var field_type = try self.allocator.create(Type);
-                const name = try self.allocator.dupe(
-                    u8,
-                    (try tokens.expect(Token.name, self.expect_error)).name,
-                );
+                const name = (try tokens.expect(Token.name, self.expect_error)).name;
+
                 field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
-                    Type{ .name = name };
+                    Type{ .name = try self.allocator.dupe(u8, name) };
 
                 break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
             },
@@ -1512,10 +1513,11 @@ pub const DefinitionIterator = struct {
             .question_mark => field_type: {
                 var field_type = try self.allocator.create(Type);
                 const name = (try tokens.expect(Token.name, self.expect_error)).name;
+
                 field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
-                    Type{ .name = name };
+                    Type{ .name = try self.allocator.dupe(u8, name) };
 
                 break :field_type Type{ .optional = Optional{ .@"type" = field_type } };
             },

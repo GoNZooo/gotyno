@@ -1389,12 +1389,15 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
         .applied_name => |applied_name| output: {
             const open_name_predicates = try openNamePredicates(allocator, applied_name.open_names);
-            defer open_name_predicates.deinit();
+            defer freeStringList(open_name_predicates);
+
+            const joined_predicates = try mem.join(allocator, ", ", open_name_predicates.items);
+            defer allocator.free(joined_predicates);
 
             break :output try fmt.allocPrint(
                 allocator,
                 "is{}({})",
-                .{ applied_name.name, try mem.join(allocator, ", ", open_name_predicates.items) },
+                .{ applied_name.name, joined_predicates },
             );
         },
 
@@ -3074,17 +3077,23 @@ test "Outputs struct with concrete `Maybe` correctly" {
 
     var parsing_error: ParsingError = undefined;
 
+    var definitions = try parser.parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.structure_with_concrete_maybe,
+        &parsing_error,
+    );
+
     const output = try outputPlainStructure(
         &allocator.allocator,
-        (try parser.parse(
-            &allocator.allocator,
-            &allocator.allocator,
-            type_examples.structure_with_concrete_maybe,
-            &parsing_error,
-        )).definitions[0].structure.plain,
+        definitions.definitions[0].structure.plain,
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Outputs struct with different `Maybe`s correctly" {
