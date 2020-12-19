@@ -2053,7 +2053,7 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
         },
         .applied_name => |applied| applied: {
             const open_name_predicates = try openNamePredicates(allocator, applied.open_names);
-            defer open_name_predicates.deinit();
+            defer freeStringList(open_name_predicates);
 
             const joined_predicates = try mem.join(allocator, ", ", open_name_predicates.items);
             defer allocator.free(joined_predicates);
@@ -2109,12 +2109,15 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
         },
         .applied_name => |applied| applied: {
             const open_name_validators = try openNameValidators(allocator, applied.open_names);
-            defer open_name_validators.deinit();
+            defer freeStringList(open_name_validators);
+
+            const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
+            defer allocator.free(joined_validators);
 
             break :applied try fmt.allocPrint(
                 allocator,
                 ", data: validate{}({})",
-                .{ applied.name, try mem.join(allocator, ", ", open_name_validators.items) },
+                .{ applied.name, joined_validators },
             );
         },
     };
@@ -3182,17 +3185,23 @@ test "Outputs struct with different `Maybe`s correctly" {
 
     var parsing_error: ParsingError = undefined;
 
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.union_with_different_maybes,
+        &parsing_error,
+    );
+
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try parser.parseWithDescribedError(
-            &allocator.allocator,
-            &allocator.allocator,
-            type_examples.union_with_different_maybes,
-            &parsing_error,
-        )).definitions[0].@"union".generic,
+        definitions.definitions[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Outputs `List` union correctly" {
