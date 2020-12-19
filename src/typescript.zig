@@ -1153,7 +1153,7 @@ fn outputTypeGuardForGenericStructure(
     generic: GenericStructure,
 ) ![]const u8 {
     const open_names = try actualOpenNames(allocator, generic.open_names);
-    defer open_names.deinit();
+    defer freeStringList(open_names);
 
     const open_names_output = try mem.join(allocator, ", ", open_names.items);
     defer allocator.free(open_names_output);
@@ -1224,7 +1224,7 @@ fn outputValidatorForGenericStructure(
     generic: GenericStructure,
 ) ![]const u8 {
     const open_names = try actualOpenNames(allocator, generic.open_names);
-    defer open_names.deinit();
+    defer freeStringList(open_names);
 
     const open_names_output = try mem.join(allocator, ", ", open_names.items);
     defer allocator.free(open_names_output);
@@ -2596,7 +2596,7 @@ fn actualOpenNames(allocator: *mem.Allocator, names: []const []const u8) !ArrayL
     var open_names = ArrayList([]const u8).init(allocator);
 
     for (names) |name| {
-        if (!isTranslatedName(name)) try open_names.append(name);
+        if (!isTranslatedName(name)) try open_names.append(try allocator.dupe(u8, name));
     }
 
     return open_names;
