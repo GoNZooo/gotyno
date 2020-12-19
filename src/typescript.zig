@@ -2163,10 +2163,13 @@ fn getNestedDataSpecificationFromType(
             break :output try fmt.allocPrint(allocator, optional_format, .{nested});
         },
         .applied_name => |applied_name| output: {
+            const open_names_output = try outputOpenNames(allocator, applied_name.open_names);
+            defer allocator.free(open_names_output);
+
             break :output try fmt.allocPrint(
                 allocator,
                 "{}{}",
-                .{ applied_name.name, try outputOpenNames(allocator, applied_name.open_names) },
+                .{ applied_name.name, open_names_output },
             );
         },
     };
@@ -2206,12 +2209,15 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
         },
         .applied_name => |applied| applied: {
             const open_name_predicates = try openNamePredicates(allocator, applied.open_names);
-            defer open_name_predicates.deinit();
+            defer freeStringList(open_name_predicates);
+
+            const joined_predicates = try mem.join(allocator, ", ", open_name_predicates.items);
+            defer allocator.free(joined_predicates);
 
             break :applied try fmt.allocPrint(
                 allocator,
                 "is{}({})",
-                .{ applied.name, try mem.join(allocator, ", ", open_name_predicates.items) },
+                .{ applied.name, joined_predicates },
             );
         },
     };
@@ -2251,7 +2257,7 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
         },
         .applied_name => |applied| applied: {
             const open_name_validators = try openNameValidators(allocator, applied.open_names);
-            defer open_name_validators.deinit();
+            defer freeStringList(open_name_validators);
             const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
             defer allocator.free(joined_validators);
 
@@ -2534,6 +2540,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
                         allocator,
                         applied_name.open_names,
                     );
+                    defer allocator.free(open_names);
 
                     break :embedded_type try fmt.allocPrint(
                         allocator,
@@ -3267,17 +3274,23 @@ test "Outputs `List` union correctly" {
 
     var parsing_error: ParsingError = undefined;
 
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.list_union,
+        &parsing_error,
+    );
+
     const output = try outputGenericUnion(
         &allocator.allocator,
-        (try parser.parseWithDescribedError(
-            &allocator.allocator,
-            &allocator.allocator,
-            type_examples.list_union,
-            &parsing_error,
-        )).definitions[0].@"union".generic,
+        definitions.definitions[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    _ = allocator.detectLeaks();
 }
 
 test "Outputs struct with optional float value correctly" {
