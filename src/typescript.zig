@@ -26,6 +26,7 @@ const GenericUnion = parser.GenericUnion;
 const Constructor = parser.Constructor;
 const ConstructorWithEmbeddedTypeTag = parser.ConstructorWithEmbeddedTypeTag;
 const Type = parser.Type;
+const TypeReference = parser.TypeReference;
 const Field = parser.Field;
 const ParsingError = parser.ParsingError;
 
@@ -1373,7 +1374,7 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try translatedTypeGuardName(allocator, n),
+        .reference => |r| try translatedTypeGuardReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
             defer allocator.free(nested_validator);
@@ -1418,7 +1419,7 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try translatedValidatorName(allocator, n),
+        .reference => |r| try translatedValidatorReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
             defer allocator.free(nested_validator);
@@ -1978,7 +1979,7 @@ fn getDataSpecificationFromType(
     return switch (t) {
         .empty => null,
         .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
-        .name => |n| try fmt.allocPrint(allocator, bare_format, .{translateName(n)}),
+        .reference => |r| try fmt.allocPrint(allocator, bare_format, .{translateReference(r)}),
         .array => |a| output: {
             const nested = try getNestedDataSpecificationFromType(allocator, a.@"type".*);
             defer allocator.free(nested);
@@ -2026,8 +2027,8 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     return switch (t) {
         .empty => "",
         .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
-        .name => |n| output: {
-            const translated = try translatedTypeGuardName(allocator, n);
+        .reference => |r| output: {
+            const translated = try translatedTypeGuardReference(allocator, r);
             defer allocator.free(translated);
 
             break :output try fmt.allocPrint(
@@ -2086,8 +2087,8 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     return switch (t) {
         .empty => "",
         .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
-        .name => |n| output: {
-            const validator = try translatedValidatorName(allocator, n);
+        .reference => |r| output: {
+            const validator = try translatedValidatorReference(allocator, r);
             defer allocator.free(validator);
 
             break :output try fmt.allocPrint(allocator, validator_format, .{validator});
@@ -2142,11 +2143,7 @@ fn getNestedDataSpecificationFromType(
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for data specification\n", .{}),
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try fmt.allocPrint(
-            allocator,
-            "{}",
-            .{translateName(n)},
-        ),
+        .reference => |r| try allocator.dupe(u8, translateReference(r)),
         .array => |a| output: {
             const nested = try getNestedDataSpecificationFromType(allocator, a.@"type".*);
             defer allocator.free(nested);
@@ -2191,7 +2188,7 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for type guard\n", .{}),
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try translatedTypeGuardName(allocator, n),
+        .reference => |r| try translatedTypeGuardReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
             defer allocator.free(nested_validator);
@@ -2239,7 +2236,7 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for validator\n", .{}),
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try translatedValidatorName(allocator, n),
+        .reference => |r| try translatedValidatorReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
             defer allocator.free(nested_validator);
@@ -2456,16 +2453,31 @@ fn openNamesFromType(
 
         .applied_name => |applied| try commonOpenNames(allocator, open_names, applied.open_names),
 
-        .name => |name| name: {
+        .reference => |r| reference: {
             var open_name_list = ArrayList([]const u8).init(allocator);
 
-            if (isStringEqualToOneOf(name, open_names)) {
-                const n = try allocator.dupe(u8, name);
-
-                try open_name_list.append(n);
+            switch (r) {
+                .builtin => {},
+                .definition => |d| switch (d) {
+                    .structure => |s| switch (s) {
+                        .generic => |g| try open_name_list.appendSlice(g.open_names),
+                        .plain => {},
+                    },
+                    .@"union" => |u| switch (u) {
+                        .generic => |g| try open_name_list.appendSlice(g.open_names),
+                        .plain, .embedded => {},
+                    },
+                    .untagged_union, .import, .enumeration => {},
+                },
             }
 
-            break :name open_name_list;
+            // if (isStringEqualToOneOf(name, open_names)) {
+            //     const n = try allocator.dupe(u8, name);
+
+            //     try open_name_list.append(n);
+            // }
+
+            break :reference open_name_list;
         },
 
         .string, .empty => ArrayList([]const u8).init(allocator),
@@ -2511,11 +2523,11 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
     return switch (t) {
         .empty => null,
         .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
-        .name => |n| try allocator.dupe(u8, translateName(n)),
+        .reference => |r| try allocator.dupe(u8, translateReference(r)),
 
         .array => |a| output: {
             const embedded_type = switch (a.@"type".*) {
-                .name => |n| try allocator.dupe(u8, translateName(n)),
+                .reference => |r| try allocator.dupe(u8, translateReference(r)),
                 .applied_name => |applied_name| try outputOpenNames(
                     allocator,
                     applied_name.open_names,
@@ -2529,7 +2541,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
         .slice => |s| output: {
             const embedded_type = switch (s.@"type".*) {
-                .name => |n| try allocator.dupe(u8, translateName(n)),
+                .reference => |r| try allocator.dupe(u8, translateReference(r)),
                 .applied_name => |applied_name| try outputOpenNames(
                     allocator,
                     applied_name.open_names,
@@ -2543,7 +2555,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
         .pointer => |p| output: {
             const embedded_type = switch (p.@"type".*) {
-                .name => |n| try allocator.dupe(u8, translateName(n)),
+                .reference => |r| try allocator.dupe(u8, translateReference(r)),
                 .applied_name => |applied_name| embedded_type: {
                     const open_names = try outputOpenNames(
                         allocator,
@@ -2566,7 +2578,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
         .optional => |o| output: {
             const embedded_type = switch (o.@"type".*) {
-                .name => |n| try allocator.dupe(u8, translateName(n)),
+                .reference => |r| try allocator.dupe(u8, translateReference(r)),
                 .applied_name => |applied_name| embedded_type: {
                     const open_names = try outputOpenNames(
                         allocator,
@@ -2630,6 +2642,36 @@ fn translateName(name: []const u8) []const u8 {
         name;
 }
 
+fn translateReference(reference: TypeReference) []const u8 {
+    return switch (reference) {
+        .builtin => |b| switch (b) {
+            .String => "string",
+            .Boolean => "boolean",
+            .U8,
+            .U16,
+            .U32,
+            .U64,
+            .U128,
+            .I8,
+            .I16,
+            .I32,
+            .I64,
+            .I128,
+            .F32,
+            .F64,
+            .F128,
+            => "number",
+        },
+        .definition => |d| switch (d) {
+            .structure => |s| s.name(),
+            .@"union" => |u| u.name(),
+            .enumeration => |e| e.name,
+            .untagged_union => |u| u.name,
+            .import => debug.panic("import referenced somehow?\n", .{}),
+        },
+    };
+}
+
 fn isNumberType(name: []const u8) bool {
     return isStringEqualToOneOf(name, &[_][]const u8{
         "U8",
@@ -2664,6 +2706,36 @@ fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const
         try fmt.allocPrint(allocator, "is{}", .{name});
 }
 
+fn translatedTypeGuardReference(allocator: *mem.Allocator, reference: TypeReference) ![]const u8 {
+    return switch (reference) {
+        .builtin => |b| switch (b) {
+            .String => try allocator.dupe(u8, "svt.isString"),
+            .Boolean => try allocator.dupe(u8, "svt.isBoolean"),
+            .U8,
+            .U16,
+            .U32,
+            .U64,
+            .U128,
+            .I8,
+            .I16,
+            .I32,
+            .I64,
+            .I128,
+            .F32,
+            .F64,
+            .F128,
+            => try allocator.dupe(u8, "svt.isNumber"),
+        },
+        .definition => |d| switch (d) {
+            .structure => |s| try fmt.allocPrint(allocator, "is{}", .{s.name()}),
+            .@"union" => |u| try fmt.allocPrint(allocator, "is{}", .{u.name()}),
+            .enumeration => |e| try fmt.allocPrint(allocator, "is{}", .{e.name}),
+            .untagged_union => |u| try fmt.allocPrint(allocator, "is{}", .{u.name}),
+            .import => debug.panic("somehow getting type guard name of import: {}\n", .{reference}),
+        },
+    };
+}
+
 fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
     return if (mem.eql(u8, name, "String"))
         try allocator.dupe(u8, "svt.validateString")
@@ -2673,6 +2745,36 @@ fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const
         try allocator.dupe(u8, "svt.validateBoolean")
     else
         try fmt.allocPrint(allocator, "validate{}", .{name});
+}
+
+fn translatedValidatorReference(allocator: *mem.Allocator, reference: TypeReference) ![]const u8 {
+    return switch (reference) {
+        .builtin => |b| switch (b) {
+            .String => try allocator.dupe(u8, "svt.validateString"),
+            .Boolean => try allocator.dupe(u8, "svt.validateBoolean"),
+            .U8,
+            .U16,
+            .U32,
+            .U64,
+            .U128,
+            .I8,
+            .I16,
+            .I32,
+            .I64,
+            .I128,
+            .F32,
+            .F64,
+            .F128,
+            => try allocator.dupe(u8, "svt.validateNumber"),
+        },
+        .definition => |d| switch (d) {
+            .structure => |s| try fmt.allocPrint(allocator, "validate{}", .{s.name()}),
+            .@"union" => |u| try fmt.allocPrint(allocator, "validate{}", .{u.name()}),
+            .enumeration => |e| try fmt.allocPrint(allocator, "validate{}", .{e.name}),
+            .untagged_union => |u| try fmt.allocPrint(allocator, "validate{}", .{u.name}),
+            .import => debug.panic("somehow getting type guard name of import: {}\n", .{reference}),
+        },
+    };
 }
 
 fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) bool {

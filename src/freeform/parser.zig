@@ -9,6 +9,7 @@ const meta = std.meta;
 const tokenizer = @import("./tokenizer.zig");
 const type_examples = @import("./type_examples.zig");
 const testing_utilities = @import("./testing_utilities.zig");
+const utilities = @import("./utilities.zig");
 
 const Token = tokenizer.Token;
 const TokenTag = tokenizer.TokenTag;
@@ -304,7 +305,7 @@ pub const Type = union(enum) {
 
     empty,
     string: []const u8,
-    name: []const u8,
+    reference: TypeReference,
     array: Array,
     slice: Slice,
     pointer: Pointer,
@@ -313,7 +314,6 @@ pub const Type = union(enum) {
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
         switch (self.*) {
-            .name => |n| allocator.free(n),
             .string => |s| allocator.free(s),
             .array => |*a| {
                 a.*.@"type".free(allocator);
@@ -337,6 +337,8 @@ pub const Type = union(enum) {
 
                 allocator.free(a.open_names);
             },
+            // @TODO: TBD
+            .reference => {},
             .empty => {},
         }
     }
@@ -354,6 +356,65 @@ pub const Type = union(enum) {
             .applied_name => |applied_name| meta.activeTag(other) == .applied_name and
                 applied_name.isEqual(other.applied_name),
         };
+    }
+};
+
+pub const TypeReference = union(enum) {
+    builtin: Builtin,
+    definition: Definition,
+};
+
+pub const Builtin = enum {
+    String,
+    Boolean,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    F32,
+    F64,
+    F128,
+
+    /// This is partial; use after checking with `isBuiltin`
+    pub fn fromString(string: []const u8) Builtin {
+        return if (mem.eql(u8, string, "String"))
+            Builtin.String
+        else if (mem.eql(u8, string, "Boolean"))
+            Builtin.Boolean
+        else if (mem.eql(u8, string, "U8"))
+            Builtin.U8
+        else if (mem.eql(u8, string, "U16"))
+            Builtin.U16
+        else if (mem.eql(u8, string, "U32"))
+            Builtin.U32
+        else if (mem.eql(u8, string, "U64"))
+            Builtin.U64
+        else if (mem.eql(u8, string, "U128"))
+            Builtin.U128
+        else if (mem.eql(u8, string, "I8"))
+            Builtin.I8
+        else if (mem.eql(u8, string, "I16"))
+            Builtin.I16
+        else if (mem.eql(u8, string, "I32"))
+            Builtin.I32
+        else if (mem.eql(u8, string, "I64"))
+            Builtin.I64
+        else if (mem.eql(u8, string, "I128"))
+            Builtin.I128
+        else if (mem.eql(u8, string, "F32"))
+            Builtin.F32
+        else if (mem.eql(u8, string, "F64"))
+            Builtin.F64
+        else if (mem.eql(u8, string, "F128"))
+            Builtin.F128
+        else
+            debug.panic("Invalid builtin referenced; check with `isBuiltin`", .{});
     }
 };
 
@@ -1406,7 +1467,7 @@ pub const DefinitionIterator = struct {
                 if (try self.parseMaybeAppliedName(name)) |applied_name| {
                     break :field_type Type{ .applied_name = applied_name };
                 } else {
-                    break :field_type Type{ .name = try self.allocator.dupe(u8, name) };
+                    break :field_type Type{ .reference = try self.getTypeReference(name) };
                 }
             },
 
@@ -1419,12 +1480,13 @@ pub const DefinitionIterator = struct {
                 switch (right_bracket_or_number) {
                     .right_bracket => {
                         var slice_type = try self.allocator.create(Type);
-                        slice_type.* = Type{
-                            .name = try self.allocator.dupe(
-                                u8,
-                                (try tokens.expect(Token.name, self.expect_error)).name,
-                            ),
-                        };
+                        const definition_name = (try tokens.expect(
+                            Token.name,
+                            self.expect_error,
+                        )).name;
+                        const type_reference = try self.getTypeReference(definition_name);
+
+                        slice_type.* = Type{ .reference = type_reference };
 
                         break :field_type Type{ .slice = Slice{ .@"type" = slice_type } };
                     },
@@ -1438,7 +1500,8 @@ pub const DefinitionIterator = struct {
                                 self.expect_error,
                             )).name,
                         );
-                        array_type.* = Type{ .name = array_type_name };
+                        const type_reference = try self.getTypeReference(array_type_name);
+                        array_type.* = Type{ .reference = type_reference };
                         break :field_type Type{ .array = Array{ .@"type" = array_type, .size = ui } };
                     },
                     else => {
@@ -1457,7 +1520,7 @@ pub const DefinitionIterator = struct {
                 field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
-                    Type{ .name = try self.allocator.dupe(u8, name) };
+                    Type{ .reference = try self.getTypeReference(name) };
 
                 break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
             },
@@ -1469,7 +1532,7 @@ pub const DefinitionIterator = struct {
                 field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
-                    Type{ .name = try self.allocator.dupe(u8, name) };
+                    Type{ .reference = try self.getTypeReference(name) };
 
                 break :field_type Type{ .optional = Optional{ .@"type" = field_type } };
             },
@@ -1502,13 +1565,56 @@ pub const DefinitionIterator = struct {
         else
             null;
     }
+
+    fn getTypeReference(self: Self, name: []const u8) !TypeReference {
+        return if (isBuiltin(name))
+            TypeReference{ .builtin = Builtin.fromString(name) }
+        else if (self.getDefinition(name)) |found_definition|
+            TypeReference{ .definition = found_definition }
+        else
+            try self.returnUnknownReferenceError(TypeReference, name);
+    }
+
+    fn returnUnknownReferenceError(self: Self, comptime T: type, name: []const u8) !T {
+        const line = self.token_iterator.line;
+        const column = self.token_iterator.column;
+
+        self.parsing_error.* = ParsingError{
+            .reference = ReferenceError{
+                .unknown_reference = UnknownReference{
+                    .line = line,
+                    .column = column,
+                    .name = name,
+                },
+            },
+        };
+
+        return error.UnknownReference;
+    }
 };
+
+fn isBuiltin(name: []const u8) bool {
+    return utilities.isStringEqualToOneOf(name, &[_][]const u8{
+        "String",
+        "Boolean",
+        "U8",
+        "U16",
+        "U32",
+        "U64",
+        "I8",
+        "I16",
+        "I32",
+        "I64",
+        "F32",
+        "F64",
+    });
+}
 
 test "Parsing `Person` structure" {
     var allocator = TestingAllocator{};
-    var hobbies_slice_type = Type{ .name = "String" };
-    var comments_array_type = Type{ .name = "String" };
-    var recruiter_pointer_type = Type{ .name = "Person" };
+    var hobbies_slice_type = Type{ .reference = TypeReference{ .builtin = Builtin.String } };
+    var comments_array_type = Type{ .reference = TypeReference{ .builtin = Builtin.String } };
+    var recruiter_pointer_type = Type{ .reference = TypeReference{ .builtin = Builtin.Person } };
 
     const expected_definitions = [_]Definition{.{
         .structure = Structure{
@@ -1516,10 +1622,22 @@ test "Parsing `Person` structure" {
                 .name = "Person",
                 .fields = &[_]Field{
                     .{ .name = "type", .@"type" = Type{ .string = "Person" } },
-                    .{ .name = "name", .@"type" = Type{ .name = "String" } },
-                    .{ .name = "age", .@"type" = Type{ .name = "U8" } },
-                    .{ .name = "efficiency", .@"type" = Type{ .name = "F32" } },
-                    .{ .name = "on_vacation", .@"type" = Type{ .name = "Boolean" } },
+                    .{
+                        .name = "name",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+                    },
+                    .{
+                        .name = "age",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.U8 } },
+                    },
+                    .{
+                        .name = "efficiency",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
+                    },
+                    .{
+                        .name = "on_vacation",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.Boolean } },
+                    },
                     .{
                         .name = "hobbies",
                         .@"type" = Type{ .slice = Slice{ .@"type" = &hobbies_slice_type } },
