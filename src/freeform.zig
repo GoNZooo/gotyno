@@ -83,3 +83,28 @@ pub fn compile(
         );
     }
 }
+
+const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
+
+test "Leak check for `compile` with all languages" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer = try fs.cwd().readFileAlloc(
+        &allocator.allocator,
+        "test_files/basic.gotyno",
+        4_000_000,
+    );
+
+    try compile(
+        &allocator.allocator,
+        "test_files/test.gotyno",
+        definition_buffer,
+        OutputLanguages{ .typescript = true },
+        fs.cwd(),
+        false,
+    );
+
+    allocator.allocator.free(definition_buffer);
+
+    _ = allocator.detectLeaks();
+}

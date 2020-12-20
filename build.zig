@@ -3,7 +3,7 @@ const Builder = std.build.Builder;
 const Mode = std.builtin.Mode;
 
 const test_files = [_][]const u8{
-    "typescript",
+    "freeform",
 };
 
 pub fn build(b: *Builder) void {

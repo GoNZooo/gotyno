@@ -44,7 +44,7 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
     var outputs = ArrayList([]const u8).init(allocator);
     defer freeStringList(outputs);
 
-    try outputs.append("import * as svt from \"simple-validation-tools\";");
+    try outputs.append(try allocator.dupe(u8, "import * as svt from \"simple-validation-tools\";"));
 
     for (definitions) |definition| {
         const output = switch (definition) {
