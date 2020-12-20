@@ -12,6 +12,7 @@ const ArrayList = std.ArrayList;
 const StringMap = std.StringHashMap;
 
 const OutputLanguages = freeform.OutputLanguages;
+const OutputPath = freeform.OutputPath;
 
 const CompilationOptions = struct {
     const Self = @This();
@@ -30,9 +31,9 @@ const CompilationOptions = struct {
             if (mem.eql(u8, try a, "-ts") or mem.eql(u8, try a, "--typescript")) {
                 if (argument_iterator.next(allocator)) |path| {
                     if (mem.eql(u8, try path, "=")) {
-                        outputs.typescript = freeform.OutputPath.input;
+                        outputs.typescript = OutputPath.input;
                     } else {
-                        outputs.typescript = freeform.OutputPath{
+                        outputs.typescript = OutputPath{
                             .path = try sanitizeFilename(allocator, try path),
                         };
                     }
