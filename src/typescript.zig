@@ -37,7 +37,12 @@ pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const 
     var split_iterator = mem.split(filename, ".gotyno");
     const before_extension = split_iterator.next().?;
 
-    return mem.join(allocator, "", &[_][]const u8{ before_extension, ".ts" });
+    const only_filename = if (mem.lastIndexOf(u8, before_extension, "/")) |index|
+        before_extension[(index + 1)..]
+    else
+        before_extension;
+
+    return mem.join(allocator, "", &[_][]const u8{ only_filename, ".ts" });
 }
 
 pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) ![]const u8 {

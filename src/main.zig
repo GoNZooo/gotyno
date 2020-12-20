@@ -28,7 +28,15 @@ const CompilationOptions = struct {
 
         while (argument_iterator.next(allocator)) |a| {
             if (mem.eql(u8, try a, "-ts") or mem.eql(u8, try a, "--typescript")) {
-                outputs.typescript = true;
+                if (argument_iterator.next(allocator)) |path| {
+                    if (mem.eql(u8, try path, "=")) {
+                        outputs.typescript = freeform.OutputPath.input;
+                    } else {
+                        outputs.typescript = freeform.OutputPath{
+                            .path = try sanitizeFilename(allocator, try path),
+                        };
+                    }
+                }
             } else if (mem.eql(u8, try a, "-v") or mem.eql(u8, try a, "--verbose")) {
                 verbose = true;
             } else {
@@ -86,7 +94,6 @@ fn compileInputs(
             sanitized_filename,
             file_contents,
             output_languages,
-            current_directory,
             verbose,
         );
     }

@@ -15,7 +15,12 @@ const ExpectError = tokenizer.ExpectError;
 const ParsingError = parser.ParsingError;
 
 pub const OutputLanguages = struct {
-    typescript: bool = false,
+    typescript: ?OutputPath = null,
+};
+
+pub const OutputPath = union(enum) {
+    input,
+    path: []const u8,
 };
 
 pub const CompilationTimes = struct {
@@ -27,7 +32,6 @@ pub fn compile(
     filename: []const u8,
     file_contents: []const u8,
     output_languages: OutputLanguages,
-    directory: fs.Dir,
     verbose: bool,
 ) !void {
     var compilation_times = CompilationTimes{};
@@ -44,19 +48,29 @@ pub fn compile(
     );
     defer definitions.deinit();
 
-    if (output_languages.typescript) {
+    if (output_languages.typescript) |path| {
         const typescript_start_time = time.nanoTimestamp();
         defer compilation_arena.deinit();
+
+        const output_path = switch (path) {
+            .input => directoryOfInput(filename),
+            .path => |p| p,
+        };
+
+        var output_directory = try fs.cwd().openDir(output_path, .{});
+        defer output_directory.close();
+
         const typescript_filename = try typescript.outputFilename(
             compilation_allocator,
             filename,
         );
+
         const typescript_output = try typescript.compileDefinitions(
             compilation_allocator,
             definitions.definitions,
         );
 
-        try directory.writeFile(typescript_filename, typescript_output);
+        try output_directory.writeFile(typescript_filename, typescript_output);
         const typescript_end_time = time.nanoTimestamp();
         const compilation_time_difference = typescript_end_time - typescript_start_time;
         compilation_times.typescript = compilation_time_difference;
@@ -84,6 +98,13 @@ pub fn compile(
     }
 }
 
+fn directoryOfInput(filename: []const u8) []const u8 {
+    return if (mem.lastIndexOf(u8, filename, "/")) |index|
+        filename[0..index]
+    else
+        "";
+}
+
 const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
 
 test "Leak check for `compile` with all languages" {
@@ -99,8 +120,7 @@ test "Leak check for `compile` with all languages" {
         &allocator.allocator,
         "test_files/test.gotyno",
         definition_buffer,
-        OutputLanguages{ .typescript = true },
-        fs.cwd(),
+        OutputLanguages{ .typescript = OutputPath.input },
         false,
     );
 
