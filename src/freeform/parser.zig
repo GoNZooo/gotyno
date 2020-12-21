@@ -1322,21 +1322,7 @@ pub const DefinitionIterator = struct {
 
                         _ = try tokens.expect(Token.newline, self.expect_error);
                     } else {
-                        const line = self.token_iterator.line;
-                        const column = self.token_iterator.column;
-                        const name = parameter_name;
-
-                        self.parsing_error.* = ParsingError{
-                            .reference = ReferenceError{
-                                .unknown_reference = UnknownReference{
-                                    .line = line,
-                                    .column = column,
-                                    .name = name,
-                                },
-                            },
-                        };
-
-                        return error.UnknownReference;
+                        try self.returnUnknownReferenceError(void, parameter_name);
                     }
                 },
                 else => unreachable,
@@ -1664,7 +1650,7 @@ pub const DefinitionIterator = struct {
             .reference = ReferenceError{
                 .unknown_reference = UnknownReference{
                     .line = line,
-                    .column = column,
+                    .column = column - name.len,
                     .name = name,
                 },
             },
@@ -2236,8 +2222,8 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
     switch (parsing_error) {
         .reference => |reference| switch (reference) {
             .unknown_reference => |unknown_reference| {
-                testing.expectEqual(unknown_reference.line, 6);
-                testing.expectEqual(unknown_reference.column, 14);
+                testing.expectEqual(unknown_reference.line, 7);
+                testing.expectEqual(unknown_reference.column, 12);
                 testing.expectEqualStrings(unknown_reference.name, "One");
             },
 
