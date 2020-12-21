@@ -19,6 +19,24 @@ pub const node_structure =
 ;
 
 pub const event_union =
+    \\struct LogInData {
+    \\    username: String
+    \\    password: String
+    \\}
+    \\
+    \\struct UserId {
+    \\    value: String
+    \\}
+    \\
+    \\struct Channel {
+    \\    name: String
+    \\    private: Boolean
+    \\}
+    \\
+    \\struct Email {
+    \\    value: String
+    \\}
+    \\
     \\union Event {
     \\    LogIn: LogInData
     \\    LogOut: UserId
