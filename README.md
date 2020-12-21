@@ -178,7 +178,19 @@ $ zig build -Drelease-fast
 And running:
 
 ```
-$ ./zig-cache/bin/gotyno --verbose --typescript inputFile.gotyno
+$ ./zig-cache/bin/gotyno --verbose --typescript = inputFile.gotyno
 # or
-$ ./zig-cache/bin/gotyno -v -ts inputFile.gotyno
+$ ./zig-cache/bin/gotyno -v -ts = inputFile.gotyno
 ```
+
+Optionally you can also specify a different output directory after
+`-ts`/`--typescript`:
+
+```
+$ ./zig-cache/bin/gotyno --verbose --typescript other/directory inputFile.gotyno
+# or
+$ ./zig-cache/bin/gotyno -v -ts other/directory inputFile.gotyno
+```
+
+The output files for TypeScript output will then be written in that directory,
+still with the same module names as the input file.
