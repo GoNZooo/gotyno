@@ -119,15 +119,15 @@ pub const UntaggedUnion = struct {
 pub const UntaggedUnionValue = union(enum) {
     const Self = @This();
 
-    name: []const u8,
+    reference: TypeReference,
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
-        allocator.free(self.name);
+        self.reference.free(allocator);
     }
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
-            .name => |n| meta.activeTag(other) == .name and mem.eql(u8, n, other.name),
+            .reference => |r| meta.activeTag(other) == .reference and r.isEqual(other.reference),
         };
     }
 };
@@ -331,8 +331,8 @@ pub const Type = union(enum) {
                 p.*.@"type".free(allocator);
                 allocator.destroy(p.*.@"type");
             },
-            .applied_name => |a| {
-                allocator.free(a.name);
+            .applied_name => |*a| {
+                a.reference.free(allocator);
                 for (a.open_names) |name| allocator.free(name);
 
                 allocator.free(a.open_names);
@@ -383,9 +383,26 @@ pub const TypeReference = union(enum) {
             .open => |n| mem.eql(u8, n, other.open),
         };
     }
+
+    pub fn name(self: Self) []const u8 {
+        return switch (self) {
+            .builtin => |b| b.toString(),
+            .definition => |d| switch (d) {
+                .structure => |s| s.name(),
+                .@"union" => |u| u.name(),
+                .untagged_union => |u| u.name,
+                .enumeration => |e| e.name,
+                .import => |i| i.name,
+            },
+            .loose => |l| l.name,
+            .open => |n| n,
+        };
+    }
 };
 
 pub const Builtin = enum {
+    const Self = @This();
+
     String,
     Boolean,
     U8,
@@ -401,6 +418,26 @@ pub const Builtin = enum {
     F32,
     F64,
     F128,
+
+    pub fn toString(self: Self) []const u8 {
+        return switch (self) {
+            .String => "String",
+            .Boolean => "Boolean",
+            .U8 => "U8",
+            .U16 => "U16",
+            .U32 => "U32",
+            .U64 => "U64",
+            .U128 => "U128",
+            .I8 => "I8",
+            .I16 => "I16",
+            .I32 => "I32",
+            .I64 => "I64",
+            .I128 => "I128",
+            .F32 => "F32",
+            .F64 => "F64",
+            .F128 => "F128",
+        };
+    }
 
     /// This is partial; use after checking with `isBuiltin`
     pub fn fromString(string: []const u8) Builtin {
@@ -506,11 +543,11 @@ pub const Optional = struct {
 pub const AppliedName = struct {
     const Self = @This();
 
-    name: []const u8,
+    reference: TypeReference,
     open_names: []const []const u8,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        if (!mem.eql(u8, self.name, other.name)) return false;
+        if (!self.reference.isEqual(other.reference)) return false;
 
         for (self.open_names) |open_name, i| {
             if (!mem.eql(u8, open_name, other.open_names[i])) return false;
@@ -921,7 +958,9 @@ pub const DefinitionIterator = struct {
                         _ = try tokens.expect(Token.space, self.expect_error);
 
                         const definition = Definition{
-                            .untagged_union = try self.parseUntaggedUnionDefinition(),
+                            .untagged_union = try self.parseUntaggedUnionDefinition(
+                                &[_][]const u8{},
+                            ),
                         };
                         try self.addDefinition(definition.untagged_union.name, definition);
 
@@ -1018,7 +1057,7 @@ pub const DefinitionIterator = struct {
         return options;
     }
 
-    fn parseUntaggedUnionDefinition(self: *Self) !UntaggedUnion {
+    fn parseUntaggedUnionDefinition(self: *Self, open_names: []const []const u8) !UntaggedUnion {
         const tokens = &self.token_iterator;
 
         const name = try self.allocator.dupe(
@@ -1035,10 +1074,11 @@ pub const DefinitionIterator = struct {
         var done_parsing_values = false;
         while (!done_parsing_values) {
             try tokens.skipMany(Token.space, 4, self.expect_error);
-            const value_name = try self.allocator.dupe(
-                u8,
-                (try tokens.expect(Token.name, self.expect_error)).name,
-            );
+            const value_name = (try tokens.expect(Token.name, self.expect_error)).name;
+
+            try values.append(UntaggedUnionValue{
+                .reference = try self.getTypeReference(value_name, name, open_names),
+            });
 
             _ = try tokens.expect(Token.newline, self.expect_error);
 
@@ -1048,8 +1088,6 @@ pub const DefinitionIterator = struct {
                     else => {},
                 }
             }
-
-            try values.append(UntaggedUnionValue{ .name = value_name });
         }
 
         return UntaggedUnion{ .name = name, .values = values.toOwnedSlice() };
@@ -1473,7 +1511,11 @@ pub const DefinitionIterator = struct {
         return Field{ .name = field_name, .@"type" = field_type };
     }
 
-    fn parseMaybeAppliedName(self: *Self, name: []const u8) !?AppliedName {
+    fn parseMaybeAppliedName(
+        self: *Self,
+        definition_name: []const u8,
+        name: []const u8,
+    ) !?AppliedName {
         const tokens = &self.token_iterator;
 
         const maybe_left_angle_token = try tokens.peek();
@@ -1485,7 +1527,7 @@ pub const DefinitionIterator = struct {
                     const open_names = try self.parseOpenNames();
 
                     return AppliedName{
-                        .name = try self.allocator.dupe(u8, name),
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
                         .open_names = open_names,
                     };
                 },
@@ -1511,11 +1553,11 @@ pub const DefinitionIterator = struct {
         const field = switch (field_type_start_token) {
             .string => |s| Type{ .string = try self.allocator.dupe(u8, s) },
             .name => |name| field_type: {
-                if (try self.parseMaybeAppliedName(name)) |applied_name| {
+                if (try self.parseMaybeAppliedName(definition_name, name)) |applied_name| {
                     break :field_type Type{ .applied_name = applied_name };
                 } else {
                     break :field_type Type{
-                        .reference = try self.getTypeReference(name, open_names),
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
                     };
                 }
             },
@@ -1535,6 +1577,7 @@ pub const DefinitionIterator = struct {
                         )).name;
                         const type_reference = try self.getTypeReference(
                             slice_type_name,
+                            definition_name,
                             open_names,
                         );
 
@@ -1551,10 +1594,13 @@ pub const DefinitionIterator = struct {
                         )).name;
                         const type_reference = try self.getTypeReference(
                             array_type_name,
+                            definition_name,
                             open_names,
                         );
                         array_type.* = Type{ .reference = type_reference };
-                        break :field_type Type{ .array = Array{ .@"type" = array_type, .size = ui } };
+                        break :field_type Type{
+                            .array = Array{ .@"type" = array_type, .size = ui },
+                        };
                     },
                     else => {
                         debug.panic(
@@ -1569,19 +1615,15 @@ pub const DefinitionIterator = struct {
                 var field_type = try self.allocator.create(Type);
                 const name = (try tokens.expect(Token.name, self.expect_error)).name;
 
-                field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
+                field_type.* = if (try self.parseMaybeAppliedName(
+                    definition_name,
+                    name,
+                )) |applied_name|
                     Type{ .applied_name = applied_name }
-                else if (mem.eql(u8, name, definition_name))
-                    Type{
-                        .reference = TypeReference{
-                            .loose = LooseReference{
-                                .name = try self.allocator.dupe(u8, name),
-                                .open_names = open_names,
-                            },
-                        },
-                    }
                 else
-                    Type{ .reference = try self.getTypeReference(name, open_names) };
+                    Type{
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
+                    };
 
                 break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
             },
@@ -1590,10 +1632,15 @@ pub const DefinitionIterator = struct {
                 var field_type = try self.allocator.create(Type);
                 const name = (try tokens.expect(Token.name, self.expect_error)).name;
 
-                field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
+                field_type.* = if (try self.parseMaybeAppliedName(
+                    definition_name,
+                    name,
+                )) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
-                    Type{ .reference = try self.getTypeReference(name, open_names) };
+                    Type{
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
+                    };
 
                 break :field_type Type{ .optional = Optional{ .@"type" = field_type } };
             },
@@ -1630,12 +1677,20 @@ pub const DefinitionIterator = struct {
     fn getTypeReference(
         self: Self,
         name: []const u8,
+        current_definition_name: []const u8,
         open_names: []const []const u8,
     ) !TypeReference {
         return if (isBuiltin(name))
             TypeReference{ .builtin = Builtin.fromString(name) }
         else if (self.getDefinition(name)) |found_definition|
             TypeReference{ .definition = found_definition }
+        else if (mem.eql(u8, name, current_definition_name))
+            TypeReference{
+                .loose = LooseReference{
+                    .name = try self.allocator.dupe(u8, name),
+                    .open_names = try utilities.deepCopySlice(u8, self.allocator, open_names),
+                },
+            }
         else if (utilities.isStringEqualToOneOf(name, open_names))
             TypeReference{ .open = try self.allocator.dupe(u8, name) }
         else
@@ -1983,7 +2038,12 @@ test "Parsing `List` union" {
     var allocator = TestingAllocator{};
 
     var applied_pointer_type = Type{
-        .applied_name = AppliedName{ .name = "List", .open_names = &[_][]const u8{"T"} },
+        .applied_name = AppliedName{
+            .reference = TypeReference{
+                .loose = LooseReference{ .name = "List", .open_names = &[_][]const u8{} },
+            },
+            .open_names = &[_][]const u8{"T"},
+        },
     };
     var expected_constructors = [_]Constructor{
         .{ .tag = "Empty", .parameter = Type.empty },
@@ -2059,19 +2119,51 @@ test "Parsing basic string-based enumeration" {
 test "Parsing untagged union" {
     var allocator = TestingAllocator{};
 
-    var expected_values = [_]UntaggedUnionValue{
-        .{ .name = "KnownForShow" },
-        .{ .name = "KnownForMovie" },
+    var known_for_show_fields = [_]Field{
+        .{ .name = "f", .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } } },
     };
 
-    const expected_definitions = [_]Definition{.{
-        .untagged_union = UntaggedUnion{
-            .name = "KnownFor",
-            .values = &expected_values,
+    const known_for_show = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{ .name = "KnownForShow", .fields = &known_for_show_fields },
         },
-    }};
+    };
+
+    var known_for_movie_fields = [_]Field{
+        .{ .name = "f", .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.U32 } } },
+    };
+
+    const known_for_movie = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{ .name = "KnownForMovie", .fields = &known_for_movie_fields },
+        },
+    };
+
+    var expected_values = [_]UntaggedUnionValue{
+        .{ .reference = TypeReference{ .definition = known_for_show } },
+        .{ .reference = TypeReference{ .definition = known_for_movie } },
+    };
+
+    const expected_definitions = [_]Definition{
+        known_for_show,
+        known_for_movie,
+        .{
+            .untagged_union = UntaggedUnion{
+                .name = "KnownFor",
+                .values = &expected_values,
+            },
+        },
+    };
 
     const definition_buffer =
+        \\struct KnownForShow {
+        \\    f: String
+        \\}
+        \\
+        \\struct KnownForMovie {
+        \\    f: U32
+        \\}
+        \\
         \\untagged union KnownFor {
         \\    KnownForShow
         \\    KnownForMovie

@@ -84,7 +84,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     defer utilities.freeStringList(value_union_outputs);
 
     for (u.values) |value| {
-        try value_union_outputs.append(try allocator.dupe(u8, translateName(value.name)));
+        try value_union_outputs.append(try allocator.dupe(u8, translateReference(value.reference)));
     }
 
     const value_union_output = try mem.join(allocator, " | ", value_union_outputs.items);
@@ -116,7 +116,7 @@ fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     defer utilities.freeStringList(predicate_outputs);
 
     for (u.values) |value| {
-        const translated_name = try translatedTypeGuardName(allocator, value.name);
+        const translated_name = try translatedTypeGuardReference(allocator, value.reference);
         try predicate_outputs.append(translated_name);
     }
 
@@ -137,7 +137,7 @@ fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     defer utilities.freeStringList(validator_outputs);
 
     for (u.values) |value| {
-        const translated_name = try translatedValidatorName(allocator, value.name);
+        const translated_name = try translatedValidatorReference(allocator, value.reference);
         try validator_outputs.append(translated_name);
     }
 
@@ -1406,7 +1406,7 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             break :output try fmt.allocPrint(
                 allocator,
                 "is{}({})",
-                .{ applied_name.name, joined_predicates },
+                .{ applied_name.reference.name(), joined_predicates },
             );
         },
 
@@ -1450,7 +1450,7 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             break :output try fmt.allocPrint(
                 allocator,
                 "validate{}({})",
-                .{ applied_name.name, joined_validators },
+                .{ applied_name.reference.name(), joined_validators },
             );
         },
 
@@ -2012,7 +2012,7 @@ fn getDataSpecificationFromType(
             break :output try fmt.allocPrint(
                 allocator,
                 "{}{}",
-                .{ applied_name.name, open_names_output },
+                .{ applied_name.reference.name(), open_names_output },
             );
         },
     };
@@ -2072,7 +2072,7 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             break :applied try fmt.allocPrint(
                 allocator,
                 ", data: is{}({})",
-                .{ applied.name, joined_predicates },
+                .{ applied.reference.name(), joined_predicates },
             );
         },
     };
@@ -2128,7 +2128,7 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             break :applied try fmt.allocPrint(
                 allocator,
                 ", data: validate{}({})",
-                .{ applied.name, joined_validators },
+                .{ applied.reference.name(), joined_validators },
             );
         },
     };
@@ -2176,7 +2176,7 @@ fn getNestedDataSpecificationFromType(
             break :output try fmt.allocPrint(
                 allocator,
                 "{}{}",
-                .{ applied_name.name, open_names_output },
+                .{ applied_name.reference.name(), open_names_output },
             );
         },
     };
@@ -2224,7 +2224,7 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             break :applied try fmt.allocPrint(
                 allocator,
                 "is{}({})",
-                .{ applied.name, joined_predicates },
+                .{ applied.reference.name(), joined_predicates },
             );
         },
     };
@@ -2271,7 +2271,7 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             break :applied try fmt.allocPrint(
                 allocator,
                 "validate{}({})",
-                .{ applied.name, joined_validators },
+                .{ applied.reference.name(), joined_validators },
             );
         },
     };
@@ -2571,7 +2571,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
                     break :embedded_type try fmt.allocPrint(
                         allocator,
                         "{}{}",
-                        .{ applied_name.name, open_names },
+                        .{ applied_name.reference.name(), open_names },
                     );
                 },
                 else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
@@ -2593,7 +2593,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
                     break :embedded_type try fmt.allocPrint(
                         allocator,
                         "{}{}",
-                        .{ applied_name.name, open_names },
+                        .{ applied_name.reference.name(), open_names },
                     );
                 },
                 else => debug.panic("Invalid embedded type for optional: {}\n", .{o.@"type"}),
@@ -2607,7 +2607,11 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             const open_names = try outputOpenNames(allocator, applied_name.open_names);
             defer allocator.free(open_names);
 
-            break :output try fmt.allocPrint(allocator, "{}{}", .{ applied_name.name, open_names });
+            break :output try fmt.allocPrint(
+                allocator,
+                "{}{}",
+                .{ applied_name.reference.name(), open_names },
+            );
         },
     };
 }
@@ -3206,7 +3210,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
 
     var parsing_error: ParsingError = undefined;
 
-    var definitions = try parser.parse(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         type_examples.structure_with_concrete_maybe,
@@ -3215,7 +3219,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
 
     const output = try outputPlainStructure(
         &allocator.allocator,
-        definitions.definitions[0].structure.plain,
+        definitions.definitions[1].structure.plain,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -3320,7 +3324,7 @@ test "Outputs struct with different `Maybe`s correctly" {
 
     const output = try outputGenericUnion(
         &allocator.allocator,
-        definitions.definitions[0].@"union".generic,
+        definitions.definitions[1].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
@@ -3599,6 +3603,14 @@ test "Basic untagged union is output correctly" {
     var allocator = TestingAllocator{};
 
     const definition_buffer =
+        \\struct KnownForShow {
+        \\    f: String
+        \\}
+        \\
+        \\struct KnownForMovie {
+        \\    f: U32
+        \\}
+        \\
         \\untagged union KnownFor {
         \\    KnownForMovie
         \\    KnownForShow
@@ -3629,7 +3641,7 @@ test "Basic untagged union is output correctly" {
 
     const output = try outputUntaggedUnion(
         &allocator.allocator,
-        definitions.definitions[0].untagged_union,
+        definitions.definitions[2].untagged_union,
     );
 
     testing.expectEqualStrings(output, expected_output);

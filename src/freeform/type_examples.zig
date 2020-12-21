@@ -88,12 +88,22 @@ pub const list_union =
 ;
 
 pub const structure_with_concrete_maybe =
+    \\union Maybe <T>{
+    \\    Nothing
+    \\    Just: T
+    \\}
+    \\
     \\struct WithMaybe {
     \\    field: Maybe<String>
     \\}
 ;
 
 pub const union_with_different_maybes =
+    \\union Maybe <T>{
+    \\    Nothing
+    \\    Just: T
+    \\}
+    \\
     \\union WithMaybe <T, E>{
     \\    WithConcrete: Maybe<String>
     \\    WithGeneric: Maybe<T>
