@@ -173,8 +173,8 @@ pub const TokenIterator = struct {
         return Self{
             .buffer = buffer,
             .i = 0,
-            .line = 0,
-            .column = 0,
+            .line = 1,
+            .column = 1,
         };
     }
 
@@ -249,7 +249,7 @@ pub const TokenIterator = struct {
 
         if (!options.peek) {
             self.i += token.size();
-            self.column = if (meta.activeTag(token) != Token.newline) self.column + token.size() else 0;
+            self.column = if (meta.activeTag(token) != Token.newline) self.column + token.size() else 1;
         }
 
         return token;

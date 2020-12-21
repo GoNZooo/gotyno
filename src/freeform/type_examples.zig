@@ -19,6 +19,24 @@ pub const node_structure =
 ;
 
 pub const event_union =
+    \\struct LogInData {
+    \\    username: String
+    \\    password: String
+    \\}
+    \\
+    \\struct UserId {
+    \\    value: String
+    \\}
+    \\
+    \\struct Channel {
+    \\    name: String
+    \\    private: Boolean
+    \\}
+    \\
+    \\struct Email {
+    \\    value: String
+    \\}
+    \\
     \\union Event {
     \\    LogIn: LogInData
     \\    LogOut: UserId
@@ -70,12 +88,22 @@ pub const list_union =
 ;
 
 pub const structure_with_concrete_maybe =
+    \\union Maybe <T>{
+    \\    Nothing
+    \\    Just: T
+    \\}
+    \\
     \\struct WithMaybe {
     \\    field: Maybe<String>
     \\}
 ;
 
 pub const union_with_different_maybes =
+    \\union Maybe <T>{
+    \\    Nothing
+    \\    Just: T
+    \\}
+    \\
     \\union WithMaybe <T, E>{
     \\    WithConcrete: Maybe<String>
     \\    WithGeneric: Maybe<T>

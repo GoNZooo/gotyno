@@ -9,6 +9,7 @@ const meta = std.meta;
 const tokenizer = @import("./tokenizer.zig");
 const type_examples = @import("./type_examples.zig");
 const testing_utilities = @import("./testing_utilities.zig");
+const utilities = @import("./utilities.zig");
 
 const Token = tokenizer.Token;
 const TokenTag = tokenizer.TokenTag;
@@ -118,15 +119,15 @@ pub const UntaggedUnion = struct {
 pub const UntaggedUnionValue = union(enum) {
     const Self = @This();
 
-    name: []const u8,
+    reference: TypeReference,
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
-        allocator.free(self.name);
+        self.reference.free(allocator);
     }
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
-            .name => |n| meta.activeTag(other) == .name and mem.eql(u8, n, other.name),
+            .reference => |r| meta.activeTag(other) == .reference and r.isEqual(other.reference),
         };
     }
 };
@@ -304,7 +305,7 @@ pub const Type = union(enum) {
 
     empty,
     string: []const u8,
-    name: []const u8,
+    reference: TypeReference,
     array: Array,
     slice: Slice,
     pointer: Pointer,
@@ -313,7 +314,6 @@ pub const Type = union(enum) {
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
         switch (self.*) {
-            .name => |n| allocator.free(n),
             .string => |s| allocator.free(s),
             .array => |*a| {
                 a.*.@"type".free(allocator);
@@ -331,12 +331,13 @@ pub const Type = union(enum) {
                 p.*.@"type".free(allocator);
                 allocator.destroy(p.*.@"type");
             },
-            .applied_name => |a| {
-                allocator.free(a.name);
+            .applied_name => |*a| {
+                a.reference.free(allocator);
                 for (a.open_names) |name| allocator.free(name);
 
                 allocator.free(a.open_names);
             },
+            .reference => |*r| r.free(allocator),
             .empty => {},
         }
     }
@@ -345,7 +346,8 @@ pub const Type = union(enum) {
         return switch (self) {
             .empty => meta.activeTag(other) == .empty,
             .string => meta.activeTag(other) == .string and mem.eql(u8, self.string, other.string),
-            .name => meta.activeTag(other) == .name and mem.eql(u8, self.name, other.name),
+            .reference => |r| meta.activeTag(other) == .reference and
+                r.isEqual(other.reference),
             .array => |array| meta.activeTag(other) == .array and array.isEqual(other.array),
             .slice => |slice| meta.activeTag(other) == .slice and slice.isEqual(other.slice),
             .pointer => |pointer| meta.activeTag(other) == .pointer and pointer.isEqual(other.pointer),
@@ -354,6 +356,146 @@ pub const Type = union(enum) {
             .applied_name => |applied_name| meta.activeTag(other) == .applied_name and
                 applied_name.isEqual(other.applied_name),
         };
+    }
+};
+
+pub const TypeReference = union(enum) {
+    const Self = @This();
+
+    builtin: Builtin,
+    definition: Definition,
+    loose: LooseReference,
+    open: []const u8,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        switch (self.*) {
+            .loose => |*l| l.free(allocator),
+            .open => |n| allocator.free(n),
+            .builtin, .definition => {},
+        }
+    }
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return switch (self) {
+            .builtin => |b| b == other.builtin,
+            .loose => |l| l.isEqual(other.loose),
+            .definition => |d| d.isEqual(other.definition),
+            .open => |n| mem.eql(u8, n, other.open),
+        };
+    }
+
+    pub fn name(self: Self) []const u8 {
+        return switch (self) {
+            .builtin => |b| b.toString(),
+            .definition => |d| switch (d) {
+                .structure => |s| s.name(),
+                .@"union" => |u| u.name(),
+                .untagged_union => |u| u.name,
+                .enumeration => |e| e.name,
+                .import => |i| i.name,
+            },
+            .loose => |l| l.name,
+            .open => |n| n,
+        };
+    }
+};
+
+pub const Builtin = enum {
+    const Self = @This();
+
+    String,
+    Boolean,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    F32,
+    F64,
+    F128,
+
+    pub fn toString(self: Self) []const u8 {
+        return switch (self) {
+            .String => "String",
+            .Boolean => "Boolean",
+            .U8 => "U8",
+            .U16 => "U16",
+            .U32 => "U32",
+            .U64 => "U64",
+            .U128 => "U128",
+            .I8 => "I8",
+            .I16 => "I16",
+            .I32 => "I32",
+            .I64 => "I64",
+            .I128 => "I128",
+            .F32 => "F32",
+            .F64 => "F64",
+            .F128 => "F128",
+        };
+    }
+
+    /// This is partial; use after checking with `isBuiltin`
+    pub fn fromString(string: []const u8) Builtin {
+        return if (mem.eql(u8, string, "String"))
+            Builtin.String
+        else if (mem.eql(u8, string, "Boolean"))
+            Builtin.Boolean
+        else if (mem.eql(u8, string, "U8"))
+            Builtin.U8
+        else if (mem.eql(u8, string, "U16"))
+            Builtin.U16
+        else if (mem.eql(u8, string, "U32"))
+            Builtin.U32
+        else if (mem.eql(u8, string, "U64"))
+            Builtin.U64
+        else if (mem.eql(u8, string, "U128"))
+            Builtin.U128
+        else if (mem.eql(u8, string, "I8"))
+            Builtin.I8
+        else if (mem.eql(u8, string, "I16"))
+            Builtin.I16
+        else if (mem.eql(u8, string, "I32"))
+            Builtin.I32
+        else if (mem.eql(u8, string, "I64"))
+            Builtin.I64
+        else if (mem.eql(u8, string, "I128"))
+            Builtin.I128
+        else if (mem.eql(u8, string, "F32"))
+            Builtin.F32
+        else if (mem.eql(u8, string, "F64"))
+            Builtin.F64
+        else if (mem.eql(u8, string, "F128"))
+            Builtin.F128
+        else
+            debug.panic("Invalid builtin referenced; check with `isBuiltin`", .{});
+    }
+};
+
+pub const LooseReference = struct {
+    const Self = @This();
+
+    name: []const u8,
+    open_names: []const []const u8,
+
+    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        allocator.free(self.name);
+        for (self.open_names) |n| allocator.free(n);
+        allocator.free(self.open_names);
+    }
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        if (!mem.eql(u8, self.name, other.name)) return false;
+
+        for (self.open_names) |name, i| {
+            if (!mem.eql(u8, name, other.open_names[i])) return false;
+        }
+
+        return true;
     }
 };
 
@@ -401,11 +543,11 @@ pub const Optional = struct {
 pub const AppliedName = struct {
     const Self = @This();
 
-    name: []const u8,
+    reference: TypeReference,
     open_names: []const []const u8,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        if (!mem.eql(u8, self.name, other.name)) return false;
+        if (!self.reference.isEqual(other.reference)) return false;
 
         for (self.open_names) |open_name, i| {
             if (!mem.eql(u8, open_name, other.open_names[i])) return false;
@@ -711,7 +853,8 @@ pub const DefinitionIterator = struct {
 
     /// We hold a list to the imports such that we can also free them properly.
     imports: ArrayList(Import),
-
+    /// A temporary filled in list of open names for a current definition being parsed.
+    // open_names: ArrayList([]const u8),
     pub fn init(
         allocator: *mem.Allocator,
         buffer: []const u8,
@@ -727,6 +870,8 @@ pub const DefinitionIterator = struct {
             .named_definitions = DefinitionMap.init(allocator),
             .imports = ArrayList(Import).init(allocator),
             .expect_error = expect_error,
+            // this is set once per `next()`
+            // .open_names = undefined,
         };
     }
 
@@ -813,7 +958,9 @@ pub const DefinitionIterator = struct {
                         _ = try tokens.expect(Token.space, self.expect_error);
 
                         const definition = Definition{
-                            .untagged_union = try self.parseUntaggedUnionDefinition(),
+                            .untagged_union = try self.parseUntaggedUnionDefinition(
+                                &[_][]const u8{},
+                            ),
                         };
                         try self.addDefinition(definition.untagged_union.name, definition);
 
@@ -910,7 +1057,7 @@ pub const DefinitionIterator = struct {
         return options;
     }
 
-    fn parseUntaggedUnionDefinition(self: *Self) !UntaggedUnion {
+    fn parseUntaggedUnionDefinition(self: *Self, open_names: []const []const u8) !UntaggedUnion {
         const tokens = &self.token_iterator;
 
         const name = try self.allocator.dupe(
@@ -927,10 +1074,11 @@ pub const DefinitionIterator = struct {
         var done_parsing_values = false;
         while (!done_parsing_values) {
             try tokens.skipMany(Token.space, 4, self.expect_error);
-            const value_name = try self.allocator.dupe(
-                u8,
-                (try tokens.expect(Token.name, self.expect_error)).name,
-            );
+            const value_name = (try tokens.expect(Token.name, self.expect_error)).name;
+
+            try values.append(UntaggedUnionValue{
+                .reference = try self.getTypeReference(value_name, name, open_names),
+            });
 
             _ = try tokens.expect(Token.newline, self.expect_error);
 
@@ -940,8 +1088,6 @@ pub const DefinitionIterator = struct {
                     else => {},
                 }
             }
-
-            try values.append(UntaggedUnionValue{ .name = value_name });
         }
 
         return UntaggedUnion{ .name = name, .values = values.toOwnedSlice() };
@@ -1044,7 +1190,7 @@ pub const DefinitionIterator = struct {
                 }
             }
             if (!done_parsing_fields) {
-                try fields.append(try self.parseStructureField());
+                try fields.append(try self.parseStructureField(definition_name, &[_][]const u8{}));
             }
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
@@ -1099,7 +1245,7 @@ pub const DefinitionIterator = struct {
                 }
             }
             if (!done_parsing_fields) {
-                try fields.append(try self.parseStructureField());
+                try fields.append(try self.parseStructureField(definition_name, open_names));
             }
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
@@ -1214,21 +1360,7 @@ pub const DefinitionIterator = struct {
 
                         _ = try tokens.expect(Token.newline, self.expect_error);
                     } else {
-                        const line = self.token_iterator.line;
-                        const column = self.token_iterator.column;
-                        const name = parameter_name;
-
-                        self.parsing_error.* = ParsingError{
-                            .reference = ReferenceError{
-                                .unknown_reference = UnknownReference{
-                                    .line = line,
-                                    .column = column,
-                                    .name = name,
-                                },
-                            },
-                        };
-
-                        return error.UnknownReference;
+                        try self.returnUnknownReferenceError(void, parameter_name);
                     }
                 },
                 else => unreachable,
@@ -1270,7 +1402,9 @@ pub const DefinitionIterator = struct {
                 }
             }
             if (!done_parsing_constructors) {
-                try constructors.append(try self.parseConstructor());
+                try constructors.append(
+                    try self.parseConstructor(definition_name, &[_][]const u8{}),
+                );
             }
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
@@ -1303,7 +1437,7 @@ pub const DefinitionIterator = struct {
                 }
             }
             if (!done_parsing_constructors) {
-                try constructors.append(try self.parseConstructor());
+                try constructors.append(try self.parseConstructor(definition_name, open_names));
             }
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
@@ -1316,7 +1450,11 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    fn parseConstructor(self: *Self) !Constructor {
+    fn parseConstructor(
+        self: *Self,
+        definition_name: []const u8,
+        open_names: []const []const u8,
+    ) !Constructor {
         const tokens = &self.token_iterator;
 
         _ = try tokens.skipMany(Token.space, 4, self.expect_error);
@@ -1341,7 +1479,7 @@ pub const DefinitionIterator = struct {
 
         _ = try tokens.expect(Token.space, self.expect_error);
 
-        const parameter = try self.parseFieldType();
+        const parameter = try self.parseFieldType(definition_name, open_names);
 
         return Constructor{ .tag = tag, .parameter = parameter };
     }
@@ -1354,7 +1492,11 @@ pub const DefinitionIterator = struct {
         return try self.allocator.dupe(u8, name);
     }
 
-    fn parseStructureField(self: *Self) !Field {
+    fn parseStructureField(
+        self: *Self,
+        definition_name: []const u8,
+        open_names: []const []const u8,
+    ) !Field {
         var tokens = &self.token_iterator;
         _ = try tokens.skipMany(Token.space, 4, self.expect_error);
         const field_name = try self.allocator.dupe(
@@ -1364,12 +1506,16 @@ pub const DefinitionIterator = struct {
         _ = try tokens.expect(Token.colon, self.expect_error);
         _ = try tokens.expect(Token.space, self.expect_error);
 
-        const field_type = try self.parseFieldType();
+        const field_type = try self.parseFieldType(definition_name, open_names);
 
         return Field{ .name = field_name, .@"type" = field_type };
     }
 
-    fn parseMaybeAppliedName(self: *Self, name: []const u8) !?AppliedName {
+    fn parseMaybeAppliedName(
+        self: *Self,
+        definition_name: []const u8,
+        name: []const u8,
+    ) !?AppliedName {
         const tokens = &self.token_iterator;
 
         const maybe_left_angle_token = try tokens.peek();
@@ -1381,7 +1527,7 @@ pub const DefinitionIterator = struct {
                     const open_names = try self.parseOpenNames();
 
                     return AppliedName{
-                        .name = try self.allocator.dupe(u8, name),
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
                         .open_names = open_names,
                     };
                 },
@@ -1392,7 +1538,11 @@ pub const DefinitionIterator = struct {
         return null;
     }
 
-    fn parseFieldType(self: *Self) !Type {
+    fn parseFieldType(
+        self: *Self,
+        definition_name: []const u8,
+        open_names: []const []const u8,
+    ) !Type {
         const tokens = &self.token_iterator;
 
         const field_type_start_token = try tokens.expectOneOf(
@@ -1403,10 +1553,12 @@ pub const DefinitionIterator = struct {
         const field = switch (field_type_start_token) {
             .string => |s| Type{ .string = try self.allocator.dupe(u8, s) },
             .name => |name| field_type: {
-                if (try self.parseMaybeAppliedName(name)) |applied_name| {
+                if (try self.parseMaybeAppliedName(definition_name, name)) |applied_name| {
                     break :field_type Type{ .applied_name = applied_name };
                 } else {
-                    break :field_type Type{ .name = try self.allocator.dupe(u8, name) };
+                    break :field_type Type{
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
+                    };
                 }
             },
 
@@ -1419,27 +1571,36 @@ pub const DefinitionIterator = struct {
                 switch (right_bracket_or_number) {
                     .right_bracket => {
                         var slice_type = try self.allocator.create(Type);
-                        slice_type.* = Type{
-                            .name = try self.allocator.dupe(
-                                u8,
-                                (try tokens.expect(Token.name, self.expect_error)).name,
-                            ),
-                        };
+                        const slice_type_name = (try tokens.expect(
+                            Token.name,
+                            self.expect_error,
+                        )).name;
+                        const type_reference = try self.getTypeReference(
+                            slice_type_name,
+                            definition_name,
+                            open_names,
+                        );
+
+                        slice_type.* = Type{ .reference = type_reference };
 
                         break :field_type Type{ .slice = Slice{ .@"type" = slice_type } };
                     },
                     .unsigned_integer => |ui| {
                         _ = try tokens.expect(Token.right_bracket, self.expect_error);
                         var array_type = try self.allocator.create(Type);
-                        const array_type_name = try self.allocator.dupe(
-                            u8,
-                            (try tokens.expect(
-                                Token.name,
-                                self.expect_error,
-                            )).name,
+                        const array_type_name = (try tokens.expect(
+                            Token.name,
+                            self.expect_error,
+                        )).name;
+                        const type_reference = try self.getTypeReference(
+                            array_type_name,
+                            definition_name,
+                            open_names,
                         );
-                        array_type.* = Type{ .name = array_type_name };
-                        break :field_type Type{ .array = Array{ .@"type" = array_type, .size = ui } };
+                        array_type.* = Type{ .reference = type_reference };
+                        break :field_type Type{
+                            .array = Array{ .@"type" = array_type, .size = ui },
+                        };
                     },
                     else => {
                         debug.panic(
@@ -1454,10 +1615,15 @@ pub const DefinitionIterator = struct {
                 var field_type = try self.allocator.create(Type);
                 const name = (try tokens.expect(Token.name, self.expect_error)).name;
 
-                field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
+                field_type.* = if (try self.parseMaybeAppliedName(
+                    definition_name,
+                    name,
+                )) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
-                    Type{ .name = try self.allocator.dupe(u8, name) };
+                    Type{
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
+                    };
 
                 break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
             },
@@ -1466,10 +1632,15 @@ pub const DefinitionIterator = struct {
                 var field_type = try self.allocator.create(Type);
                 const name = (try tokens.expect(Token.name, self.expect_error)).name;
 
-                field_type.* = if (try self.parseMaybeAppliedName(name)) |applied_name|
+                field_type.* = if (try self.parseMaybeAppliedName(
+                    definition_name,
+                    name,
+                )) |applied_name|
                     Type{ .applied_name = applied_name }
                 else
-                    Type{ .name = try self.allocator.dupe(u8, name) };
+                    Type{
+                        .reference = try self.getTypeReference(name, definition_name, open_names),
+                    };
 
                 break :field_type Type{ .optional = Optional{ .@"type" = field_type } };
             },
@@ -1502,13 +1673,77 @@ pub const DefinitionIterator = struct {
         else
             null;
     }
+
+    fn getTypeReference(
+        self: Self,
+        name: []const u8,
+        current_definition_name: []const u8,
+        open_names: []const []const u8,
+    ) !TypeReference {
+        return if (isBuiltin(name))
+            TypeReference{ .builtin = Builtin.fromString(name) }
+        else if (self.getDefinition(name)) |found_definition|
+            TypeReference{ .definition = found_definition }
+        else if (mem.eql(u8, name, current_definition_name))
+            TypeReference{
+                .loose = LooseReference{
+                    .name = try self.allocator.dupe(u8, name),
+                    .open_names = try utilities.deepCopySlice(u8, self.allocator, open_names),
+                },
+            }
+        else if (utilities.isStringEqualToOneOf(name, open_names))
+            TypeReference{ .open = try self.allocator.dupe(u8, name) }
+        else
+            try self.returnUnknownReferenceError(TypeReference, name);
+    }
+
+    fn returnUnknownReferenceError(self: Self, comptime T: type, name: []const u8) !T {
+        const line = self.token_iterator.line;
+        const column = self.token_iterator.column;
+
+        self.parsing_error.* = ParsingError{
+            .reference = ReferenceError{
+                .unknown_reference = UnknownReference{
+                    .line = line,
+                    .column = column - name.len,
+                    .name = name,
+                },
+            },
+        };
+
+        return error.UnknownReference;
+    }
 };
+
+fn isBuiltin(name: []const u8) bool {
+    return utilities.isStringEqualToOneOf(name, &[_][]const u8{
+        "String",
+        "Boolean",
+        "U8",
+        "U16",
+        "U32",
+        "U64",
+        "I8",
+        "I16",
+        "I32",
+        "I64",
+        "F32",
+        "F64",
+    });
+}
 
 test "Parsing `Person` structure" {
     var allocator = TestingAllocator{};
-    var hobbies_slice_type = Type{ .name = "String" };
-    var comments_array_type = Type{ .name = "String" };
-    var recruiter_pointer_type = Type{ .name = "Person" };
+    var hobbies_slice_type = Type{ .reference = TypeReference{ .builtin = Builtin.String } };
+    var comments_array_type = Type{ .reference = TypeReference{ .builtin = Builtin.String } };
+    var recruiter_pointer_type = Type{
+        .reference = TypeReference{
+            .loose = LooseReference{
+                .name = "Person",
+                .open_names = &[_][]const u8{},
+            },
+        },
+    };
 
     const expected_definitions = [_]Definition{.{
         .structure = Structure{
@@ -1516,10 +1751,22 @@ test "Parsing `Person` structure" {
                 .name = "Person",
                 .fields = &[_]Field{
                     .{ .name = "type", .@"type" = Type{ .string = "Person" } },
-                    .{ .name = "name", .@"type" = Type{ .name = "String" } },
-                    .{ .name = "age", .@"type" = Type{ .name = "U8" } },
-                    .{ .name = "efficiency", .@"type" = Type{ .name = "F32" } },
-                    .{ .name = "on_vacation", .@"type" = Type{ .name = "Boolean" } },
+                    .{
+                        .name = "name",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+                    },
+                    .{
+                        .name = "age",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.U8 } },
+                    },
+                    .{
+                        .name = "efficiency",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
+                    },
+                    .{
+                        .name = "on_vacation",
+                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.Boolean } },
+                    },
                     .{
                         .name = "hobbies",
                         .@"type" = Type{ .slice = Slice{ .@"type" = &hobbies_slice_type } },
@@ -1560,7 +1807,10 @@ test "Parsing basic generic structure" {
     var allocator = TestingAllocator{};
 
     var fields = [_]Field{
-        .{ .name = "data", .@"type" = Type{ .name = "T" } },
+        .{
+            .name = "data",
+            .@"type" = Type{ .reference = TypeReference{ .open = "T" } },
+        },
     };
 
     const expected_definitions = [_]Definition{.{
@@ -1590,11 +1840,85 @@ test "Parsing basic generic structure" {
 test "Parsing basic plain union" {
     var allocator = TestingAllocator{};
 
-    var channels_slice_type = Type{ .name = "Channel" };
-    var set_emails_array_type = Type{ .name = "Email" };
+    var login_data_fields = [_]Field{
+        .{
+            .name = "username",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
+        .{
+            .name = "password",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
+    };
+    const login_data_structure = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{
+                .name = "LogInData",
+                .fields = &login_data_fields,
+            },
+        },
+    };
+
+    var userid_fields = [_]Field{
+        .{
+            .name = "value",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
+    };
+    const userid_structure = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{
+                .name = "UserId",
+                .fields = &userid_fields,
+            },
+        },
+    };
+
+    var channel_fields = [_]Field{
+        .{
+            .name = "name",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
+        .{
+            .name = "private",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.Boolean } },
+        },
+    };
+    const channel_structure = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{
+                .name = "Channel",
+                .fields = &channel_fields,
+            },
+        },
+    };
+
+    var email_fields = [_]Field{
+        .{
+            .name = "value",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
+    };
+    const email_structure = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{
+                .name = "Email",
+                .fields = &email_fields,
+            },
+        },
+    };
+
+    var channels_slice_type = Type{ .reference = TypeReference{ .definition = channel_structure } };
+    var set_emails_array_type = Type{ .reference = TypeReference{ .definition = email_structure } };
     var expected_constructors = [_]Constructor{
-        .{ .tag = "LogIn", .parameter = Type{ .name = "LogInData" } },
-        .{ .tag = "LogOut", .parameter = Type{ .name = "UserId" } },
+        .{
+            .tag = "LogIn",
+            .parameter = Type{ .reference = TypeReference{ .definition = login_data_structure } },
+        },
+        .{
+            .tag = "LogOut",
+            .parameter = Type{ .reference = TypeReference{ .definition = userid_structure } },
+        },
         .{
             .tag = "JoinChannels",
             .parameter = Type{ .slice = Slice{ .@"type" = &channels_slice_type } },
@@ -1605,15 +1929,21 @@ test "Parsing basic plain union" {
         },
     };
 
-    const expected_definitions = [_]Definition{.{
-        .@"union" = Union{
-            .plain = PlainUnion{
-                .name = "Event",
-                .constructors = &expected_constructors,
-                .tag_field = "type",
+    const expected_definitions = [_]Definition{
+        login_data_structure,
+        userid_structure,
+        channel_structure,
+        email_structure,
+        .{
+            .@"union" = Union{
+                .plain = PlainUnion{
+                    .name = "Event",
+                    .constructors = &expected_constructors,
+                    .tag_field = "type",
+                },
             },
         },
-    }};
+    };
 
     var parsing_error: ParsingError = undefined;
     var definitions = try parseWithDescribedError(
@@ -1633,7 +1963,10 @@ test "Parsing `Maybe` union" {
     var allocator = TestingAllocator{};
 
     var expected_constructors = [_]Constructor{
-        .{ .tag = "just", .parameter = Type{ .name = "T" } },
+        .{
+            .tag = "just",
+            .parameter = Type{ .reference = TypeReference{ .open = "T" } },
+        },
         .{ .tag = "nothing", .parameter = Type.empty },
     };
 
@@ -1666,8 +1999,14 @@ test "Parsing `Either` union" {
     var allocator = TestingAllocator{};
 
     var expected_constructors = [_]Constructor{
-        .{ .tag = "Left", .parameter = Type{ .name = "E" } },
-        .{ .tag = "Right", .parameter = Type{ .name = "T" } },
+        .{
+            .tag = "Left",
+            .parameter = Type{ .reference = TypeReference{ .open = "E" } },
+        },
+        .{
+            .tag = "Right",
+            .parameter = Type{ .reference = TypeReference{ .open = "T" } },
+        },
     };
 
     const expected_definitions = [_]Definition{.{
@@ -1699,7 +2038,12 @@ test "Parsing `List` union" {
     var allocator = TestingAllocator{};
 
     var applied_pointer_type = Type{
-        .applied_name = AppliedName{ .name = "List", .open_names = &[_][]const u8{"T"} },
+        .applied_name = AppliedName{
+            .reference = TypeReference{
+                .loose = LooseReference{ .name = "List", .open_names = &[_][]const u8{} },
+            },
+            .open_names = &[_][]const u8{"T"},
+        },
     };
     var expected_constructors = [_]Constructor{
         .{ .tag = "Empty", .parameter = Type.empty },
@@ -1775,19 +2119,51 @@ test "Parsing basic string-based enumeration" {
 test "Parsing untagged union" {
     var allocator = TestingAllocator{};
 
-    var expected_values = [_]UntaggedUnionValue{
-        .{ .name = "KnownForShow" },
-        .{ .name = "KnownForMovie" },
+    var known_for_show_fields = [_]Field{
+        .{ .name = "f", .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } } },
     };
 
-    const expected_definitions = [_]Definition{.{
-        .untagged_union = UntaggedUnion{
-            .name = "KnownFor",
-            .values = &expected_values,
+    const known_for_show = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{ .name = "KnownForShow", .fields = &known_for_show_fields },
         },
-    }};
+    };
+
+    var known_for_movie_fields = [_]Field{
+        .{ .name = "f", .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.U32 } } },
+    };
+
+    const known_for_movie = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{ .name = "KnownForMovie", .fields = &known_for_movie_fields },
+        },
+    };
+
+    var expected_values = [_]UntaggedUnionValue{
+        .{ .reference = TypeReference{ .definition = known_for_show } },
+        .{ .reference = TypeReference{ .definition = known_for_movie } },
+    };
+
+    const expected_definitions = [_]Definition{
+        known_for_show,
+        known_for_movie,
+        .{
+            .untagged_union = UntaggedUnion{
+                .name = "KnownFor",
+                .values = &expected_values,
+            },
+        },
+    };
 
     const definition_buffer =
+        \\struct KnownForShow {
+        \\    f: String
+        \\}
+        \\
+        \\struct KnownForMovie {
+        \\    f: U32
+        \\}
+        \\
         \\untagged union KnownFor {
         \\    KnownForShow
         \\    KnownForMovie
@@ -1850,17 +2226,41 @@ test "Parsing unions with options" {
     var allocator = TestingAllocator{};
 
     const definition_buffer =
+        \\struct Value {
+        \\    value: String
+        \\}
+        \\
         \\union(tag = kind) WithModifiedTag {
         \\    one: Value
         \\}
         \\
     ;
 
+    var value_fields = [_]Field{
+        .{
+            .name = "value",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
+    };
+
+    const value_definition = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{
+                .name = "Value",
+                .fields = &value_fields,
+            },
+        },
+    };
+
     var expected_constructors = [_]Constructor{
-        .{ .tag = "one", .parameter = Type{ .name = "Value" } },
+        .{
+            .tag = "one",
+            .parameter = Type{ .reference = TypeReference{ .definition = value_definition } },
+        },
     };
 
     const expected_definitions = [_]Definition{
+        value_definition,
         .{
             .@"union" = Union{
                 .plain = PlainUnion{
@@ -1914,8 +2314,8 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
     switch (parsing_error) {
         .reference => |reference| switch (reference) {
             .unknown_reference => |unknown_reference| {
-                testing.expectEqual(unknown_reference.line, 6);
-                testing.expectEqual(unknown_reference.column, 14);
+                testing.expectEqual(unknown_reference.line, 7);
+                testing.expectEqual(unknown_reference.column, 12);
                 testing.expectEqualStrings(unknown_reference.name, "One");
             },
 
@@ -1956,84 +2356,6 @@ test "Parsing invalid normal structure" {
     }
 }
 
-test "Parsing multiple definitions works as it should" {
-    var allocator = TestingAllocator{};
-    var parsing_error: ParsingError = undefined;
-
-    var hobbies_slice_type = Type{ .name = "String" };
-    var comments_array_type = Type{ .name = "String" };
-    var recruiter_pointer_type = Type{ .name = "Person" };
-    var channels_slice_type = Type{ .name = "Channel" };
-    var set_emails_array_type = Type{ .name = "Email" };
-    var expected_constructors = [_]Constructor{
-        .{ .tag = "LogIn", .parameter = Type{ .name = "LogInData" } },
-        .{ .tag = "LogOut", .parameter = Type{ .name = "UserId" } },
-        .{
-            .tag = "JoinChannels",
-            .parameter = Type{ .slice = Slice{ .@"type" = &channels_slice_type } },
-        },
-        .{
-            .tag = "SetEmails",
-            .parameter = Type{ .array = Array{ .@"type" = &set_emails_array_type, .size = 5 } },
-        },
-    };
-
-    const expected_definitions = [_]Definition{
-        .{
-            .structure = Structure{
-                .plain = PlainStructure{
-                    .name = "Person",
-                    .fields = &[_]Field{
-                        .{ .name = "type", .@"type" = Type{ .string = "Person" } },
-                        .{ .name = "name", .@"type" = Type{ .name = "String" } },
-                        .{ .name = "age", .@"type" = Type{ .name = "U8" } },
-                        .{ .name = "efficiency", .@"type" = Type{ .name = "F32" } },
-                        .{ .name = "on_vacation", .@"type" = Type{ .name = "Boolean" } },
-                        .{
-                            .name = "hobbies",
-                            .@"type" = Type{ .slice = Slice{ .@"type" = &hobbies_slice_type } },
-                        },
-                        .{
-                            .name = "last_fifteen_comments",
-                            .@"type" = Type{
-                                .array = Array{
-                                    .size = 15,
-                                    .@"type" = &comments_array_type,
-                                },
-                            },
-                        },
-                        .{
-                            .name = "recruiter",
-                            .@"type" = Type{ .pointer = Pointer{ .@"type" = &recruiter_pointer_type } },
-                        },
-                    },
-                },
-            },
-        },
-        .{
-            .@"union" = Union{
-                .plain = PlainUnion{
-                    .name = "Event",
-                    .constructors = &expected_constructors,
-                    .tag_field = "type",
-                },
-            },
-        },
-    };
-
-    var definitions = try parseWithDescribedError(
-        &allocator.allocator,
-        &allocator.allocator,
-        type_examples.person_structure_and_event_union,
-        &parsing_error,
-    );
-
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
-
-    definitions.deinit();
-    _ = allocator.detectLeaks();
-}
-
 test "Parsing union with embedded type tag" {
     var allocator = TestingAllocator{};
     var parsing_error: ParsingError = undefined;
@@ -2055,10 +2377,16 @@ test "Parsing union with embedded type tag" {
     ;
 
     var expected_struct_one_fields = [_]Field{
-        .{ .name = "field1", .@"type" = Type{ .name = "String" } },
+        .{
+            .name = "field1",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
     };
     var expected_struct_two_fields = [_]Field{
-        .{ .name = "field2", .@"type" = Type{ .name = "F32" } },
+        .{
+            .name = "field2",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
+        },
     };
 
     const expected_struct_one = Structure{
@@ -2129,10 +2457,16 @@ test "Parsing union with embedded type tag and lowercase tags" {
     ;
 
     var expected_struct_one_fields = [_]Field{
-        .{ .name = "field1", .@"type" = Type{ .name = "String" } },
+        .{
+            .name = "field1",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+        },
     };
     var expected_struct_two_fields = [_]Field{
-        .{ .name = "field2", .@"type" = Type{ .name = "F32" } },
+        .{
+            .name = "field2",
+            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
+        },
     };
 
     const expected_struct_one = Structure{

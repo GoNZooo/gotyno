@@ -92,8 +92,16 @@ pub fn compile(
         }
 
         try out.print(
-            "Total compilation time: {d:.5} ms\n",
-            .{compilation_time_difference / 1000000.0},
+            "Total compilation & output time: {d:.5} ms for {} lines & {} definitions.\n\t({d:.5} ms/line & {d:.5} ms/definition)\n",
+            .{
+                compilation_time_difference / 1000000.0,
+                definitions.definition_iterator.token_iterator.line,
+                definitions.definitions.len,
+                (compilation_time_difference / 1000000.0) /
+                    @intToFloat(f32, definitions.definition_iterator.token_iterator.line),
+                (compilation_time_difference / 1000000.0) /
+                    @intToFloat(f32, definitions.definitions.len),
+            },
         );
     }
 }

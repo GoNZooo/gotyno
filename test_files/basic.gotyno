@@ -2,6 +2,11 @@ struct Recruiter {
     name: String
 }
 
+union Maybe <T>{
+    Nothing
+    Just: T
+}
+
 struct Person {
     name: String
     age: U8
@@ -36,11 +41,6 @@ union Event {
     LogOut: UserId
     JoinChannels: []Channel
     SetEmails: [5]Email
-}
-
-union Maybe <T>{
-    Nothing
-    Just: T
 }
 
 union Either <L, R>{
