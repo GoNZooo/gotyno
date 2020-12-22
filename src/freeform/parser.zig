@@ -853,8 +853,7 @@ pub const DefinitionIterator = struct {
 
     /// We hold a list to the imports such that we can also free them properly.
     imports: ArrayList(Import),
-    /// A temporary filled in list of open names for a current definition being parsed.
-    // open_names: ArrayList([]const u8),
+
     pub fn init(
         allocator: *mem.Allocator,
         buffer: []const u8,
@@ -870,8 +869,6 @@ pub const DefinitionIterator = struct {
             .named_definitions = DefinitionMap.init(allocator),
             .imports = ArrayList(Import).init(allocator),
             .expect_error = expect_error,
-            // this is set once per `next()`
-            // .open_names = undefined,
         };
     }
 
