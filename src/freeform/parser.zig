@@ -20,11 +20,18 @@ const ArrayList = std.ArrayList;
 pub const ParsingError = union(enum) {
     expect: ExpectError,
     reference: ReferenceError,
+    duplicate_definition: DuplicateDefinitionError,
 };
 
 pub const ReferenceError = union(enum) {
     invalid_payload_type: InvalidPayload,
     unknown_reference: UnknownReference,
+};
+
+pub const DuplicateDefinitionError = struct {
+    definition: Definition,
+    line: usize,
+    column: usize,
 };
 
 pub const InvalidPayload = struct {
@@ -67,6 +74,16 @@ pub const Definition = union(enum) {
             .untagged_union => |u| meta.activeTag(other) == .untagged_union and
                 u.isEqual(other.untagged_union),
             .import => |i| meta.activeTag(other) == .import and i.isEqual(other.import),
+        };
+    }
+
+    pub fn name(self: Self) []const u8 {
+        return switch (self) {
+            .structure => |s| s.name(),
+            .@"union" => |u| u.name(),
+            .enumeration => |e| e.name,
+            .untagged_union => |u| u.name,
+            .import => |i| i.name,
         };
     }
 };
@@ -387,13 +404,7 @@ pub const TypeReference = union(enum) {
     pub fn name(self: Self) []const u8 {
         return switch (self) {
             .builtin => |b| b.toString(),
-            .definition => |d| switch (d) {
-                .structure => |s| s.name(),
-                .@"union" => |u| u.name(),
-                .untagged_union => |u| u.name,
-                .enumeration => |e| e.name,
-                .import => |i| i.name,
-            },
+            .definition => |d| d.name(),
             .loose => |l| l.name,
             .open => |n| n,
         };
@@ -782,7 +793,7 @@ pub fn parseWithDescribedError(
             error.UnknownReference,
             error.InvalidPayload,
             error.UnexpectedEndOfTokenStream,
-            error.DuplicateDefinitions,
+            error.DuplicateDefinition,
             => {
                 switch (parsing_error.*) {
                     .expect => |expect| switch (expect) {
@@ -803,6 +814,7 @@ pub fn parseWithDescribedError(
                             debug.panic("\n\tGot: {}\n", .{one_of.got});
                         },
                     },
+
                     .reference => |reference| switch (reference) {
                         .invalid_payload_type => |invalid_payload| {
                             debug.panic(
@@ -825,6 +837,12 @@ pub fn parseWithDescribedError(
                             );
                         },
                     },
+                    .duplicate_definition => |d| {
+                        debug.panic(
+                            "Duplicate definition found at {}:{}, name: {}\n",
+                            .{ d.line, d.column, d.definition.name() },
+                        );
+                    },
                 }
             },
             else => return e,
@@ -833,6 +851,11 @@ pub fn parseWithDescribedError(
 }
 
 const DefinitionMap = std.StringHashMap(Definition);
+
+const LineColumn = struct {
+    line: usize,
+    column: usize,
+};
 
 /// `DefinitionIterator` is iterator that attempts to return the next definition in a source, based
 /// on a `TokenIterator` that it holds inside of its instance. It's an unapologetically stateful
@@ -853,6 +876,8 @@ pub const DefinitionIterator = struct {
 
     /// We hold a list to the imports such that we can also free them properly.
     imports: ArrayList(Import),
+
+    definition_name_location: ?LineColumn = null,
 
     pub fn init(
         allocator: *mem.Allocator,
@@ -979,8 +1004,17 @@ pub const DefinitionIterator = struct {
         return null;
     }
 
+    fn recordDefinitionLocation(self: *Self) void {
+        self.definition_name_location = LineColumn{
+            .line = self.token_iterator.line,
+            .column = self.token_iterator.column,
+        };
+    }
+
     fn parseImport(self: *Self) !Import {
         const tokens = &self.token_iterator;
+
+        self.recordDefinitionLocation();
 
         const import_name = switch (try tokens.expectOneOf(
             &[_]TokenTag{ .symbol, .name },
@@ -1057,6 +1091,8 @@ pub const DefinitionIterator = struct {
     fn parseUntaggedUnionDefinition(self: *Self, open_names: []const []const u8) !UntaggedUnion {
         const tokens = &self.token_iterator;
 
+        self.recordDefinitionLocation();
+
         const name = try self.allocator.dupe(
             u8,
             (try tokens.expect(Token.name, self.expect_error)).name,
@@ -1092,6 +1128,8 @@ pub const DefinitionIterator = struct {
 
     fn parseEnumerationDefinition(self: *Self) !Enumeration {
         const tokens = &self.token_iterator;
+
+        self.recordDefinitionLocation();
 
         const name = try self.allocator.dupe(
             u8,
@@ -1144,6 +1182,9 @@ pub const DefinitionIterator = struct {
 
     pub fn parseStructureDefinition(self: *Self) !Structure {
         var tokens = &self.token_iterator;
+
+        self.recordDefinitionLocation();
+
         const definition_name = try self.allocator.dupe(
             u8,
             (try tokens.expect(Token.name, self.expect_error)).name,
@@ -1257,6 +1298,8 @@ pub const DefinitionIterator = struct {
     fn parseUnionDefinition(self: *Self, options: UnionOptions) !Union {
         const tokens = &self.token_iterator;
 
+        self.recordDefinitionLocation();
+
         const definition_name = try self.allocator.dupe(
             u8,
             (try tokens.expect(Token.name, self.expect_error)).name,
@@ -1285,6 +1328,8 @@ pub const DefinitionIterator = struct {
 
     fn parseEmbeddedUnionDefinition(self: *Self, options: UnionOptions) !EmbeddedUnion {
         const tokens = &self.token_iterator;
+
+        self.recordDefinitionLocation();
 
         const definition_name = try self.allocator.dupe(
             u8,
@@ -1659,7 +1704,7 @@ pub const DefinitionIterator = struct {
         const result = try self.named_definitions.getOrPut(name);
 
         if (result.found_existing)
-            return error.DuplicateDefinitions
+            try self.returnDuplicateDefinitionError(void, definition)
         else
             result.entry.*.value = definition;
     }
@@ -1711,6 +1756,18 @@ pub const DefinitionIterator = struct {
         };
 
         return error.UnknownReference;
+    }
+
+    fn returnDuplicateDefinitionError(self: Self, comptime T: type, definition: Definition) !T {
+        self.parsing_error.* = ParsingError{
+            .duplicate_definition = DuplicateDefinitionError{
+                .line = self.definition_name_location.?.line,
+                .column = self.definition_name_location.?.column,
+                .definition = definition,
+            },
+        };
+
+        return error.DuplicateDefinition;
     }
 };
 
@@ -2320,7 +2377,7 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
 
             .invalid_payload_type => unreachable,
         },
-        .expect => unreachable,
+        .expect, .duplicate_definition => unreachable,
     }
 }
 
@@ -2350,6 +2407,56 @@ test "Parsing invalid normal structure" {
                     .{parsing_error},
                 );
             },
+        },
+        else => unreachable,
+    }
+}
+
+test "Parsing same definition twice results in error" {
+    var allocator = TestingAllocator{};
+    var parsing_error: ParsingError = undefined;
+
+    const definitions_buffer =
+        \\struct Recruiter {
+        \\    name: String
+        \\}
+        \\
+        \\struct Recruiter {
+        \\    n: String
+        \\}
+    ;
+
+    var recruiter_fields = [_]Field{
+        .{
+            .name = "n",
+            .@"type" = Type{
+                .reference = TypeReference{ .builtin = Builtin.String },
+            },
+        },
+    };
+
+    const recruiter_definition = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{ .name = "Recruiter", .fields = &recruiter_fields },
+        },
+    };
+
+    const definitions = parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        definitions_buffer,
+        &parsing_error,
+    );
+
+    testing.expectError(error.DuplicateDefinition, definitions);
+    switch (parsing_error) {
+        .duplicate_definition => |d| {
+            testing.expectEqual(d.line, 5);
+            testing.expectEqual(d.column, 8);
+            expectEqualDefinitions(
+                &[_]Definition{recruiter_definition},
+                &[_]Definition{d.definition},
+            );
         },
         else => unreachable,
     }
