@@ -865,7 +865,7 @@ pub fn parseWithDescribedError(
                     },
                 }
             },
-            else => return e,
+            error.OutOfMemory, error.Overflow, error.InvalidCharacter => return e,
         }
     };
 }
