@@ -1758,6 +1758,8 @@ pub const DefinitionIterator = struct {
         return error.UnknownReference;
     }
 
+    // @TODO: @WARN: make names a data type that also contains location information so we don't
+    // have to store it and summon it like this
     fn returnDuplicateDefinitionError(self: Self, comptime T: type, definition: Definition) !T {
         self.parsing_error.* = ParsingError{
             .duplicate_definition = DuplicateDefinitionError{
