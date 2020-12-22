@@ -1671,6 +1671,8 @@ pub const DefinitionIterator = struct {
             null;
     }
 
+    /// Used for getting a reference to a type via name; looked up in named definitions storage.
+    /// This copies names/open names as needed.
     fn getTypeReference(
         self: Self,
         name: []const u8,
