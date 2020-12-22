@@ -76,7 +76,7 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) 
 }
 
 fn outputImport(allocator: *mem.Allocator, i: Import) ![]const u8 {
-    return try fmt.allocPrint(allocator, "import * as {} from \"{}\";", .{ i.alias, i.name });
+    return try fmt.allocPrint(allocator, "import * as {} from \"{}\";", .{ i.alias, i.name.value });
 }
 
 fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
@@ -107,11 +107,13 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     return try fmt.allocPrint(
         allocator,
         format,
-        .{ u.name, value_union_output, type_guard_output, validator_output },
+        .{ u.name.value, value_union_output, type_guard_output, validator_output },
     );
 }
 
 fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+    const name = u.name.value;
+
     var predicate_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(predicate_outputs);
 
@@ -129,10 +131,12 @@ fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
         \\}}
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ u.name, u.name, predicates_output });
+    return try fmt.allocPrint(allocator, format, .{ name, name, predicates_output });
 }
 
 fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+    const name = u.name.value;
+
     var validator_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(validator_outputs);
 
@@ -150,10 +154,12 @@ fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
         \\}}
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ u.name, u.name, u.name, validators_output });
+    return try fmt.allocPrint(allocator, format, .{ name, name, name, validators_output });
 }
 
 fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]const u8 {
+    const name = enumeration.name.value;
+
     var field_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(field_outputs);
 
@@ -164,18 +170,10 @@ fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]con
     const fields_output = try mem.join(allocator, "\n", field_outputs.items);
     defer allocator.free(fields_output);
 
-    const type_guard_output = try outputEnumerationTypeGuard(
-        allocator,
-        enumeration.name,
-        enumeration.fields,
-    );
+    const type_guard_output = try outputEnumerationTypeGuard(allocator, name, enumeration.fields);
     defer allocator.free(type_guard_output);
 
-    const validator_output = try outputEnumerationValidator(
-        allocator,
-        enumeration.name,
-        enumeration.fields,
-    );
+    const validator_output = try outputEnumerationValidator(allocator, name, enumeration.fields);
     defer allocator.free(validator_output);
 
     const format =
@@ -191,7 +189,7 @@ fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]con
     return try fmt.allocPrint(
         allocator,
         format,
-        .{ enumeration.name, fields_output, type_guard_output, validator_output },
+        .{ name, fields_output, type_guard_output, validator_output },
     );
 }
 
@@ -263,7 +261,7 @@ fn outputPlainStructure(
     allocator: *mem.Allocator,
     plain_structure: PlainStructure,
 ) ![]const u8 {
-    const name = plain_structure.name;
+    const name = plain_structure.name.value;
 
     const fields_output = try outputStructureFields(allocator, plain_structure.fields);
     defer allocator.free(fields_output);
@@ -295,7 +293,7 @@ fn outputGenericStructure(
     allocator: *mem.Allocator,
     generic_structure: GenericStructure,
 ) ![]const u8 {
-    const name = generic_structure.name;
+    const name = generic_structure.name.value;
 
     const fields_output = try outputStructureFields(allocator, generic_structure.fields);
     defer allocator.free(fields_output);
@@ -349,6 +347,8 @@ fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8
 }
 
 fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const u8 {
+    const name = plain_union.name.value;
+
     var constructor_names = try allocator.alloc([]const u8, plain_union.constructors.len);
     defer allocator.free(constructor_names);
     for (plain_union.constructors) |constructor, i| {
@@ -361,14 +361,14 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
         Constructor,
         allocator,
-        plain_union.name,
+        name,
         plain_union.constructors,
     );
     defer allocator.free(union_tag_enum_output);
 
     const tagged_structures_output = try outputTaggedStructures(
         allocator,
-        plain_union.name,
+        name,
         plain_union.constructors,
         plain_union.tag_field,
     );
@@ -376,7 +376,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 
     const constructors_output = try outputConstructors(
         allocator,
-        plain_union.name,
+        name,
         plain_union.constructors,
         plain_union.tag_field,
     );
@@ -387,7 +387,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
-        plain_union.name,
+        name,
         plain_union.constructors,
         &[_][]const u8{},
         plain_union.tag_field,
@@ -399,7 +399,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 
     const validators_output = try outputValidatorsForConstructors(
         allocator,
-        plain_union.name,
+        name,
         plain_union.constructors,
         &[_][]const u8{},
         plain_union.tag_field,
@@ -428,7 +428,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
         allocator,
         output_format,
         .{
-            plain_union.name,
+            plain_union.name.value,
             constructor_names_output,
             union_tag_enum_output,
             tagged_structures_output,
@@ -442,6 +442,8 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
 }
 
 fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]const u8 {
+    const name = embedded.name.value;
+
     const ConstructorData = struct {
         tag: []const u8,
         fields: []Field,
@@ -461,7 +463,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
     const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
         ConstructorWithEmbeddedTypeTag,
         allocator,
-        embedded.name,
+        name,
         embedded.constructors,
     );
     defer allocator.free(union_tag_enum_output);
@@ -498,7 +500,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
 
         const enumeration_tag = try outputEnumerationTag(
             allocator,
-            embedded.name,
+            name,
             constructor.tag,
         );
         defer allocator.free(enumeration_tag);
@@ -571,7 +573,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
     const union_type_guard_output = try fmt.allocPrint(
         allocator,
         union_type_guard_format,
-        .{ embedded.name, embedded.name, joined_union_type_guards },
+        .{ name, name, joined_union_type_guards },
     );
     defer allocator.free(union_type_guard_output);
 
@@ -590,7 +592,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
     const union_validator_output = try fmt.allocPrint(
         allocator,
         union_validator_format,
-        .{ embedded.name, embedded.name, embedded.name, joined_union_validators },
+        .{ name, name, name, joined_union_validators },
     );
     defer allocator.free(union_validator_output);
 
@@ -619,7 +621,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
         allocator,
         output_format,
         .{
-            embedded.name,
+            name,
             constructor_names_output,
             union_tag_enum_output,
             tagged_structures_output,
@@ -654,7 +656,7 @@ fn outputConstructorWithEmbeddedTag(
         try fmt.allocPrint(
             allocator,
             constructor_format_with_payload,
-            .{ tag, p.name(), tag, tag_field, enumeration_tag },
+            .{ tag, p.name().value, tag, tag_field, enumeration_tag },
         )
     else
         try fmt.allocPrint(
@@ -728,6 +730,8 @@ fn outputUnionTagEnumerationForConstructors(
 }
 
 fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
+    const name = plain.name.value;
+
     var predicate_outputs = try predicatesFromConstructors(
         allocator,
         plain.constructors,
@@ -744,10 +748,12 @@ fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
         \\}}
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ plain.name, plain.name, predicates_output });
+    return try fmt.allocPrint(allocator, format, .{ name, name, predicates_output });
 }
 
 fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
+    const name = plain.name.value;
+
     var validator_outputs = try validatorsFromConstructors(
         allocator,
         plain.constructors,
@@ -767,11 +773,13 @@ fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
     return try fmt.allocPrint(
         allocator,
         format,
-        .{ plain.name, plain.name, plain.name, validators_output },
+        .{ name, name, name, validators_output },
     );
 }
 
 fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
+    const name = generic_union.name.value;
+
     const open_names = try outputOpenNames(allocator, generic_union.open_names);
     defer allocator.free(open_names);
 
@@ -799,14 +807,14 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
     const union_tag_enum_output = try outputUnionTagEnumerationForConstructors(
         Constructor,
         allocator,
-        generic_union.name,
+        name,
         generic_union.constructors,
     );
     defer allocator.free(union_tag_enum_output);
 
     const tagged_structures_output = try outputTaggedMaybeGenericStructures(
         allocator,
-        generic_union.name,
+        name,
         generic_union.constructors,
         generic_union.open_names,
         generic_union.tag_field,
@@ -815,7 +823,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     const constructors_output = try outputGenericConstructors(
         allocator,
-        generic_union.name,
+        name,
         generic_union.constructors,
         generic_union.open_names,
         generic_union.tag_field,
@@ -827,7 +835,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     const type_guards_output = try outputTypeGuardsForConstructors(
         allocator,
-        generic_union.name,
+        name,
         generic_union.constructors,
         generic_union.open_names,
         generic_union.tag_field,
@@ -839,7 +847,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
     const validators_output = try outputValidatorsForConstructors(
         allocator,
-        generic_union.name,
+        name,
         generic_union.constructors,
         generic_union.open_names,
         generic_union.tag_field,
@@ -868,7 +876,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
         allocator,
         output_format,
         .{
-            generic_union.name,
+            name,
             open_names,
             constructor_names_output,
             union_tag_enum_output,
@@ -886,7 +894,7 @@ fn outputTypeGuardForPlainStructure(
     allocator: *mem.Allocator,
     plain_structure: PlainStructure,
 ) ![]const u8 {
-    const name = plain_structure.name;
+    const name = plain_structure.name.value;
 
     const checkers_output = try getTypeGuardsFromFields(allocator, plain_structure.fields);
     defer allocator.free(checkers_output);
@@ -905,6 +913,8 @@ fn outputTypeGuardForPlainStructure(
 }
 
 fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
+    const name = generic.name.value;
+
     const open_names_predicates = try openNamePredicates(allocator, generic.open_names);
     defer utilities.freeStringList(open_names_predicates);
 
@@ -968,14 +978,14 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
         allocator,
         format,
         .{
-            generic.name,
+            name,
             open_names_output,
             parameters_output,
-            generic.name,
+            name,
             open_names_output,
-            generic.name,
+            name,
             joined_open_names,
-            generic.name,
+            name,
             open_names_output,
             predicates_output,
         },
@@ -1029,6 +1039,8 @@ fn predicatesFromConstructors(
 }
 
 fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
+    const name = generic.name.value;
+
     const open_name_validators = try openNameValidators(allocator, generic.open_names);
     defer utilities.freeStringList(open_name_validators);
 
@@ -1088,16 +1100,16 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
         allocator,
         format,
         .{
-            generic.name,
+            name,
             open_names_output,
             parameters_output,
-            generic.name,
+            name,
             open_names_output,
-            generic.name,
+            name,
             joined_open_names,
-            generic.name,
+            name,
             open_names_output,
-            generic.name,
+            name,
             open_names_output,
             validators_output,
         },
@@ -1159,6 +1171,8 @@ fn outputTypeGuardForGenericStructure(
     allocator: *mem.Allocator,
     generic: GenericStructure,
 ) ![]const u8 {
+    const name = generic.name.value;
+
     const open_names = try actualOpenNames(allocator, generic.open_names);
     defer utilities.freeStringList(open_names);
 
@@ -1210,16 +1224,16 @@ fn outputTypeGuardForGenericStructure(
         allocator,
         format_with_open_names,
         .{
-            generic.name,
+            name,
             open_names_output,
             parameters_output,
-            generic.name,
+            name,
             open_names_output,
-            generic.name,
+            name,
             open_names_together,
-            generic.name,
+            name,
             open_names_output,
-            generic.name,
+            name,
             open_names_output,
             fields_output,
         },
@@ -1230,6 +1244,8 @@ fn outputValidatorForGenericStructure(
     allocator: *mem.Allocator,
     generic: GenericStructure,
 ) ![]const u8 {
+    const name = generic.name.value;
+
     const open_names = try actualOpenNames(allocator, generic.open_names);
     defer utilities.freeStringList(open_names);
 
@@ -1281,16 +1297,16 @@ fn outputValidatorForGenericStructure(
         allocator,
         format_with_open_names,
         .{
-            generic.name,
+            name,
             open_names_output,
             parameters_output,
-            generic.name,
+            name,
             open_names_output,
-            generic.name,
+            name,
             open_names_together,
-            generic.name,
+            name,
             open_names_output,
-            generic.name,
+            name,
             open_names_output,
             fields_output,
         },
@@ -1321,7 +1337,7 @@ fn outputValidatorForPlainStructure(
     allocator: *mem.Allocator,
     plain_structure: PlainStructure,
 ) ![]const u8 {
-    const name = plain_structure.name;
+    const name = plain_structure.name.value;
 
     const validators_output = try getValidatorsFromFields(allocator, plain_structure.fields);
     defer allocator.free(validators_output);
@@ -2672,10 +2688,10 @@ fn translateReference(reference: TypeReference) []const u8 {
             => "number",
         },
         .definition => |d| switch (d) {
-            .structure => |s| s.name(),
-            .@"union" => |u| u.name(),
-            .enumeration => |e| e.name,
-            .untagged_union => |u| u.name,
+            .structure => |s| s.name().value,
+            .@"union" => |u| u.name().value,
+            .enumeration => |e| e.name.value,
+            .untagged_union => |u| u.name.value,
             .import => debug.panic("import referenced somehow?\n", .{}),
         },
         .loose => |l| l.name,
@@ -2737,13 +2753,7 @@ fn translatedTypeGuardReference(allocator: *mem.Allocator, reference: TypeRefere
             .F128,
             => try allocator.dupe(u8, "svt.isNumber"),
         },
-        .definition => |d| switch (d) {
-            .structure => |s| try fmt.allocPrint(allocator, "is{}", .{s.name()}),
-            .@"union" => |u| try fmt.allocPrint(allocator, "is{}", .{u.name()}),
-            .enumeration => |e| try fmt.allocPrint(allocator, "is{}", .{e.name}),
-            .untagged_union => |u| try fmt.allocPrint(allocator, "is{}", .{u.name}),
-            .import => debug.panic("somehow getting type guard name of import: {}\n", .{reference}),
-        },
+        .definition => |d| try fmt.allocPrint(allocator, "is{}", .{d.name().value}),
         .loose => |l| try fmt.allocPrint(allocator, "is{}", .{l.name}),
         .open => |n| try fmt.allocPrint(allocator, "is{}", .{n}),
     };
@@ -2782,13 +2792,7 @@ fn translatedValidatorReference(allocator: *mem.Allocator, reference: TypeRefere
             .F128,
             => try allocator.dupe(u8, "svt.validateNumber"),
         },
-        .definition => |d| switch (d) {
-            .structure => |s| try fmt.allocPrint(allocator, format, .{s.name()}),
-            .@"union" => |u| try fmt.allocPrint(allocator, format, .{u.name()}),
-            .enumeration => |e| try fmt.allocPrint(allocator, format, .{e.name}),
-            .untagged_union => |u| try fmt.allocPrint(allocator, format, .{u.name}),
-            .import => debug.panic("somehow getting type guard name of import: {}\n", .{reference}),
-        },
+        .definition => |d| try fmt.allocPrint(allocator, format, .{d.name().value}),
         .loose => |l| try fmt.allocPrint(allocator, format, .{l.name}),
         .open => |n| try fmt.allocPrint(allocator, format, .{n}),
     };
