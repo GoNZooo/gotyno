@@ -17,6 +17,8 @@ const ExpectError = tokenizer.ExpectError;
 const TokenIterator = tokenizer.TokenIterator;
 const ArrayList = std.ArrayList;
 
+const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
+
 pub const ParsingError = union(enum) {
     /// Represents errors from the tokenizer, which involve expectations on what upcoming tokens
     /// should be.
@@ -45,6 +47,11 @@ pub const InvalidPayload = struct {
 /// Indicates that we've referenced an unknown name, meaning one that hasn't been defined yet.
 pub const UnknownReference = struct {
     name: []const u8,
+    line: usize,
+    column: usize,
+};
+
+const Location = struct {
     line: usize,
     column: usize,
 };
@@ -750,8 +757,6 @@ pub const Constructor = struct {
     }
 };
 
-const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
-
 pub const ParsedDefinitions = struct {
     const Self = @This();
 
@@ -874,11 +879,6 @@ pub fn parseWithDescribedError(
 }
 
 const DefinitionMap = std.StringHashMap(Definition);
-
-const Location = struct {
-    line: usize,
-    column: usize,
-};
 
 /// `DefinitionIterator` is iterator that attempts to return the next definition in a source, based
 /// on a `TokenIterator` that it holds inside of its instance. It's an unapologetically stateful
