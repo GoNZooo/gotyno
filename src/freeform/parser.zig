@@ -136,9 +136,9 @@ pub const UntaggedUnion = struct {
     const Self = @This();
 
     name: DefinitionName,
-    values: []UntaggedUnionValue,
+    values: []const UntaggedUnionValue,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
         for (self.values) |*value| value.free(allocator);
         allocator.free(self.values);
@@ -162,7 +162,7 @@ pub const UntaggedUnionValue = union(enum) {
 
     reference: TypeReference,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         self.reference.free(allocator);
     }
 
@@ -177,7 +177,7 @@ pub const Enumeration = struct {
     const Self = @This();
 
     name: DefinitionName,
-    fields: []EnumerationField,
+    fields: []const EnumerationField,
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
@@ -204,7 +204,7 @@ pub const EnumerationField = struct {
     tag: []const u8,
     value: EnumerationValue,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.tag);
         self.value.free(allocator);
     }
@@ -220,8 +220,8 @@ pub const EnumerationValue = union(enum) {
     string: []const u8,
     unsigned_integer: u64,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
-        switch (self.*) {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
+        switch (self) {
             .string => |s| allocator.free(s),
             .unsigned_integer => {},
         }
@@ -272,7 +272,7 @@ pub const PlainStructure = struct {
     const Self = @This();
 
     name: DefinitionName,
-    fields: []Field,
+    fields: []const Field,
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
@@ -297,7 +297,7 @@ pub const GenericStructure = struct {
     const Self = @This();
 
     name: DefinitionName,
-    fields: []Field,
+    fields: []const Field,
     open_names: []const []const u8,
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
@@ -331,7 +331,7 @@ pub const Field = struct {
     name: []const u8,
     @"type": Type,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name);
         self.@"type".free(allocator);
     }
@@ -353,8 +353,8 @@ pub const Type = union(enum) {
     optional: Optional,
     applied_name: AppliedName,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
-        switch (self.*) {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
+        switch (self) {
             .string => |s| allocator.free(s),
             .array => |*a| {
                 a.*.@"type".free(allocator);
@@ -408,8 +408,8 @@ pub const TypeReference = union(enum) {
     loose: LooseReference,
     open: []const u8,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
-        switch (self.*) {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
+        switch (self) {
             .loose => |*l| l.free(allocator),
             .open => |n| allocator.free(n),
             .builtin, .definition => {},
@@ -517,7 +517,7 @@ pub const LooseReference = struct {
     name: []const u8,
     open_names: []const []const u8,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name);
         for (self.open_names) |n| allocator.free(n);
         allocator.free(self.open_names);
@@ -633,7 +633,7 @@ pub const PlainUnion = struct {
     const Self = @This();
 
     name: DefinitionName,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     tag_field: []const u8,
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
@@ -659,7 +659,7 @@ pub const GenericUnion = struct {
     const Self = @This();
 
     name: DefinitionName,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     open_names: []const []const u8,
     tag_field: []const u8,
 
@@ -692,7 +692,7 @@ pub const EmbeddedUnion = struct {
     const Self = @This();
 
     name: DefinitionName,
-    constructors: []ConstructorWithEmbeddedTypeTag,
+    constructors: []const ConstructorWithEmbeddedTypeTag,
     open_names: []const []const u8,
     tag_field: []const u8,
 
@@ -726,7 +726,7 @@ pub const ConstructorWithEmbeddedTypeTag = struct {
     tag: []const u8,
     parameter: ?Structure,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.tag);
     }
 
@@ -747,9 +747,9 @@ pub const Constructor = struct {
     tag: []const u8,
     parameter: Type,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.tag);
-        self.*.parameter.free(allocator);
+        self.parameter.free(allocator);
     }
 
     pub fn isEqual(self: Self, other: Self) bool {
@@ -760,7 +760,7 @@ pub const Constructor = struct {
 pub const ParsedDefinitions = struct {
     const Self = @This();
 
-    definitions: []Definition,
+    definitions: []const Definition,
     definition_iterator: DefinitionIterator,
     allocator: *mem.Allocator,
 
@@ -2743,8 +2743,8 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
     };
 
     const Fields = struct {
-        a: []Field,
-        b: []Field,
+        a: []const Field,
+        b: []const Field,
     };
 
     const FieldsAndNames = struct {

@@ -47,7 +47,7 @@ pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const 
     return mem.join(allocator, "", &[_][]const u8{ only_filename, ".ts" });
 }
 
-pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []Definition) ![]const u8 {
+pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []const Definition) ![]const u8 {
     var outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(outputs);
 
@@ -196,7 +196,7 @@ fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]con
 fn outputEnumerationTypeGuard(
     allocator: *mem.Allocator,
     name: []const u8,
-    fields: []EnumerationField,
+    fields: []const EnumerationField,
 ) ![]const u8 {
     var tag_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(tag_outputs);
@@ -220,7 +220,7 @@ fn outputEnumerationTypeGuard(
 fn outputEnumerationValidator(
     allocator: *mem.Allocator,
     name: []const u8,
-    fields: []EnumerationField,
+    fields: []const EnumerationField,
 ) ![]const u8 {
     var tag_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(tag_outputs);
@@ -330,7 +330,7 @@ fn outputGenericStructure(
     );
 }
 
-fn outputStructureFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
+fn outputStructureFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
     var lines = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(lines);
 
@@ -706,7 +706,7 @@ fn outputUnionTagEnumerationForConstructors(
     comptime T: type,
     allocator: *mem.Allocator,
     name: []const u8,
-    constructors: []T,
+    constructors: []const T,
 ) ![]const u8 {
     var enumeration_tag_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(enumeration_tag_outputs);
@@ -994,7 +994,7 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
 
 fn predicatesFromConstructors(
     allocator: *mem.Allocator,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     open_names: []const []const u8,
 ) !ArrayList([]const u8) {
     var predicate_list_outputs = ArrayList([]const u8).init(allocator);
@@ -1118,7 +1118,7 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
 
 fn validatorsFromConstructors(
     allocator: *mem.Allocator,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     open_names: []const []const u8,
 ) !ArrayList([]const u8) {
     var validator_list_outputs = ArrayList([]const u8).init(allocator);
@@ -1355,7 +1355,7 @@ fn outputValidatorForPlainStructure(
     );
 }
 
-fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
+fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
     var fields_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(fields_outputs);
 
@@ -1370,7 +1370,7 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []Field) ![]const 
     return try mem.join(allocator, ", ", fields_outputs.items);
 }
 
-fn getValidatorsFromFields(allocator: *mem.Allocator, fields: []Field) ![]const u8 {
+fn getValidatorsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
     var fields_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(fields_outputs);
 
@@ -1477,7 +1477,7 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 fn outputConstructors(
     allocator: *mem.Allocator,
     union_name: []const u8,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     tag_field: []const u8,
 ) ![]const u8 {
     var constructor_outputs = ArrayList([]const u8).init(allocator);
@@ -1499,7 +1499,7 @@ fn outputConstructors(
 fn outputTypeGuardsForConstructors(
     allocator: *mem.Allocator,
     union_name: []const u8,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     open_names: []const []const u8,
     tag_field: []const u8,
 ) ![]const u8 {
@@ -1524,7 +1524,7 @@ fn outputTypeGuardsForConstructors(
 fn outputValidatorsForConstructors(
     allocator: *mem.Allocator,
     union_name: []const u8,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     open_names: []const []const u8,
     tag_field: []const u8,
 ) ![]const u8 {
@@ -2310,7 +2310,7 @@ fn outputCommonOpenNames(
 fn outputTaggedStructures(
     allocator: *mem.Allocator,
     union_name: []const u8,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     tag_field: []const u8,
 ) ![]const u8 {
     var tagged_structures_outputs = ArrayList([]const u8).init(allocator);
@@ -2331,7 +2331,7 @@ fn outputTaggedStructures(
 fn outputTaggedMaybeGenericStructures(
     allocator: *mem.Allocator,
     union_name: []const u8,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     open_names: []const []const u8,
     tag_field: []const u8,
 ) ![]const u8 {
@@ -2356,7 +2356,7 @@ fn outputTaggedMaybeGenericStructures(
 fn outputGenericConstructors(
     allocator: *mem.Allocator,
     union_name: []const u8,
-    constructors: []Constructor,
+    constructors: []const Constructor,
     open_names: []const []const u8,
     tag_field: []const u8,
 ) ![]const u8 {
