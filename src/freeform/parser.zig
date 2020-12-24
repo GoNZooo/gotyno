@@ -1044,6 +1044,21 @@ pub const DefinitionIterator = struct {
         };
     }
 
+    fn parsePascalDefinitionName(self: *Self) !DefinitionName {
+        const name = try self.allocator.dupe(
+            u8,
+            (try self.token_iterator.expect(Token.name, self.expect_error)).name,
+        );
+
+        return DefinitionName{
+            .value = name,
+            .location = Location{
+                .line = self.token_iterator.line,
+                .column = self.token_iterator.column - name.len,
+            },
+        };
+    }
+
     fn parseImport(self: *Self) !Import {
         const tokens = &self.token_iterator;
 
@@ -1194,22 +1209,7 @@ pub const DefinitionIterator = struct {
         return Enumeration{ .name = name, .fields = fields.items };
     }
 
-    fn parsePascalDefinitionName(self: *Self) !DefinitionName {
-        const name = try self.allocator.dupe(
-            u8,
-            (try self.token_iterator.expect(Token.name, self.expect_error)).name,
-        );
-
-        return DefinitionName{
-            .value = name,
-            .location = Location{
-                .line = self.token_iterator.line,
-                .column = self.token_iterator.column - name.len,
-            },
-        };
-    }
-
-    pub fn parseStructureDefinition(self: *Self) !Structure {
+    fn parseStructureDefinition(self: *Self) !Structure {
         var tokens = &self.token_iterator;
 
         const definition_name = try self.parsePascalDefinitionName();
@@ -1235,7 +1235,7 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    pub fn parsePlainStructureDefinition(
+    fn parsePlainStructureDefinition(
         self: *Self,
         definition_name: DefinitionName,
     ) !PlainStructure {
@@ -1287,7 +1287,7 @@ pub const DefinitionIterator = struct {
         return open_names.toOwnedSlice();
     }
 
-    pub fn parseGenericStructureDefinition(
+    fn parseGenericStructureDefinition(
         self: *Self,
         definition_name: DefinitionName,
     ) !GenericStructure {
@@ -1438,7 +1438,7 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    pub fn parsePlainUnionDefinition(
+    fn parsePlainUnionDefinition(
         self: *Self,
         definition_name: DefinitionName,
         options: UnionOptions,
@@ -1470,7 +1470,7 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    pub fn parseGenericUnionDefinition(
+    fn parseGenericUnionDefinition(
         self: *Self,
         definition_name: DefinitionName,
         options: UnionOptions,
