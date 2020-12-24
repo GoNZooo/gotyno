@@ -109,6 +109,7 @@ pub const Import = struct {
     alias: []const u8,
 
     pub fn free(self: *Self, allocator: *mem.Allocator) void {
+        // Check if the alias is the same string as the value, in which case we free one instance
         if (self.name.value.ptr == self.alias.ptr) {
             allocator.free(self.name.value);
         } else {
