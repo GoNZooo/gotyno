@@ -19,16 +19,12 @@ const ArrayList = std.ArrayList;
 
 pub const ParsingError = union(enum) {
     expect: ExpectError,
-    reference: ReferenceError,
-    duplicate_definition: DuplicateDefinitionError,
-};
-
-pub const ReferenceError = union(enum) {
-    invalid_payload_type: InvalidPayload,
+    invalid_payload: InvalidPayload,
     unknown_reference: UnknownReference,
+    duplicate_definition: DuplicateDefinition,
 };
 
-pub const DuplicateDefinitionError = struct {
+pub const DuplicateDefinition = struct {
     definition: Definition,
     existing_definition: Definition,
     location: Location,
@@ -830,28 +826,28 @@ pub fn parseWithDescribedError(
                         },
                     },
 
-                    .reference => |reference| switch (reference) {
-                        .invalid_payload_type => |invalid_payload| {
-                            debug.panic(
-                                "Invalid payload found at {}:{}, payload: {}\n",
-                                .{
-                                    invalid_payload.line,
-                                    invalid_payload.column,
-                                    invalid_payload.payload,
-                                },
-                            );
-                        },
-                        .unknown_reference => |unknown_reference| {
-                            debug.panic(
-                                "Unknown reference found at {}:{}, name: {}\n",
-                                .{
-                                    unknown_reference.line,
-                                    unknown_reference.column,
-                                    unknown_reference.name,
-                                },
-                            );
-                        },
+                    .invalid_payload => |invalid_payload| {
+                        debug.panic(
+                            "Invalid payload found at {}:{}, payload: {}\n",
+                            .{
+                                invalid_payload.line,
+                                invalid_payload.column,
+                                invalid_payload.payload,
+                            },
+                        );
                     },
+
+                    .unknown_reference => |unknown_reference| {
+                        debug.panic(
+                            "Unknown reference found at {}:{}, name: {}\n",
+                            .{
+                                unknown_reference.line,
+                                unknown_reference.column,
+                                unknown_reference.name,
+                            },
+                        );
+                    },
+
                     .duplicate_definition => |d| {
                         debug.panic(
                             "Duplicate definition found at {}:{}, name: {}, previously defined at {}:{}\n",
@@ -1394,12 +1390,10 @@ pub const DefinitionIterator = struct {
                             .structure => |s| s,
                             else => {
                                 self.parsing_error.* = ParsingError{
-                                    .reference = ReferenceError{
-                                        .invalid_payload_type = InvalidPayload{
-                                            .line = self.token_iterator.line,
-                                            .column = self.token_iterator.column,
-                                            .payload = definition,
-                                        },
+                                    .invalid_payload = InvalidPayload{
+                                        .line = self.token_iterator.line,
+                                        .column = self.token_iterator.column,
+                                        .payload = definition,
                                     },
                                 };
 
@@ -1716,7 +1710,7 @@ pub const DefinitionIterator = struct {
         const result = try self.named_definitions.getOrPut(name.value);
 
         if (result.found_existing)
-            try self.returnDuplicateDefinitionError(void, name, definition, result.entry.*.value)
+            try self.returnDuplicateDefinition(void, name, definition, result.entry.*.value)
         else
             result.entry.*.value = definition;
     }
@@ -1755,19 +1749,17 @@ pub const DefinitionIterator = struct {
 
     fn returnUnknownReferenceError(self: Self, comptime T: type, name: []const u8) !T {
         self.parsing_error.* = ParsingError{
-            .reference = ReferenceError{
-                .unknown_reference = UnknownReference{
-                    .line = self.token_iterator.line,
-                    .column = self.token_iterator.column - name.len,
-                    .name = name,
-                },
+            .unknown_reference = UnknownReference{
+                .line = self.token_iterator.line,
+                .column = self.token_iterator.column - name.len,
+                .name = name,
             },
         };
 
         return error.UnknownReference;
     }
 
-    fn returnDuplicateDefinitionError(
+    fn returnDuplicateDefinition(
         self: Self,
         comptime T: type,
         name: DefinitionName,
@@ -1775,7 +1767,7 @@ pub const DefinitionIterator = struct {
         existing_definition: Definition,
     ) !T {
         self.parsing_error.* = ParsingError{
-            .duplicate_definition = DuplicateDefinitionError{
+            .duplicate_definition = DuplicateDefinition{
                 .location = name.location,
                 .previous_location = existing_definition.name().location,
                 .existing_definition = existing_definition,
@@ -2444,16 +2436,13 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
 
     testing.expectError(error.UnknownReference, definitions);
     switch (parsing_error) {
-        .reference => |reference| switch (reference) {
-            .unknown_reference => |unknown_reference| {
-                testing.expectEqual(unknown_reference.line, 7);
-                testing.expectEqual(unknown_reference.column, 12);
-                testing.expectEqualStrings(unknown_reference.name, "One");
-            },
-
-            .invalid_payload_type => unreachable,
+        .unknown_reference => |unknown_reference| {
+            testing.expectEqual(unknown_reference.line, 7);
+            testing.expectEqual(unknown_reference.column, 12);
+            testing.expectEqualStrings(unknown_reference.name, "One");
         },
-        .expect, .duplicate_definition => unreachable,
+
+        .invalid_payload, .expect, .duplicate_definition => unreachable,
     }
 }
 
