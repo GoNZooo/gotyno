@@ -9,10 +9,13 @@ const io = std.io;
 pub const tokenizer = @import("./freeform/tokenizer.zig");
 pub const parser = @import("./freeform/parser.zig");
 pub const typescript = @import("./typescript.zig");
+pub const testing_utilities = @import("./freeform/testing_utilities.zig");
 
 const DefinitionIterator = parser.DefinitionIterator;
 const ExpectError = tokenizer.ExpectError;
 const ParsingError = parser.ParsingError;
+
+const TestingAllocator = testing_utilities.TestingAllocator;
 
 pub const OutputLanguages = struct {
     typescript: ?OutputPath = null,
@@ -113,8 +116,6 @@ fn directoryOfInput(filename: []const u8) []const u8 {
         "";
 }
 
-const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
-
 test "Leak check for `compile` with all languages" {
     var allocator = TestingAllocator{};
 
@@ -134,5 +135,5 @@ test "Leak check for `compile` with all languages" {
 
     allocator.allocator.free(definition_buffer);
 
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }

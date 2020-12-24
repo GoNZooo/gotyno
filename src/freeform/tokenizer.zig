@@ -14,7 +14,7 @@ const testing_utilities = @import("./testing_utilities.zig");
 
 const ArrayList = std.ArrayList;
 
-const TestingAllocator = heap.GeneralPurposeAllocator(.{});
+const TestingAllocator = testing_utilities.TestingAllocator;
 
 pub const TokenTag = @TagType(Token);
 

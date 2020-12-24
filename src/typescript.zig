@@ -11,6 +11,7 @@ const parser = @import("./freeform/parser.zig");
 const tokenizer = @import("./freeform/tokenizer.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 const utilities = @import("./freeform/utilities.zig");
+const testing_utilities = @import("./freeform/testing_utilities.zig");
 
 const Definition = parser.Definition;
 const Import = parser.Import;
@@ -31,7 +32,7 @@ const TypeReference = parser.TypeReference;
 const Field = parser.Field;
 const ParsingError = parser.ParsingError;
 
-const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
+const TestingAllocator = testing_utilities.TestingAllocator;
 
 pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
     debug.assert(mem.endsWith(u8, filename, ".gotyno"));
@@ -2852,7 +2853,7 @@ test "Outputs `Person` struct correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs `Node` struct correctly" {
@@ -2895,7 +2896,7 @@ test "Outputs `Node` struct correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs `Event` union correctly" {
@@ -3023,7 +3024,7 @@ test "Outputs `Event` union correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs `Maybe` union correctly" {
@@ -3105,7 +3106,7 @@ test "Outputs `Maybe` union correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs `Either` union correctly" {
@@ -3192,7 +3193,7 @@ test "Outputs `Either` union correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs struct with concrete `Maybe` correctly" {
@@ -3230,7 +3231,7 @@ test "Outputs struct with concrete `Maybe` correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs struct with different `Maybe`s correctly" {
@@ -3335,7 +3336,7 @@ test "Outputs struct with different `Maybe`s correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs `List` union correctly" {
@@ -3417,7 +3418,7 @@ test "Outputs `List` union correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Outputs struct with optional float value correctly" {
@@ -3455,7 +3456,7 @@ test "Outputs struct with optional float value correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "lowercase plain union has correct output" {
@@ -3553,7 +3554,7 @@ test "lowercase plain union has correct output" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "basic string-based enumeration is output correctly" {
@@ -3600,7 +3601,7 @@ test "basic string-based enumeration is output correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Basic untagged union is output correctly" {
@@ -3652,7 +3653,7 @@ test "Basic untagged union is output correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Tagged union with tag specifier is output correctly" {
@@ -3741,7 +3742,7 @@ test "Tagged union with tag specifier is output correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Tagged generic union with tag specifier is output correctly" {
@@ -3829,7 +3830,7 @@ test "Tagged generic union with tag specifier is output correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Union with embedded tag is output correctly" {
@@ -3938,7 +3939,7 @@ test "Union with embedded tag is output correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Union with embedded tag and lowercase constructors is output correctly" {
@@ -4047,7 +4048,7 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Imports are output correctly" {
@@ -4086,11 +4087,5 @@ test "Imports are output correctly" {
     definitions.deinit();
     allocator.allocator.free(output_1);
     allocator.allocator.free(output_2);
-    _ = allocator.detectLeaks();
-}
-
-fn expectNoLeaks(allocator: *TestingAllocator) void {
-    if (allocator.detectLeaks()) {
-        debug.panic("Leak!", .{});
-    }
+    testing_utilities.expectNoLeaks(&allocator);
 }

@@ -17,7 +17,7 @@ const ExpectError = tokenizer.ExpectError;
 const TokenIterator = tokenizer.TokenIterator;
 const ArrayList = std.ArrayList;
 
-const TestingAllocator = heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 20 });
+const TestingAllocator = testing_utilities.TestingAllocator;
 
 pub const ParsingError = union(enum) {
     /// Represents errors from the tokenizer, which involve expectations on what upcoming tokens
@@ -1873,7 +1873,7 @@ test "Parsing `Person` structure" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing basic generic structure" {
@@ -1910,7 +1910,7 @@ test "Parsing basic generic structure" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing basic plain union" {
@@ -2047,7 +2047,7 @@ test "Parsing basic plain union" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing `Maybe` union" {
@@ -2086,7 +2086,7 @@ test "Parsing `Maybe` union" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing `Either` union" {
@@ -2128,7 +2128,7 @@ test "Parsing `Either` union" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing `List` union" {
@@ -2175,7 +2175,7 @@ test "Parsing `List` union" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing basic string-based enumeration" {
@@ -2216,7 +2216,7 @@ test "Parsing basic string-based enumeration" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing untagged union" {
@@ -2299,7 +2299,7 @@ test "Parsing untagged union" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing imports, without and with alias, respectively" {
@@ -2343,7 +2343,7 @@ test "Parsing imports, without and with alias, respectively" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing unions with options" {
@@ -2413,7 +2413,7 @@ test "Parsing unions with options" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Defining a union with embedded type tags referencing unknown payloads returns error" {
@@ -2650,7 +2650,7 @@ test "Parsing union with embedded type tag" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 test "Parsing union with embedded type tag and lowercase tags" {
@@ -2733,7 +2733,7 @@ test "Parsing union with embedded type tag and lowercase tags" {
     expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
-    _ = allocator.detectLeaks();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
