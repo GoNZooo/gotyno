@@ -18,12 +18,15 @@ const TokenIterator = tokenizer.TokenIterator;
 const ArrayList = std.ArrayList;
 
 pub const ParsingError = union(enum) {
+    /// Represents errors from the tokenizer, which involve expectations on what upcoming tokens
+    /// should be.
     expect: ExpectError,
     invalid_payload: InvalidPayload,
     unknown_reference: UnknownReference,
     duplicate_definition: DuplicateDefinition,
 };
 
+/// Indicates that we are defining a name twice, which is invalid.
 pub const DuplicateDefinition = struct {
     definition: Definition,
     existing_definition: Definition,
@@ -31,12 +34,15 @@ pub const DuplicateDefinition = struct {
     previous_location: Location,
 };
 
+/// Indicates that the payload that we are trying to use in an embedded union isn't valid, i.e.
+/// it's not a type we can embed the type tag in.
 pub const InvalidPayload = struct {
     payload: Definition,
     line: usize,
     column: usize,
 };
 
+/// Indicates that we've referenced an unknown name, meaning one that hasn't been defined yet.
 pub const UnknownReference = struct {
     name: []const u8,
     line: usize,
