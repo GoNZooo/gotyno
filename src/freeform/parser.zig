@@ -117,7 +117,7 @@ pub const Import = struct {
     name: DefinitionName,
     alias: []const u8,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         // Check if the alias is the same string as the value, in which case we free one instance
         if (self.name.value.ptr == self.alias.ptr) {
             allocator.free(self.name.value);
@@ -242,10 +242,10 @@ pub const Structure = union(enum) {
     plain: PlainStructure,
     generic: GenericStructure,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
-        switch (self.*) {
-            .plain => |*p| p.free(allocator),
-            .generic => |*g| g.free(allocator),
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
+        switch (self) {
+            .plain => |p| p.free(allocator),
+            .generic => |g| g.free(allocator),
         }
     }
 
@@ -274,9 +274,9 @@ pub const PlainStructure = struct {
     name: DefinitionName,
     fields: []const Field,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
-        for (self.fields) |*f| f.free(allocator);
+        for (self.fields) |f| f.free(allocator);
         allocator.free(self.fields);
     }
 
@@ -300,9 +300,9 @@ pub const GenericStructure = struct {
     fields: []const Field,
     open_names: []const []const u8,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
-        for (self.fields) |*f| f.free(allocator);
+        for (self.fields) |f| f.free(allocator);
         allocator.free(self.fields);
         for (self.open_names) |n| allocator.free(n);
         allocator.free(self.open_names);
@@ -599,11 +599,11 @@ pub const Union = union(enum) {
     generic: GenericUnion,
     embedded: EmbeddedUnion,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
-        switch (self.*) {
-            .plain => |*p| p.free(allocator),
-            .generic => |*g| g.free(allocator),
-            .embedded => |*e| e.free(allocator),
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
+        switch (self) {
+            .plain => |p| p.free(allocator),
+            .generic => |g| g.free(allocator),
+            .embedded => |e| e.free(allocator),
         }
     }
 
@@ -636,9 +636,9 @@ pub const PlainUnion = struct {
     constructors: []const Constructor,
     tag_field: []const u8,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
-        for (self.constructors) |*c| c.free(allocator);
+        for (self.constructors) |c| c.free(allocator);
         allocator.free(self.constructors);
         allocator.free(self.tag_field);
     }
@@ -663,9 +663,9 @@ pub const GenericUnion = struct {
     open_names: []const []const u8,
     tag_field: []const u8,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
-        for (self.constructors) |*c| c.free(allocator);
+        for (self.constructors) |c| c.free(allocator);
         allocator.free(self.constructors);
         allocator.free(self.tag_field);
         for (self.open_names) |n| allocator.free(n);
@@ -696,7 +696,7 @@ pub const EmbeddedUnion = struct {
     open_names: []const []const u8,
     tag_field: []const u8,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
         allocator.free(self.name.value);
         allocator.free(self.tag_field);
         for (self.constructors) |*c| c.free(allocator);
@@ -921,7 +921,7 @@ pub const DefinitionIterator = struct {
     pub fn deinit(self: *Self) void {
         var definition_iterator = self.named_definitions.iterator();
 
-        for (self.imports.items) |*i| i.free(self.allocator);
+        for (self.imports.items) |i| i.free(self.allocator);
         self.imports.deinit();
 
         while (definition_iterator.next()) |entry| entry.*.value.free(self.allocator);
