@@ -1497,18 +1497,19 @@ pub const DefinitionIterator = struct {
             if (try tokens.peek()) |t| {
                 switch (t) {
                     .right_brace => done_parsing_constructors = true,
-                    else => {},
+                    else => {
+                        try constructors.append(
+                            try self.parseConstructor(definition_name, open_names),
+                        );
+                    },
                 }
-            }
-            if (!done_parsing_constructors) {
-                try constructors.append(try self.parseConstructor(definition_name, open_names));
             }
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
 
         return GenericUnion{
             .name = definition_name,
-            .constructors = constructors.items,
+            .constructors = constructors.toOwnedSlice(),
             .open_names = open_names,
             .tag_field = options.tag_field,
         };
