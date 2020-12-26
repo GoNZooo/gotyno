@@ -391,7 +391,8 @@ pub const Type = union(enum) {
                 r.isEqual(other.reference),
             .array => |array| meta.activeTag(other) == .array and array.isEqual(other.array),
             .slice => |slice| meta.activeTag(other) == .slice and slice.isEqual(other.slice),
-            .pointer => |pointer| meta.activeTag(other) == .pointer and pointer.isEqual(other.pointer),
+            .pointer => |pointer| meta.activeTag(other) == .pointer and
+                pointer.isEqual(other.pointer),
             .optional => |optional| meta.activeTag(other) == .optional and
                 optional.isEqual(other.optional),
             .applied_name => |applied_name| meta.activeTag(other) == .applied_name and
@@ -786,7 +787,7 @@ pub fn parse(
     );
 
     while (definition_iterator.next() catch |e| switch (e) {
-        error.UnexpectedToken => {
+        error.UnexpectedToken, error.UnexpectedEndOfTokenStream => {
             definition_iterator.parsing_error.* = ParsingError{ .expect = expect_error };
 
             return e;
@@ -970,7 +971,9 @@ pub const DefinitionIterator = struct {
                                 const definition = if (options.embedded)
                                     Definition{
                                         .@"union" = Union{
-                                            .embedded = try self.parseEmbeddedUnionDefinition(options),
+                                            .embedded = try self.parseEmbeddedUnionDefinition(
+                                                options,
+                                            ),
                                         },
                                     }
                                 else
