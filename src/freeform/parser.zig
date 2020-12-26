@@ -1094,8 +1094,9 @@ pub const DefinitionIterator = struct {
     fn parseUnionOptions(self: *Self) !UnionOptions {
         const tokens = &self.token_iterator;
 
+        var maybe_tag_field: ?[]const u8 = null;
         var options = UnionOptions{
-            .tag_field = try self.allocator.dupe(u8, "type"),
+            .tag_field = undefined,
             .embedded = false,
         };
 
@@ -1106,14 +1107,14 @@ pub const DefinitionIterator = struct {
                 _ = try tokens.expect(Token.space, self.expect_error);
                 _ = try tokens.expect(Token.equals, self.expect_error);
                 _ = try tokens.expect(Token.space, self.expect_error);
-                self.allocator.free(options.tag_field);
-                options.tag_field = try self.allocator.dupe(
+                maybe_tag_field = try self.allocator.dupe(
                     u8,
                     (try tokens.expect(Token.symbol, self.expect_error)).symbol,
                 );
             } else if (mem.eql(u8, symbol, "embedded")) {
                 options.embedded = true;
             }
+
             if (try tokens.peek()) |t| {
                 switch (t) {
                     .right_parenthesis => done_parsing_options = true,
@@ -1124,6 +1125,12 @@ pub const DefinitionIterator = struct {
                 }
             }
         }
+
+        if (maybe_tag_field) |tag_field|
+            options.tag_field = tag_field
+        else
+            options.tag_field = try self.allocator.dupe(u8, "type");
+
         _ = try tokens.expect(Token.right_parenthesis, self.expect_error);
         _ = try tokens.expect(Token.space, self.expect_error);
 
