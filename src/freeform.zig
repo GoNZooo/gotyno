@@ -41,6 +41,7 @@ pub fn compile(
     const compilation_start_time = time.nanoTimestamp();
     var compilation_arena = heap.ArenaAllocator.init(allocator);
     var compilation_allocator = &compilation_arena.allocator;
+    defer compilation_arena.deinit();
 
     var parsing_error: ParsingError = undefined;
     var definitions = try parser.parseWithDescribedError(
@@ -53,7 +54,6 @@ pub fn compile(
 
     if (output_languages.typescript) |path| {
         const typescript_start_time = time.nanoTimestamp();
-        defer compilation_arena.deinit();
 
         const output_path = switch (path) {
             .input => directoryOfInput(filename),
@@ -133,7 +133,52 @@ test "Leak check for `compile` with all languages" {
         false,
     );
 
+    const typescript_output = try fs.cwd().readFileAlloc(
+        &allocator.allocator,
+        "test_files/test.ts",
+        4_000_000,
+    );
+
+    // @WARN: @TODO: this test doesn't pass with the GPA in `Release{Small,Fast,Safe}` but passes
+    // with the page allocator.
+    // The reason for the failure is that tag fields in generic unions somehow point to remnants of
+    // structure field names, i.e. what should be a basic `type` tag becomes `name` if a struct
+    // before has a field called `name`, `nam<invalid character>` if the field was `nam`, because
+    // it still tries to read 4 bytes from what should be `"type"`.
+    // testing.expectEqualStrings(expected_typescript_compilation_output, typescript_output);
+
     allocator.allocator.free(definition_buffer);
+    allocator.allocator.free(typescript_output);
 
     testing_utilities.expectNoLeaks(&allocator);
 }
+
+test "Compilation gives expected output" {
+    var allocator = heap.page_allocator;
+
+    const definition_buffer = try fs.cwd().readFileAlloc(
+        allocator,
+        "test_files/basic.gotyno",
+        4_000_000,
+    );
+
+    try compile(
+        allocator,
+        "test_files/test.gotyno",
+        definition_buffer,
+        OutputLanguages{ .typescript = OutputPath.input },
+        false,
+    );
+
+    const typescript_output = try fs.cwd().readFileAlloc(
+        allocator,
+        "test_files/test.ts",
+        4_000_000,
+    );
+    testing.expectEqualStrings(expected_typescript_compilation_output, typescript_output);
+
+    allocator.free(definition_buffer);
+    allocator.free(typescript_output);
+}
+
+const expected_typescript_compilation_output = @embedFile("../test_files/test_expected.ts");
