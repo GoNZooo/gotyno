@@ -2493,12 +2493,6 @@ fn openNamesFromType(
                 .open => |n| try open_name_list.append(try allocator.dupe(u8, n)),
             }
 
-            // if (isStringEqualToOneOf(name, open_names)) {
-            //     const n = try allocator.dupe(u8, name);
-
-            //     try open_name_list.append(n);
-            // }
-
             break :reference open_name_list;
         },
 
