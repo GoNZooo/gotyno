@@ -955,10 +955,7 @@ pub const DefinitionIterator = struct {
                             .space => {
                                 const definition = Definition{
                                     .@"union" = try self.parseUnionDefinition(
-                                        UnionOptions{
-                                            .tag_field = try self.allocator.dupe(u8, "type"),
-                                            .embedded = false,
-                                        },
+                                        try self.allocator.dupe(u8, "type"),
                                     ),
                                 };
                                 try self.addDefinition(definition.@"union".name(), definition);
@@ -977,7 +974,11 @@ pub const DefinitionIterator = struct {
                                         },
                                     }
                                 else
-                                    Definition{ .@"union" = try self.parseUnionDefinition(options) };
+                                    Definition{
+                                        .@"union" = try self.parseUnionDefinition(
+                                            options.tag_field,
+                                        ),
+                                    };
 
                                 try self.addDefinition(definition.@"union".name(), definition);
 
