@@ -1331,7 +1331,7 @@ pub const DefinitionIterator = struct {
         };
     }
 
-    fn parseUnionDefinition(self: *Self, options: UnionOptions) !Union {
+    fn parseUnionDefinition(self: *Self, tag_field: []const u8) !Union {
         const tokens = &self.token_iterator;
 
         const definition_name = try self.parsePascalDefinitionName();
@@ -1345,10 +1345,10 @@ pub const DefinitionIterator = struct {
 
         return switch (left_angle_or_left_brace) {
             .left_brace => Union{
-                .plain = try self.parsePlainUnionDefinition(definition_name, options),
+                .plain = try self.parsePlainUnionDefinition(definition_name, tag_field),
             },
             .left_angle => Union{
-                .generic = try self.parseGenericUnionDefinition(definition_name, options),
+                .generic = try self.parseGenericUnionDefinition(definition_name, tag_field),
             },
             else => debug.panic(
                 "Invalid follow-up token after `union` keyword: {}\n",
@@ -1453,7 +1453,7 @@ pub const DefinitionIterator = struct {
     fn parsePlainUnionDefinition(
         self: *Self,
         definition_name: DefinitionName,
-        options: UnionOptions,
+        tag_field: []const u8,
     ) !PlainUnion {
         var constructors = ArrayList(Constructor).init(self.allocator);
         const tokens = &self.token_iterator;
@@ -1478,14 +1478,14 @@ pub const DefinitionIterator = struct {
         return PlainUnion{
             .name = definition_name,
             .constructors = constructors.items,
-            .tag_field = options.tag_field,
+            .tag_field = tag_field,
         };
     }
 
     fn parseGenericUnionDefinition(
         self: *Self,
         definition_name: DefinitionName,
-        options: UnionOptions,
+        tag_field: []const u8,
     ) !GenericUnion {
         const tokens = &self.token_iterator;
         var constructors = ArrayList(Constructor).init(self.allocator);
@@ -1513,7 +1513,7 @@ pub const DefinitionIterator = struct {
             .name = definition_name,
             .constructors = constructors.toOwnedSlice(),
             .open_names = open_names,
-            .tag_field = options.tag_field,
+            .tag_field = tag_field,
         };
     }
 
