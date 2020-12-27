@@ -1259,16 +1259,17 @@ pub const DefinitionIterator = struct {
             if (try tokens.peek()) |t| {
                 switch (t) {
                     .right_brace => done_parsing_fields = true,
-                    else => {},
+                    else => {
+                        try fields.append(
+                            try self.parseStructureField(definition_name, &[_][]const u8{}),
+                        );
+                    },
                 }
-            }
-            if (!done_parsing_fields) {
-                try fields.append(try self.parseStructureField(definition_name, &[_][]const u8{}));
             }
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
 
-        return PlainStructure{ .name = definition_name, .fields = fields.items };
+        return PlainStructure{ .name = definition_name, .fields = fields.toOwnedSlice() };
     }
 
     fn parseOpenNames(self: *Self) ![][]const u8 {
