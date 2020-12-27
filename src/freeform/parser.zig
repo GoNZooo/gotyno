@@ -1126,10 +1126,10 @@ pub const DefinitionIterator = struct {
             }
         }
 
-        if (maybe_tag_field) |tag_field|
-            options.tag_field = tag_field
+        options.tag_field = if (maybe_tag_field) |tag_field|
+            tag_field
         else
-            options.tag_field = try self.allocator.dupe(u8, "type");
+            try self.allocator.dupe(u8, "type");
 
         _ = try tokens.expect(Token.right_parenthesis, self.expect_error);
         _ = try tokens.expect(Token.space, self.expect_error);
