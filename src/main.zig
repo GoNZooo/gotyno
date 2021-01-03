@@ -38,6 +38,16 @@ const CompilationOptions = struct {
                         };
                     }
                 }
+            } else if (mem.eql(u8, try a, "-fs") or mem.eql(u8, try a, "--fsharp")) {
+                if (argument_iterator.next(allocator)) |path| {
+                    if (mem.eql(u8, try path, "=")) {
+                        outputs.fsharp = OutputPath.input;
+                    } else {
+                        outputs.fsharp = OutputPath{
+                            .path = try sanitizeFilename(allocator, try path),
+                        };
+                    }
+                }
             } else if (mem.eql(u8, try a, "-v") or mem.eql(u8, try a, "--verbose")) {
                 verbose = true;
             } else {
