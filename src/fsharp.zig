@@ -80,6 +80,12 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
     const fields_output = try outputStructureFields(allocator, s.fields);
     defer allocator.free(fields_output);
 
+    // @TODO: add decoder & encoder output here
+    // The plan is to use `Thoth` to begin with and we'll see where we go from there.
+    // A utility package called `GotynoCoders` can be used to provide some basic tools, like
+    // `simple-validation-tools` does for the TypeScript output.
+    // Currently `decodeLiteralString` is added to the package, which means we can use that decoder
+    // for literal string fields, etc.
     const format =
         \\type {} = {{
         \\{}
