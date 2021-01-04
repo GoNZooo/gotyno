@@ -80,6 +80,9 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
     const fields_output = try outputStructureFields(allocator, s.fields);
     defer allocator.free(fields_output);
 
+    const decoder_output = try outputDecoderForPlainStructure(allocator, s);
+    defer allocator.free(decoder_output);
+
     // @TODO: add decoder & encoder output here
     // The plan is to use `Thoth` to begin with and we'll see where we go from there.
     // A utility package called `GotynoCoders` can be used to provide some basic tools, like
@@ -90,9 +93,11 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
         \\type {} = {{
         \\{}
         \\}}
+        \\
+        \\{}
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ s.name.value, fields_output });
+    return try fmt.allocPrint(allocator, format, .{ s.name.value, fields_output, decoder_output });
 }
 
 fn outputStructureFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
@@ -104,6 +109,120 @@ fn outputStructureFields(allocator: *mem.Allocator, fields: []const Field) ![]co
     }
 
     return try mem.join(allocator, "\n", field_outputs.items);
+}
+
+fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
+    var decoder_outputs = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(decoder_outputs);
+
+    for (s.fields) |f| {
+        try decoder_outputs.append(try outputDecoderForField(allocator, f));
+    }
+
+    const decoders_output = try mem.join(allocator, "\n", decoder_outputs.items);
+    defer allocator.free(decoders_output);
+
+    const format =
+        \\    static member Decoder: Decoder<{}>
+        \\        (fun get ->
+        \\            {{
+        \\{}
+        \\            }}
+        \\        )
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ s.name.value, decoders_output });
+}
+
+fn outputDecoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
+    const decoder = try decoderForType(allocator, f.@"type");
+    defer allocator.free(decoder);
+
+    const format = "              {} = get.Required.Field \"{}\" {}";
+    const format_for_optional = "              {} = get.Optional.Field \"{}\" {}";
+
+    return switch (f.@"type") {
+        .optional => try fmt.allocPrint(allocator, format_for_optional, .{ f.name, f.name, decoder }),
+        else => try fmt.allocPrint(allocator, format, .{ f.name, f.name, decoder }),
+    };
+}
+
+fn decoderForType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
+    const array_format = "(Decode.list {})";
+    const applied_name_format = "({} {})";
+    const string_format = "(GotynoCoders.decodeLiteralString \"{}\")";
+
+    return switch (t) {
+        .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
+        .reference => |d| try decoderForTypeReference(allocator, d),
+        .pointer => |d| try decoderForType(allocator, d.@"type".*),
+        .array => |d| o: {
+            const nested_type_output = try decoderForType(allocator, d.@"type".*);
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
+        },
+        .slice => |d| o: {
+            const nested_type_output = try decoderForType(allocator, d.@"type".*);
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
+        },
+        .optional => |d| try decoderForType(allocator, d.@"type".*),
+        .applied_name => |d| o: {
+            const nested_type_output = try decoderForTypeReference(allocator, d.reference);
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(
+                allocator,
+                applied_name_format,
+                .{ d.reference.name(), nested_type_output },
+            );
+        },
+        .empty => debug.panic("Structure field cannot be empty\n", .{}),
+    };
+}
+
+fn decoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 {
+    return switch (r) {
+        .builtin => |d| try decoderForBuiltin(allocator, d),
+        .definition => |d| try decoderForDefinition(allocator, d),
+        .loose => |d| try fmt.allocPrint(allocator, "{}.Decoder", .{d.name}),
+        .open => |d| try fmt.allocPrint(allocator, "decode{}", .{d}),
+    };
+}
+
+fn decoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
+    return try allocator.dupe(u8, switch (b) {
+        .String => "Decode.string",
+        .Boolean => "Decode.boolean",
+        .U8 => "Decode.uint8",
+        .U16 => "Decode.uint16",
+        .U32 => "Decode.uint32",
+        .U64 => "Decode.uint64",
+        .U128 => "Decode.uint128",
+        .I8 => "Decode.int8",
+        .I16 => "Decode.int16",
+        .I32 => "Decode.int32",
+        .I64 => "Decode.int64",
+        .I128 => "Decode.int128",
+        .F32 => "Decode.float32",
+        .F64 => "Decode.float64",
+        .F128 => "Decode.float128",
+    });
+}
+
+fn decoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
+    return switch (d) {
+        .structure => |s| switch (s) {
+            .plain => |p| try fmt.allocPrint(allocator, "{}.Decoder", .{p.name.value}),
+            .generic => debug.panic("Generic structure does not have decoder yet.\n", .{}),
+        },
+        .@"union" => debug.panic("Union does not have decoder yet.\n", .{}),
+        .untagged_union => debug.panic("Untagged union does not have decoder yet.\n", .{}),
+        .enumeration => debug.panic("Enumeration does not have decoder yet.\n", .{}),
+        .import => debug.panic("Import cannot have decoder\n", .{}),
+    };
 }
 
 fn outputStructureField(allocator: *mem.Allocator, field: Field) ![]const u8 {
@@ -240,6 +359,20 @@ test "outputs plain structure correctly" {
         \\    last_fifteen_comments: list<string>
         \\    recruiter: Person
         \\}
+        \\
+        \\    static member Decoder: Decoder<Person>
+        \\        (fun get ->
+        \\            {
+        \\              type = get.Required.Field "type" (GotynoCoders.decodeLiteralString "Person")
+        \\              name = get.Required.Field "name" Decode.string
+        \\              age = get.Required.Field "age" Decode.uint8
+        \\              efficiency = get.Required.Field "efficiency" Decode.float32
+        \\              on_vacation = get.Required.Field "on_vacation" Decode.boolean
+        \\              hobbies = get.Required.Field "hobbies" (Decode.list Decode.string)
+        \\              last_fifteen_comments = get.Required.Field "last_fifteen_comments" (Decode.list Decode.string)
+        \\              recruiter = get.Required.Field "recruiter" Person.Decoder
+        \\            }
+        \\        )
     ;
 
     var parsing_error: ParsingError = undefined;
