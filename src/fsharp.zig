@@ -128,7 +128,7 @@ fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
 
     const format =
         \\    static member Decoder: Decoder<{}> =
-        \\        (fun get ->
+        \\        Decode.object (fun get ->
         \\            {{
         \\{}
         \\            }}
@@ -483,7 +483,7 @@ test "outputs plain structure correctly" {
         \\}
         \\
         \\    static member Decoder: Decoder<Person> =
-        \\        (fun get ->
+        \\        Decode.object (fun get ->
         \\            {
         \\              type = get.Required.Field "type" (GotynoCoders.decodeLiteralString "Person")
         \\              name = get.Required.Field "name" Decode.string
