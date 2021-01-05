@@ -88,9 +88,10 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
 
     // @TODO: add encoder output here
     const format =
-        \\type {} = {{
+        \\type {} =
+        \\    {{
         \\{}
-        \\}}
+        \\    }}
         \\
         \\{}
         \\
@@ -351,7 +352,7 @@ fn outputStructureField(allocator: *mem.Allocator, field: Field) ![]const u8 {
     const type_output = try outputStructureFieldType(allocator, field.@"type");
     defer allocator.free(type_output);
 
-    const format = "    {}: {}";
+    const format = "        {}: {}";
 
     return try fmt.allocPrint(allocator, format, .{ field.name, type_output });
 }
@@ -471,16 +472,17 @@ test "outputs plain structure correctly" {
     var allocator = TestingAllocator{};
 
     const expected_output =
-        \\type Person = {
-        \\    type: string
-        \\    name: string
-        \\    age: uint8
-        \\    efficiency: float32
-        \\    on_vacation: bool
-        \\    hobbies: list<string>
-        \\    last_fifteen_comments: list<string>
-        \\    recruiter: Person
-        \\}
+        \\type Person =
+        \\    {
+        \\        type: string
+        \\        name: string
+        \\        age: uint8
+        \\        efficiency: float32
+        \\        on_vacation: bool
+        \\        hobbies: list<string>
+        \\        last_fifteen_comments: list<string>
+        \\        recruiter: Person
+        \\    }
         \\
         \\    static member Decoder: Decoder<Person> =
         \\        Decode.object (fun get ->
