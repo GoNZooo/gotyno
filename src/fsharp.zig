@@ -139,16 +139,30 @@ fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
     return try fmt.allocPrint(allocator, format, .{ s.name.value, decoders_output });
 }
 
+fn isKeyword(string: []const u8) bool {
+    return utilities.isStringEqualToOneOf(string, &[_][]const u8{"type"});
+}
+
+fn maybeEscapeName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+    return if (isKeyword(name))
+        try fmt.allocPrint(allocator, "``{}``", .{name})
+    else
+        try allocator.dupe(u8, name);
+}
+
 fn outputDecoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
     const decoder = try decoderForType(allocator, f.@"type");
     defer allocator.free(decoder);
+
+    const name = try maybeEscapeName(allocator, f.name);
+    defer allocator.free(name);
 
     const format = "              {} = get.Required.Field \"{}\" {}";
     const format_for_optional = "              {} = get.Optional.Field \"{}\" {}";
 
     return switch (f.@"type") {
-        .optional => try fmt.allocPrint(allocator, format_for_optional, .{ f.name, f.name, decoder }),
-        else => try fmt.allocPrint(allocator, format, .{ f.name, f.name, decoder }),
+        .optional => try fmt.allocPrint(allocator, format_for_optional, .{ name, f.name, decoder }),
+        else => try fmt.allocPrint(allocator, format, .{ name, f.name, decoder }),
     };
 }
 
@@ -354,7 +368,10 @@ fn outputStructureField(allocator: *mem.Allocator, field: Field) ![]const u8 {
 
     const format = "        {}: {}";
 
-    return try fmt.allocPrint(allocator, format, .{ field.name, type_output });
+    const name = try maybeEscapeName(allocator, field.name);
+    defer allocator.free(name);
+
+    return try fmt.allocPrint(allocator, format, .{ name, type_output });
 }
 
 fn outputStructureFieldType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
@@ -474,7 +491,7 @@ test "outputs plain structure correctly" {
     const expected_output =
         \\type Person =
         \\    {
-        \\        type: string
+        \\        ``type``: string
         \\        name: string
         \\        age: uint8
         \\        efficiency: float32
@@ -487,7 +504,7 @@ test "outputs plain structure correctly" {
         \\    static member Decoder: Decoder<Person> =
         \\        Decode.object (fun get ->
         \\            {
-        \\              type = get.Required.Field "type" (GotynoCoders.decodeLiteralString "Person")
+        \\              ``type`` = get.Required.Field "type" (GotynoCoders.decodeLiteralString "Person")
         \\              name = get.Required.Field "name" Decode.string
         \\              age = get.Required.Field "age" Decode.byte
         \\              efficiency = get.Required.Field "efficiency" Decode.float32
