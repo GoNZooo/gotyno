@@ -199,13 +199,13 @@ fn decoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
 fn decoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
     return try allocator.dupe(u8, switch (b) {
         .String => "Decode.string",
-        .Boolean => "Decode.boolean",
-        .U8 => "Decode.uint8",
+        .Boolean => "Decode.bool",
+        .U8 => "Decode.byte",
         .U16 => "Decode.uint16",
         .U32 => "Decode.uint32",
         .U64 => "Decode.uint64",
         .U128 => "Decode.uint128",
-        .I8 => "Decode.int8",
+        .I8 => "Decode.sbyte",
         .I16 => "Decode.int16",
         .I32 => "Decode.int32",
         .I64 => "Decode.int64",
@@ -317,13 +317,13 @@ fn encoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
 fn encoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
     return try allocator.dupe(u8, switch (b) {
         .String => "Encode.string",
-        .Boolean => "Encode.boolean",
-        .U8 => "Encode.uint8",
+        .Boolean => "Encode.bool",
+        .U8 => "Encode.byte",
         .U16 => "Encode.uint16",
         .U32 => "Encode.uint32",
         .U64 => "Encode.uint64",
         .U128 => "Encode.uint128",
-        .I8 => "Encode.int8",
+        .I8 => "Encode.sbyte",
         .I16 => "Encode.int16",
         .I32 => "Encode.int32",
         .I64 => "Encode.int64",
@@ -487,9 +487,9 @@ test "outputs plain structure correctly" {
         \\            {
         \\              type = get.Required.Field "type" (GotynoCoders.decodeLiteralString "Person")
         \\              name = get.Required.Field "name" Decode.string
-        \\              age = get.Required.Field "age" Decode.uint8
+        \\              age = get.Required.Field "age" Decode.byte
         \\              efficiency = get.Required.Field "efficiency" Decode.float32
-        \\              on_vacation = get.Required.Field "on_vacation" Decode.boolean
+        \\              on_vacation = get.Required.Field "on_vacation" Decode.bool
         \\              hobbies = get.Required.Field "hobbies" (Decode.list Decode.string)
         \\              last_fifteen_comments = get.Required.Field "last_fifteen_comments" (Decode.list Decode.string)
         \\              recruiter = get.Required.Field "recruiter" Person.Decoder
@@ -501,9 +501,9 @@ test "outputs plain structure correctly" {
         \\            [
         \\                "type", Encode.string "Person"
         \\                "name", Encode.string value.name
-        \\                "age", Encode.uint8 value.age
+        \\                "age", Encode.byte value.age
         \\                "efficiency", Encode.float32 value.efficiency
-        \\                "on_vacation", Encode.boolean value.on_vacation
+        \\                "on_vacation", Encode.bool value.on_vacation
         \\                "hobbies", GotynoCoders.encodeList Encode.string value.hobbies
         \\                "last_fifteen_comments", GotynoCoders.encodeList Encode.string value.last_fifteen_comments
         \\                "recruiter", Person.Encoder value.recruiter
