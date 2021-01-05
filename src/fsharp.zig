@@ -83,6 +83,9 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
     const decoder_output = try outputDecoderForPlainStructure(allocator, s);
     defer allocator.free(decoder_output);
 
+    const encoder_output = try outputEncoderForPlainStructure(allocator, s);
+    defer allocator.free(encoder_output);
+
     // @TODO: add encoder output here
     const format =
         \\type {} = {{
@@ -90,9 +93,15 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
         \\}}
         \\
         \\{}
+        \\
+        \\{}
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ s.name.value, fields_output, decoder_output });
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ s.name.value, fields_output, decoder_output, encoder_output },
+    );
 }
 
 fn outputStructureFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
@@ -217,6 +226,124 @@ fn decoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
         .untagged_union => debug.panic("Untagged union does not have decoder yet.\n", .{}),
         .enumeration => debug.panic("Enumeration does not have decoder yet.\n", .{}),
         .import => debug.panic("Import cannot have decoder\n", .{}),
+    };
+}
+
+fn outputEncoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
+    var encoder_outputs = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(encoder_outputs);
+
+    for (s.fields) |f| {
+        try encoder_outputs.append(try outputEncoderForField(allocator, f));
+    }
+
+    const encoders_output = try mem.join(allocator, "\n", encoder_outputs.items);
+    defer allocator.free(encoders_output);
+
+    const format =
+        \\    static member Encoder value =
+        \\        Encode.object
+        \\            [
+        \\{}
+        \\            ]
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{encoders_output});
+}
+
+fn outputEncoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
+    const encoder = try encoderForType(allocator, f.name, f.@"type");
+    defer allocator.free(encoder);
+
+    const format = "                \"{}\", {}";
+    const format_for_optional = "              {} = get.Optional.Field \"{}\" {}";
+
+    return switch (f.@"type") {
+        .optional => try fmt.allocPrint(allocator, format_for_optional, .{ f.name, f.name, encoder }),
+        else => try fmt.allocPrint(allocator, format, .{ f.name, encoder }),
+    };
+}
+
+fn encoderForType(allocator: *mem.Allocator, name: []const u8, t: Type) error{OutOfMemory}![]const u8 {
+    const array_format = "GotynoCoders.encodeList {}";
+    const applied_name_format = "({} {})";
+    const string_format = "Encode.string \"{}\"";
+
+    return switch (t) {
+        .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
+        .reference => |d| o: {
+            const encoder = try encoderForTypeReference(allocator, d);
+            defer allocator.free(encoder);
+
+            break :o try fmt.allocPrint(allocator, "{} value.{}", .{ encoder, name });
+        },
+        .pointer => |d| try encoderForType(allocator, name, d.@"type".*),
+        .array => |d| o: {
+            const nested_type_output = try encoderForType(allocator, name, d.@"type".*);
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
+        },
+        .slice => |d| o: {
+            const nested_type_output = try encoderForType(allocator, name, d.@"type".*);
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
+        },
+        .optional => |d| try encoderForType(allocator, name, d.@"type".*),
+        .applied_name => |d| o: {
+            const nested_type_output = try encoderForTypeReference(allocator, d.reference);
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(
+                allocator,
+                applied_name_format,
+                .{ d.reference.name(), nested_type_output },
+            );
+        },
+        .empty => debug.panic("Structure field cannot be empty\n", .{}),
+    };
+}
+
+fn encoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 {
+    return switch (r) {
+        .builtin => |d| try encoderForBuiltin(allocator, d),
+        .definition => |d| try encoderForDefinition(allocator, d),
+        .loose => |d| try fmt.allocPrint(allocator, "{}.Encoder", .{d.name}),
+        .open => |d| try fmt.allocPrint(allocator, "encode{}", .{d}),
+    };
+}
+
+fn encoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
+    return try allocator.dupe(u8, switch (b) {
+        .String => "Encode.string",
+        .Boolean => "Encode.boolean",
+        .U8 => "Encode.uint8",
+        .U16 => "Encode.uint16",
+        .U32 => "Encode.uint32",
+        .U64 => "Encode.uint64",
+        .U128 => "Encode.uint128",
+        .I8 => "Encode.int8",
+        .I16 => "Encode.int16",
+        .I32 => "Encode.int32",
+        .I64 => "Encode.int64",
+        .I128 => "Encode.int128",
+        .F32 => "Encode.float32",
+        .F64 => "Encode.float64",
+        .F128 => "Encode.float128",
+    });
+}
+
+fn encoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
+    return switch (d) {
+        .structure => |s| switch (s) {
+            .plain => |p| try fmt.allocPrint(allocator, "{}.Encoder", .{p.name.value}),
+            .generic => debug.panic("Generic structure does not have encoder yet.\n", .{}),
+        },
+        .@"union" => debug.panic("Union does not have encoder yet.\n", .{}),
+        .untagged_union => debug.panic("Untagged union does not have encoder yet.\n", .{}),
+        .enumeration => debug.panic("Enumeration does not have encoder yet.\n", .{}),
+        .import => debug.panic("Import cannot have encoder\n", .{}),
     };
 }
 
@@ -368,6 +495,19 @@ test "outputs plain structure correctly" {
         \\              recruiter = get.Required.Field "recruiter" Person.Decoder
         \\            }
         \\        )
+        \\
+        \\    static member Encoder value =
+        \\        Encode.object
+        \\            [
+        \\                "type", Encode.string "Person"
+        \\                "name", Encode.string value.name
+        \\                "age", Encode.uint8 value.age
+        \\                "efficiency", Encode.float32 value.efficiency
+        \\                "on_vacation", Encode.boolean value.on_vacation
+        \\                "hobbies", GotynoCoders.encodeList Encode.string value.hobbies
+        \\                "last_fifteen_comments", GotynoCoders.encodeList Encode.string value.last_fifteen_comments
+        \\                "recruiter", Person.Encoder value.recruiter
+        \\            ]
     ;
 
     var parsing_error: ParsingError = undefined;
