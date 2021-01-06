@@ -54,7 +54,7 @@ export function isJust<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<Just<T>>
 
 export function validateMaybe<T>(validateT: svt.Validator<T>): svt.Validator<Maybe<T>> {
     return function validateMaybeT(value: unknown): svt.ValidationResult<Maybe<T>> {
-        return svt.validateOneOf<Maybe<T>>(value, [validateNothing, validateJust(validateT)]);
+        return svt.validateWithTypeTag<Maybe<T>>(value, {[MaybeTag.Nothing]: validateNothing, [MaybeTag.Just]: validateJust(validateT)}, "type");
     };
 }
 
@@ -267,7 +267,7 @@ export function isRight<R>(isR: svt.TypePredicate<R>): svt.TypePredicate<Right<R
 
 export function validateEither<L, R>(validateL: svt.Validator<L>, validateR: svt.Validator<R>): svt.Validator<Either<L, R>> {
     return function validateEitherLR(value: unknown): svt.ValidationResult<Either<L, R>> {
-        return svt.validateOneOf<Either<L, R>>(value, [validateLeft(validateL), validateRight(validateR)]);
+        return svt.validateWithTypeTag<Either<L, R>>(value, {[EitherTag.Left]: validateLeft(validateL), [EitherTag.Right]: validateRight(validateR)}, "type");
     };
 }
 

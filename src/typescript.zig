@@ -757,7 +757,8 @@ fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
 
     const validator_specification_output = try outputValidatorSpecification(
         allocator,
-        plain,
+        plain.name.value,
+        plain.constructors,
         &[_][]const u8{},
     );
     defer allocator.free(validator_specification_output);
@@ -777,19 +778,20 @@ fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
 
 fn outputValidatorSpecification(
     allocator: *mem.Allocator,
-    u: PlainUnion,
+    name: []const u8,
+    constructors: []const Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
     var entries = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(entries);
 
-    for (u.constructors) |c| {
-        const enumeration_tag = try outputEnumerationTag(allocator, u.name.value, c.tag);
+    for (constructors) |c| {
+        const enumeration_tag = try outputEnumerationTag(allocator, name, c.tag);
         defer allocator.free(enumeration_tag);
 
         const titlecased_tag = try titleCaseWord(allocator, c.tag);
         defer allocator.free(titlecased_tag);
-        const payload_validator = try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
+        const payload_validator = try validatorFromConstructor(allocator, c, open_names);
         defer allocator.free(payload_validator);
 
         try entries.append(
@@ -1136,8 +1138,13 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     );
     defer utilities.freeStringList(validator_list_outputs);
 
-    const validators_output = try mem.join(allocator, ", ", validator_list_outputs.items);
-    defer allocator.free(validators_output);
+    const validator_specification_output = try outputValidatorSpecification(
+        allocator,
+        generic.name.value,
+        generic.constructors,
+        generic.open_names,
+    );
+    defer allocator.free(validator_specification_output);
 
     const joined_open_names = try mem.join(allocator, "", generic.open_names);
     defer allocator.free(joined_open_names);
@@ -1145,7 +1152,7 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     const format =
         \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
         \\    return function validate{}{}(value: unknown): svt.ValidationResult<{}<{}>> {{
-        \\        return svt.validateOneOf<{}<{}>>(value, [{}]);
+        \\        return svt.validateWithTypeTag<{}<{}>>(value, {}, "{}");
         \\    }};
         \\}}
     ;
@@ -1165,7 +1172,8 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
             open_names_output,
             name,
             open_names_output,
-            validators_output,
+            validator_specification_output,
+            generic.tag_field,
         },
     );
 }
@@ -1178,47 +1186,48 @@ fn validatorsFromConstructors(
     var validator_list_outputs = ArrayList([]const u8).init(allocator);
 
     for (constructors) |constructor| {
-        const constructor_open_names = try openNamesFromType(
-            allocator,
-            constructor.parameter,
-            open_names,
-        );
-        defer utilities.freeStringList(constructor_open_names);
-
-        const has_open_names = constructor_open_names.items.len > 0;
-
-        const constructor_open_name_validators = try openNameValidators(
-            allocator,
-            constructor_open_names.items,
-        );
-        defer utilities.freeStringList(constructor_open_name_validators);
-
-        const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
-        defer allocator.free(titlecased_tag);
-
-        const joined_validators = try mem.join(
-            allocator,
-            ", ",
-            constructor_open_name_validators.items,
-        );
-        defer allocator.free(joined_validators);
-
-        const output = if (has_open_names)
-            try fmt.allocPrint(
-                allocator,
-                "validate{}({})",
-                .{
-                    titlecased_tag,
-                    joined_validators,
-                },
-            )
-        else
-            try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
+        const output = try validatorFromConstructor(allocator, constructor, open_names);
 
         try validator_list_outputs.append(output);
     }
 
     return validator_list_outputs;
+}
+
+fn validatorFromConstructor(
+    allocator: *mem.Allocator,
+    constructor: Constructor,
+    open_names: []const []const u8,
+) ![]const u8 {
+    const constructor_open_names = try openNamesFromType(
+        allocator,
+        constructor.parameter,
+        open_names,
+    );
+    defer utilities.freeStringList(constructor_open_names);
+
+    const has_open_names = constructor_open_names.items.len > 0;
+
+    const constructor_open_name_validators = try openNameValidators(
+        allocator,
+        constructor_open_names.items,
+    );
+    defer utilities.freeStringList(constructor_open_name_validators);
+
+    const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+    defer allocator.free(titlecased_tag);
+
+    const joined_validators = try mem.join(
+        allocator,
+        ", ",
+        constructor_open_name_validators.items,
+    );
+    defer allocator.free(joined_validators);
+
+    return if (has_open_names)
+        try fmt.allocPrint(allocator, "validate{}({})", .{ titlecased_tag, joined_validators })
+    else
+        try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
 }
 
 fn outputTypeGuardForGenericStructure(
@@ -3120,7 +3129,7 @@ test "Outputs `Maybe` union correctly" {
         \\
         \\export function validateMaybe<T>(validateT: svt.Validator<T>): svt.Validator<Maybe<T>> {
         \\    return function validateMaybeT(value: unknown): svt.ValidationResult<Maybe<T>> {
-        \\        return svt.validateOneOf<Maybe<T>>(value, [validateJust(validateT), validateNothing]);
+        \\        return svt.validateWithTypeTag<Maybe<T>>(value, {[MaybeTag.just]: validateJust(validateT), [MaybeTag.nothing]: validateNothing}, "type");
         \\    };
         \\}
         \\
@@ -3205,7 +3214,7 @@ test "Outputs `Either` union correctly" {
         \\
         \\export function validateEither<E, T>(validateE: svt.Validator<E>, validateT: svt.Validator<T>): svt.Validator<Either<E, T>> {
         \\    return function validateEitherET(value: unknown): svt.ValidationResult<Either<E, T>> {
-        \\        return svt.validateOneOf<Either<E, T>>(value, [validateLeft(validateE), validateRight(validateT)]);
+        \\        return svt.validateWithTypeTag<Either<E, T>>(value, {[EitherTag.Left]: validateLeft(validateE), [EitherTag.Right]: validateRight(validateT)}, "type");
         \\    };
         \\}
         \\
@@ -3344,7 +3353,7 @@ test "Outputs struct with different `Maybe`s correctly" {
         \\
         \\export function validateWithMaybe<T, E>(validateT: svt.Validator<T>, validateE: svt.Validator<E>): svt.Validator<WithMaybe<T, E>> {
         \\    return function validateWithMaybeTE(value: unknown): svt.ValidationResult<WithMaybe<T, E>> {
-        \\        return svt.validateOneOf<WithMaybe<T, E>>(value, [validateWithConcrete, validateWithGeneric(validateT), validateWithBare(validateE)]);
+        \\        return svt.validateWithTypeTag<WithMaybe<T, E>>(value, {[WithMaybeTag.WithConcrete]: validateWithConcrete, [WithMaybeTag.WithGeneric]: validateWithGeneric(validateT), [WithMaybeTag.WithBare]: validateWithBare(validateE)}, "type");
         \\    };
         \\}
         \\
@@ -3432,7 +3441,7 @@ test "Outputs `List` union correctly" {
         \\
         \\export function validateList<T>(validateT: svt.Validator<T>): svt.Validator<List<T>> {
         \\    return function validateListT(value: unknown): svt.ValidationResult<List<T>> {
-        \\        return svt.validateOneOf<List<T>>(value, [validateEmpty, validateCons(validateT)]);
+        \\        return svt.validateWithTypeTag<List<T>>(value, {[ListTag.Empty]: validateEmpty, [ListTag.Cons]: validateCons(validateT)}, "type");
         \\    };
         \\}
         \\
@@ -3845,7 +3854,7 @@ test "Tagged generic union with tag specifier is output correctly" {
         \\
         \\export function validateOption<T>(validateT: svt.Validator<T>): svt.Validator<Option<T>> {
         \\    return function validateOptionT(value: unknown): svt.ValidationResult<Option<T>> {
-        \\        return svt.validateOneOf<Option<T>>(value, [validateSome(validateT), validateNone]);
+        \\        return svt.validateWithTypeTag<Option<T>>(value, {[OptionTag.Some]: validateSome(validateT), [OptionTag.None]: validateNone}, "kind");
         \\    };
         \\}
         \\
