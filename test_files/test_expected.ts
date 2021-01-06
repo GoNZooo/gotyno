@@ -203,7 +203,7 @@ export function isSetEmails(value: unknown): value is SetEmails {
 }
 
 export function validateEvent(value: unknown): svt.ValidationResult<Event> {
-    return svt.validateOneOf<Event>(value, [validateLogIn, validateLogOut, validateJoinChannels, validateSetEmails]);
+    return svt.validateWithTypeTag<Event>(value, {[EventTag.LogIn]: validateLogIn, [EventTag.LogOut]: validateLogOut, [EventTag.JoinChannels]: validateJoinChannels, [EventTag.SetEmails]: validateSetEmails}, "type");
 }
 
 export function validateLogIn(value: unknown): svt.ValidationResult<LogIn> {
@@ -296,7 +296,7 @@ export function isStillSize(value: unknown): value is StillSize {
 }
 
 export function validateStillSize(value: unknown): svt.ValidationResult<StillSize> {
-    return svt.validateOneOf<StillSize>(value, [svt.validateConstant<StillSize.w92>(StillSize.w92), svt.validateConstant<StillSize.w185>(StillSize.w185), svt.validateConstant<StillSize.w300>(StillSize.w300), svt.validateConstant<StillSize.h632>(StillSize.h632), svt.validateConstant<StillSize.original>(StillSize.original)]);
+    return svt.validateOneOfLiterals<StillSize>(value, [StillSize.w92, StillSize.w185, StillSize.w300, StillSize.h632, StillSize.original]);
 }
 
 export enum BackdropSize {
@@ -311,7 +311,7 @@ export function isBackdropSize(value: unknown): value is BackdropSize {
 }
 
 export function validateBackdropSize(value: unknown): svt.ValidationResult<BackdropSize> {
-    return svt.validateOneOf<BackdropSize>(value, [svt.validateConstant<BackdropSize.w300>(BackdropSize.w300), svt.validateConstant<BackdropSize.w780>(BackdropSize.w780), svt.validateConstant<BackdropSize.w1280>(BackdropSize.w1280), svt.validateConstant<BackdropSize.original>(BackdropSize.original)]);
+    return svt.validateOneOfLiterals<BackdropSize>(value, [BackdropSize.w300, BackdropSize.w780, BackdropSize.w1280, BackdropSize.original]);
 }
 
 export type ImageConfigurationData = {
@@ -470,7 +470,7 @@ export function isTV(value: unknown): value is TV {
 }
 
 export function validateKnownForEmbedded(value: unknown): svt.ValidationResult<KnownForEmbedded> {
-    return svt.validateOneOf<KnownForEmbedded>(value, [validateMovie, validateTV]);
+    return svt.validateWithTypeTag<KnownForEmbedded>(value, {[KnownForEmbeddedTag.Movie]: validateMovie, [KnownForEmbeddedTag.TV]: validateTV}, "media_type");
 }
 
 export function validateMovie(value: unknown): svt.ValidationResult<Movie> {

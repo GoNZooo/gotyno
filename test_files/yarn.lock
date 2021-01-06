@@ -2,6 +2,7 @@
 # yarn lockfile v1
 
 
-simple-validation-tools@GoNZooo/simple-validation-tools#d68d0b11e16f3cc04bb3abf06869f2415d4f4371:
-  version "1.2.0"
-  resolved "https://codeload.github.com/GoNZooo/simple-validation-tools/tar.gz/d68d0b11e16f3cc04bb3abf06869f2415d4f4371"
+simple-validation-tools@1.3.0:
+  version "1.3.0"
+  resolved "https://registry.yarnpkg.com/simple-validation-tools/-/simple-validation-tools-1.3.0.tgz#c62cb2f6e88201995f372ed9094b0732bf2c1fa9"
+  integrity sha512-EUR9exe78TS65XbobNofvHKrZcqx/V0rWauqM+CPfsvgYWVtcixDnTbrqEpkaGTJJ3xYtQC7R8jf4Bvsm602zw==

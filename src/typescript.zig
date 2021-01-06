@@ -227,11 +227,7 @@ fn outputEnumerationValidator(
     defer utilities.freeStringList(tag_outputs);
 
     for (fields) |field| {
-        try tag_outputs.append(try fmt.allocPrint(
-            allocator,
-            "svt.validateConstant<{}.{}>({}.{})",
-            .{ name, field.tag, name, field.tag },
-        ));
+        try tag_outputs.append(try fmt.allocPrint(allocator, "{}.{}", .{ name, field.tag }));
     }
 
     const tags_output = try mem.join(allocator, ", ", tag_outputs.items);
@@ -239,7 +235,7 @@ fn outputEnumerationValidator(
 
     const format =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\    return svt.validateOneOfLiterals<{}>(value, [{}]);
         \\}}
     ;
 
@@ -581,19 +577,23 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
     const type_guards_output = try mem.join(allocator, "\n\n", type_guard_outputs.items);
     defer allocator.free(type_guards_output);
 
-    const joined_union_validators = try mem.join(allocator, ", ", union_validators.items);
-    defer allocator.free(joined_union_validators);
+    const validator_specification_output = try outputValidatorSpecificationForEmbeddedUnion(
+        allocator,
+        embedded,
+        embedded.open_names,
+    );
+    defer allocator.free(validator_specification_output);
 
     const union_validator_format =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\    return svt.validateWithTypeTag<{}>(value, {}, "{}");
         \\}}
     ;
 
     const union_validator_output = try fmt.allocPrint(
         allocator,
         union_validator_format,
-        .{ name, name, name, joined_union_validators },
+        .{ name, name, name, validator_specification_output, embedded.tag_field },
     );
     defer allocator.free(union_validator_output);
 
@@ -755,27 +755,80 @@ fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
 fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
     const name = plain.name.value;
 
-    var validator_outputs = try validatorsFromConstructors(
+    const validator_specification_output = try outputValidatorSpecification(
         allocator,
-        plain.constructors,
+        plain,
         &[_][]const u8{},
     );
-    defer utilities.freeStringList(validator_outputs);
-
-    const validators_output = try mem.join(allocator, ", ", validator_outputs.items);
-    defer allocator.free(validators_output);
+    defer allocator.free(validator_specification_output);
 
     const format =
         \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\    return svt.validateWithTypeTag<{}>(value, {}, "{}");
         \\}}
     ;
 
     return try fmt.allocPrint(
         allocator,
         format,
-        .{ name, name, name, validators_output },
+        .{ name, name, name, validator_specification_output, plain.tag_field },
     );
+}
+
+fn outputValidatorSpecification(
+    allocator: *mem.Allocator,
+    u: PlainUnion,
+    open_names: []const []const u8,
+) ![]const u8 {
+    var entries = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(entries);
+
+    for (u.constructors) |c| {
+        const enumeration_tag = try outputEnumerationTag(allocator, u.name.value, c.tag);
+        defer allocator.free(enumeration_tag);
+
+        const titlecased_tag = try titleCaseWord(allocator, c.tag);
+        defer allocator.free(titlecased_tag);
+        const payload_validator = try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
+        defer allocator.free(payload_validator);
+
+        try entries.append(
+            try fmt.allocPrint(allocator, "[{}]: {}", .{ enumeration_tag, payload_validator }),
+        );
+    }
+
+    const joined_validators = try mem.join(allocator, ", ", entries.items);
+    defer allocator.free(joined_validators);
+
+    return try fmt.allocPrint(allocator, "{{{}}}", .{joined_validators});
+}
+
+fn outputValidatorSpecificationForEmbeddedUnion(
+    allocator: *mem.Allocator,
+    e: EmbeddedUnion,
+    open_names: []const []const u8,
+) ![]const u8 {
+    var entries = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(entries);
+
+    for (e.constructors) |c| {
+        const enumeration_tag = try outputEnumerationTag(allocator, e.name.value, c.tag);
+        defer allocator.free(enumeration_tag);
+
+        const titlecased_tag = try titleCaseWord(allocator, c.tag);
+        defer allocator.free(titlecased_tag);
+        const payload_validator = try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
+        defer allocator.free(payload_validator);
+
+        try entries.append(
+            try fmt.allocPrint(allocator, "[{}]: {}", .{ enumeration_tag, payload_validator }),
+        );
+    }
+
+    const joined_validators = try mem.join(allocator, ", ", entries.items);
+    defer allocator.free(joined_validators);
+
+    return try fmt.allocPrint(allocator, "{{{}}}", .{joined_validators});
 }
 
 fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
@@ -2976,7 +3029,7 @@ test "Outputs `Event` union correctly" {
         \\}
         \\
         \\export function validateEvent(value: unknown): svt.ValidationResult<Event> {
-        \\    return svt.validateOneOf<Event>(value, [validateLogIn, validateLogOut, validateJoinChannels, validateSetEmails, validateClose]);
+        \\    return svt.validateWithTypeTag<Event>(value, {[EventTag.LogIn]: validateLogIn, [EventTag.LogOut]: validateLogOut, [EventTag.JoinChannels]: validateJoinChannels, [EventTag.SetEmails]: validateSetEmails, [EventTag.Close]: validateClose}, "type");
         \\}
         \\
         \\export function validateLogIn(value: unknown): svt.ValidationResult<LogIn> {
@@ -3514,7 +3567,7 @@ test "lowercase plain union has correct output" {
         \\}
         \\
         \\export function validateBackdropSize(value: unknown): svt.ValidationResult<BackdropSize> {
-        \\    return svt.validateOneOf<BackdropSize>(value, [validateW300, validateW1280, validateOriginal]);
+        \\    return svt.validateWithTypeTag<BackdropSize>(value, {[BackdropSizeTag.w300]: validateW300, [BackdropSizeTag.w1280]: validateW1280, [BackdropSizeTag.original]: validateOriginal}, "type");
         \\}
         \\
         \\export function validateW300(value: unknown): svt.ValidationResult<w300> {
@@ -3574,7 +3627,7 @@ test "basic string-based enumeration is output correctly" {
         \\}
         \\
         \\export function validateBackdropSize(value: unknown): svt.ValidationResult<BackdropSize> {
-        \\    return svt.validateOneOf<BackdropSize>(value, [svt.validateConstant<BackdropSize.w300>(BackdropSize.w300), svt.validateConstant<BackdropSize.w1280>(BackdropSize.w1280), svt.validateConstant<BackdropSize.original>(BackdropSize.original)]);
+        \\    return svt.validateOneOfLiterals<BackdropSize>(value, [BackdropSize.w300, BackdropSize.w1280, BackdropSize.original]);
         \\}
     ;
 
@@ -3707,7 +3760,7 @@ test "Tagged union with tag specifier is output correctly" {
         \\}
         \\
         \\export function validateKnownFor(value: unknown): svt.ValidationResult<KnownFor> {
-        \\    return svt.validateOneOf<KnownFor>(value, [validateKnownForMovie, validateKnownForShow]);
+        \\    return svt.validateWithTypeTag<KnownFor>(value, {[KnownForTag.KnownForMovie]: validateKnownForMovie, [KnownForTag.KnownForShow]: validateKnownForShow}, "kind");
         \\}
         \\
         \\export function validateKnownForMovie(value: unknown): svt.ValidationResult<KnownForMovie> {
@@ -3900,7 +3953,7 @@ test "Union with embedded tag is output correctly" {
         \\}
         \\
         \\export function validateEmbedded(value: unknown): svt.ValidationResult<Embedded> {
-        \\    return svt.validateOneOf<Embedded>(value, [validateWithOne, validateWithTwo, validateEmpty]);
+        \\    return svt.validateWithTypeTag<Embedded>(value, {[EmbeddedTag.WithOne]: validateWithOne, [EmbeddedTag.WithTwo]: validateWithTwo, [EmbeddedTag.Empty]: validateEmpty}, "media_type");
         \\}
         \\
         \\export function validateWithOne(value: unknown): svt.ValidationResult<WithOne> {
@@ -4009,7 +4062,7 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
         \\}
         \\
         \\export function validateEmbedded(value: unknown): svt.ValidationResult<Embedded> {
-        \\    return svt.validateOneOf<Embedded>(value, [validateMovie, validateTv, validateEmpty]);
+        \\    return svt.validateWithTypeTag<Embedded>(value, {[EmbeddedTag.movie]: validateMovie, [EmbeddedTag.tv]: validateTv, [EmbeddedTag.Empty]: validateEmpty}, "media_type");
         \\}
         \\
         \\export function validateMovie(value: unknown): svt.ValidationResult<movie> {
