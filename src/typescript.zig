@@ -77,7 +77,7 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []const Defini
 }
 
 fn outputImport(allocator: *mem.Allocator, i: Import) ![]const u8 {
-    return try fmt.allocPrint(allocator, "import * as {} from \"{}\";", .{ i.alias, i.name.value });
+    return try fmt.allocPrint(allocator, "import * as {s} from \"{s}\";", .{ i.alias, i.name.value });
 }
 
 fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
@@ -98,11 +98,11 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     defer allocator.free(validator_output);
 
     const format =
-        \\export type {} = {};
+        \\export type {s} = {s};
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return try fmt.allocPrint(
@@ -127,8 +127,8 @@ fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     defer allocator.free(predicates_output);
 
     const format =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return [{}].some((typePredicate) => typePredicate(value));
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return [{s}].some((typePredicate) => typePredicate(value));
         \\}}
     ;
 
@@ -150,8 +150,8 @@ fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     defer allocator.free(validators_output);
 
     const format =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validateOneOf<{}>(value, [{}]);
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validateOneOf<{s}>(value, [{s}]);
         \\}}
     ;
 
@@ -178,13 +178,13 @@ fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]con
     defer allocator.free(validator_output);
 
     const format =
-        \\export enum {} {{
-        \\{}
+        \\export enum {s} {{
+        \\{s}
         \\}}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return try fmt.allocPrint(
@@ -203,15 +203,15 @@ fn outputEnumerationTypeGuard(
     defer utilities.freeStringList(tag_outputs);
 
     for (fields) |field| {
-        try tag_outputs.append(try fmt.allocPrint(allocator, "{}.{}", .{ name, field.tag }));
+        try tag_outputs.append(try fmt.allocPrint(allocator, "{s}.{s}", .{ name, field.tag }));
     }
 
     const tags_output = try mem.join(allocator, ", ", tag_outputs.items);
     defer allocator.free(tags_output);
 
     const format =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return [{}].some((v) => v === value);
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return [{s}].some((v) => v === value);
         \\}}
     ;
 
@@ -227,15 +227,15 @@ fn outputEnumerationValidator(
     defer utilities.freeStringList(tag_outputs);
 
     for (fields) |field| {
-        try tag_outputs.append(try fmt.allocPrint(allocator, "{}.{}", .{ name, field.tag }));
+        try tag_outputs.append(try fmt.allocPrint(allocator, "{s}.{s}", .{ name, field.tag }));
     }
 
     const tags_output = try mem.join(allocator, ", ", tag_outputs.items);
     defer allocator.free(tags_output);
 
     const format =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validateOneOfLiterals<{}>(value, [{}]);
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validateOneOfLiterals<{s}>(value, [{s}]);
         \\}}
     ;
 
@@ -244,12 +244,12 @@ fn outputEnumerationValidator(
 
 fn outputEnumerationField(allocator: *mem.Allocator, field: EnumerationField) ![]const u8 {
     const value_output = switch (field.value) {
-        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .unsigned_integer => |ui| try fmt.allocPrint(allocator, "{}", .{ui}),
     };
     defer allocator.free(value_output);
 
-    const format = "    {} = {},";
+    const format = "    {s} = {s},";
 
     return try fmt.allocPrint(allocator, format, .{ field.tag, value_output });
 }
@@ -270,13 +270,13 @@ fn outputPlainStructure(
     defer allocator.free(validator_output);
 
     const output_format =
-        \\export type {} = {{
-        \\{}
+        \\export type {s} = {{
+        \\{s}
         \\}};
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return try fmt.allocPrint(
@@ -305,13 +305,13 @@ fn outputGenericStructure(
     defer allocator.free(open_names);
 
     const output_format =
-        \\export type {}{} = {{
-        \\{}
+        \\export type {s}{s} = {{
+        \\{s}
         \\}};
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return try fmt.allocPrint(
@@ -334,7 +334,7 @@ fn outputStructureFields(allocator: *mem.Allocator, fields: []const Field) ![]co
     for (fields) |field, i| {
         if (try outputType(allocator, field.@"type")) |output| {
             defer allocator.free(output);
-            const line = try fmt.allocPrint(allocator, "    {}: {};", .{ field.name, output });
+            const line = try fmt.allocPrint(allocator, "    {s}: {s};", .{ field.name, output });
             try lines.append(line);
         } else
             debug.panic("Empty type is not valid for struct field\n", .{});
@@ -404,21 +404,21 @@ fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const
     defer allocator.free(validators_output);
 
     const output_format =
-        \\export type {} = {};
+        \\export type {s} = {s};
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return fmt.allocPrint(
@@ -525,8 +525,8 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
         const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
         defer allocator.free(titlecased_tag);
 
-        try union_type_guards.append(try fmt.allocPrint(allocator, "is{}", .{titlecased_tag}));
-        try union_validators.append(try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag}));
+        try union_type_guards.append(try fmt.allocPrint(allocator, "is{s}", .{titlecased_tag}));
+        try union_validators.append(try fmt.allocPrint(allocator, "validate{s}", .{titlecased_tag}));
 
         try type_guard_outputs.append(
             try outputTypeGuardForConstructorWithEmbeddedTypeTag(
@@ -563,8 +563,8 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
     defer allocator.free(joined_union_type_guards);
 
     const union_type_guard_format =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return [{}].some((typePredicate) => typePredicate(value));
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return [{s}].some((typePredicate) => typePredicate(value));
         \\}}
     ;
     const union_type_guard_output = try fmt.allocPrint(
@@ -585,8 +585,8 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
     defer allocator.free(validator_specification_output);
 
     const union_validator_format =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validateWithTypeTag<{}>(value, {}, "{}");
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validateWithTypeTag<{s}>(value, {s}, "{s}");
         \\}}
     ;
 
@@ -601,21 +601,21 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
     defer allocator.free(validators_output);
 
     const output_format =
-        \\export type {} = {};
+        \\export type {s} = {s};
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return fmt.allocPrint(
@@ -643,13 +643,13 @@ fn outputConstructorWithEmbeddedTag(
     enumeration_tag: []const u8,
 ) ![]const u8 {
     const constructor_format_with_payload =
-        \\export function {}(data: {}): {} {{
-        \\    return {{{}: {}, ...data}};
+        \\export function {s}(data: {s}): {s} {{
+        \\    return {{{s}: {s}, ...data}};
         \\}}
     ;
     const constructor_format_without_payload =
-        \\export function {}(): {} {{
-        \\    return {{{}: {}}};
+        \\export function {s}(): {s} {{
+        \\    return {{{s}: {s}}};
         \\}}
     ;
 
@@ -675,14 +675,14 @@ fn outputTaggedStructureForConstructorWithEmbeddedTag(
     enumeration_tag: []const u8,
 ) ![]const u8 {
     const tagged_structure_output_with_payload =
-        \\export type {} = {{
-        \\    {}: {};
-        \\{}
+        \\export type {s} = {{
+        \\    {s}: {s};
+        \\{s}
         \\}};
     ;
     const tagged_structure_output_without_payload =
-        \\export type {} = {{
-        \\    {}: {};
+        \\export type {s} = {{
+        \\    {s}: {s};
         \\}};
     ;
 
@@ -714,7 +714,7 @@ fn outputUnionTagEnumerationForConstructors(
 
     for (constructors) |constructor| {
         try enumeration_tag_outputs.append(
-            try fmt.allocPrint(allocator, "    {} = \"{}\",", .{ constructor.tag, constructor.tag }),
+            try fmt.allocPrint(allocator, "    {s} = \"{s}\",", .{ constructor.tag, constructor.tag }),
         );
     }
 
@@ -722,8 +722,8 @@ fn outputUnionTagEnumerationForConstructors(
     defer allocator.free(enumeration_tag_output);
 
     const format =
-        \\export enum {}Tag {{
-        \\{}
+        \\export enum {s}Tag {{
+        \\{s}
         \\}}
     ;
 
@@ -744,8 +744,8 @@ fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
     defer allocator.free(predicates_output);
 
     const format =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return [{}].some((typePredicate) => typePredicate(value));
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return [{s}].some((typePredicate) => typePredicate(value));
         \\}}
     ;
 
@@ -764,8 +764,8 @@ fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
     defer allocator.free(validator_specification_output);
 
     const format =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validateWithTypeTag<{}>(value, {}, "{}");
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validateWithTypeTag<{s}>(value, {s}, "{s}");
         \\}}
     ;
 
@@ -795,14 +795,14 @@ fn outputValidatorSpecification(
         defer allocator.free(payload_validator);
 
         try entries.append(
-            try fmt.allocPrint(allocator, "[{}]: {}", .{ enumeration_tag, payload_validator }),
+            try fmt.allocPrint(allocator, "[{s}]: {s}", .{ enumeration_tag, payload_validator }),
         );
     }
 
     const joined_validators = try mem.join(allocator, ", ", entries.items);
     defer allocator.free(joined_validators);
 
-    return try fmt.allocPrint(allocator, "{{{}}}", .{joined_validators});
+    return try fmt.allocPrint(allocator, "{{{s}}}", .{joined_validators});
 }
 
 fn outputValidatorSpecificationForEmbeddedUnion(
@@ -819,18 +819,18 @@ fn outputValidatorSpecificationForEmbeddedUnion(
 
         const titlecased_tag = try titleCaseWord(allocator, c.tag);
         defer allocator.free(titlecased_tag);
-        const payload_validator = try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
+        const payload_validator = try fmt.allocPrint(allocator, "validate{s}", .{titlecased_tag});
         defer allocator.free(payload_validator);
 
         try entries.append(
-            try fmt.allocPrint(allocator, "[{}]: {}", .{ enumeration_tag, payload_validator }),
+            try fmt.allocPrint(allocator, "[{s}]: {s}", .{ enumeration_tag, payload_validator }),
         );
     }
 
     const joined_validators = try mem.join(allocator, ", ", entries.items);
     defer allocator.free(joined_validators);
 
-    return try fmt.allocPrint(allocator, "{{{}}}", .{joined_validators});
+    return try fmt.allocPrint(allocator, "{{{s}}}", .{joined_validators});
 }
 
 fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
@@ -852,7 +852,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
 
         constructor_names[i] = try fmt.allocPrint(
             allocator,
-            "{}{}",
+            "{s}{s}",
             .{ constructor.tag, maybe_names },
         );
     }
@@ -911,21 +911,21 @@ fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![
     defer allocator.free(validators_output);
 
     const output_format =
-        \\export type {}{} = {};
+        \\export type {s}{s} = {s};
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return fmt.allocPrint(
@@ -956,8 +956,8 @@ fn outputTypeGuardForPlainStructure(
     defer allocator.free(checkers_output);
 
     const output_format =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return svt.isInterface<{}>(value, {{{}}});
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return svt.isInterface<{s}>(value, {{{s}}});
         \\}}
     ;
 
@@ -980,7 +980,7 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     for (open_name_predicate_types) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
-            "svt.TypePredicate<{}>",
+            "svt.TypePredicate<{s}>",
             .{generic.open_names[i]},
         );
     }
@@ -991,7 +991,7 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
-            "{}: {}",
+            "{s}: {s}",
             .{ open_names_predicates.items[i], open_name_predicate_types[i] },
         );
     }
@@ -999,14 +999,7 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     const parameters_output = try mem.join(allocator, ", ", parameter_outputs);
     defer allocator.free(parameters_output);
 
-    const joined_open_names_with_comma = try mem.join(allocator, ", ", generic.open_names);
-    defer allocator.free(joined_open_names_with_comma);
-
-    const open_names_output = try fmt.allocPrint(
-        allocator,
-        "{}",
-        .{joined_open_names_with_comma},
-    );
+    const open_names_output = try mem.join(allocator, ", ", generic.open_names);
     defer allocator.free(open_names_output);
 
     var predicate_list_outputs = try predicatesFromConstructors(
@@ -1023,9 +1016,9 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     defer allocator.free(joined_open_names);
 
     const format =
-        \\export function is{}<{}>({}): svt.TypePredicate<{}<{}>> {{
-        \\    return function is{}{}(value: unknown): value is {}<{}> {{
-        \\        return [{}].some((typePredicate) => typePredicate(value));
+        \\export function is{s}<{s}>({s}): svt.TypePredicate<{s}<{s}>> {{
+        \\    return function is{s}{s}(value: unknown): value is {s}<{s}> {{
+        \\        return [{s}].some((typePredicate) => typePredicate(value));
         \\    }};
         \\}}
     ;
@@ -1082,11 +1075,11 @@ fn predicatesFromConstructors(
         const output = if (constructor_open_names.items.len > 0)
             try fmt.allocPrint(
                 allocator,
-                "is{}({})",
+                "is{s}({s})",
                 .{ titlecased_tag, joined_predicates },
             )
         else
-            try fmt.allocPrint(allocator, "is{}", .{titlecased_tag});
+            try fmt.allocPrint(allocator, "is{s}", .{titlecased_tag});
 
         try predicate_list_outputs.append(output);
     }
@@ -1106,7 +1099,7 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     for (open_name_validator_types) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
-            "svt.Validator<{}>",
+            "svt.Validator<{s}>",
             .{generic.open_names[i]},
         );
     }
@@ -1117,7 +1110,7 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
-            "{}: {}",
+            "{s}: {s}",
             .{ open_name_validators.items[i], open_name_validator_types[i] },
         );
     }
@@ -1128,7 +1121,7 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     const joined_open_names_with_comma = try mem.join(allocator, ", ", generic.open_names);
     defer allocator.free(joined_open_names_with_comma);
 
-    const open_names_output = try fmt.allocPrint(allocator, "{}", .{joined_open_names_with_comma});
+    const open_names_output = try fmt.allocPrint(allocator, "{s}", .{joined_open_names_with_comma});
     defer allocator.free(open_names_output);
 
     var validator_list_outputs = try validatorsFromConstructors(
@@ -1150,9 +1143,9 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     defer allocator.free(joined_open_names);
 
     const format =
-        \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
-        \\    return function validate{}{}(value: unknown): svt.ValidationResult<{}<{}>> {{
-        \\        return svt.validateWithTypeTag<{}<{}>>(value, {}, "{}");
+        \\export function validate{s}<{s}>({s}): svt.Validator<{s}<{s}>> {{
+        \\    return function validate{s}{s}(value: unknown): svt.ValidationResult<{s}<{s}>> {{
+        \\        return svt.validateWithTypeTag<{s}<{s}>>(value, {s}, "{s}");
         \\    }};
         \\}}
     ;
@@ -1225,9 +1218,9 @@ fn validatorFromConstructor(
     defer allocator.free(joined_validators);
 
     return if (has_open_names)
-        try fmt.allocPrint(allocator, "validate{}({})", .{ titlecased_tag, joined_validators })
+        try fmt.allocPrint(allocator, "validate{s}({s})", .{ titlecased_tag, joined_validators })
     else
-        try fmt.allocPrint(allocator, "validate{}", .{titlecased_tag});
+        try fmt.allocPrint(allocator, "validate{s}", .{titlecased_tag});
 }
 
 fn outputTypeGuardForGenericStructure(
@@ -1255,7 +1248,7 @@ fn outputTypeGuardForGenericStructure(
     defer allocator.free(open_name_predicate_types);
     defer for (open_name_predicate_types) |t| allocator.free(t);
     for (open_name_predicate_types) |*t, i| {
-        t.* = try fmt.allocPrint(allocator, "svt.TypePredicate<{}>", .{open_names.items[i]});
+        t.* = try fmt.allocPrint(allocator, "svt.TypePredicate<{s}>", .{open_names.items[i]});
     }
 
     var parameter_outputs = try allocator.alloc([]const u8, open_names.items.len);
@@ -1264,7 +1257,7 @@ fn outputTypeGuardForGenericStructure(
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
-            "{}: {}",
+            "{s}: {s}",
             .{ open_names_predicates.items[i], open_name_predicate_types[i] },
         );
     }
@@ -1276,9 +1269,9 @@ fn outputTypeGuardForGenericStructure(
     defer allocator.free(fields_output);
 
     const format_with_open_names =
-        \\export function is{}<{}>({}): svt.TypePredicate<{}<{}>> {{
-        \\    return function is{}{}(value: unknown): value is {}<{}> {{
-        \\        return svt.isInterface<{}<{}>>(value, {{{}}});
+        \\export function is{s}<{s}>({s}): svt.TypePredicate<{s}<{s}>> {{
+        \\    return function is{s}{s}(value: unknown): value is {s}<{s}> {{
+        \\        return svt.isInterface<{s}<{s}>>(value, {{{s}}});
         \\    }};
         \\}}
     ;
@@ -1328,7 +1321,7 @@ fn outputValidatorForGenericStructure(
     defer allocator.free(open_name_validator_types);
     defer for (open_name_validator_types) |t| allocator.free(t);
     for (open_name_validator_types) |*t, i| {
-        t.* = try fmt.allocPrint(allocator, "svt.Validator<{}>", .{open_names.items[i]});
+        t.* = try fmt.allocPrint(allocator, "svt.Validator<{s}>", .{open_names.items[i]});
     }
 
     var parameter_outputs = try allocator.alloc([]const u8, open_names.items.len);
@@ -1337,7 +1330,7 @@ fn outputValidatorForGenericStructure(
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
-            "{}: {}",
+            "{s}: {s}",
             .{ open_names_validators.items[i], open_name_validator_types[i] },
         );
     }
@@ -1349,9 +1342,9 @@ fn outputValidatorForGenericStructure(
     defer allocator.free(fields_output);
 
     const format_with_open_names =
-        \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
-        \\    return function validate{}{}(value: unknown): svt.ValidationResult<{}<{}>> {{
-        \\        return svt.validate<{}<{}>>(value, {{{}}});
+        \\export function validate{s}<{s}>({s}): svt.Validator<{s}<{s}>> {{
+        \\    return function validate{s}{s}(value: unknown): svt.ValidationResult<{s}<{s}>> {{
+        \\        return svt.validate<{s}<{s}>>(value, {{{s}}});
         \\    }};
         \\}}
     ;
@@ -1406,8 +1399,8 @@ fn outputValidatorForPlainStructure(
     defer allocator.free(validators_output);
 
     const output_format =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validate<{}>(value, {{{}}});
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validate<{s}>(value, {{{s}}});
         \\}}
     ;
 
@@ -1425,7 +1418,7 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]
     for (fields) |field| {
         if (try getTypeGuardFromType(allocator, field.@"type")) |type_guard| {
             defer allocator.free(type_guard);
-            const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, type_guard });
+            const output = try fmt.allocPrint(allocator, "{s}: {s}", .{ field.name, type_guard });
             try fields_outputs.append(output);
         }
     }
@@ -1440,7 +1433,7 @@ fn getValidatorsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]
     for (fields) |field| {
         if (try getValidatorFromType(allocator, field.@"type")) |validator| {
             defer allocator.free(validator);
-            const output = try fmt.allocPrint(allocator, "{}: {}", .{ field.name, validator });
+            const output = try fmt.allocPrint(allocator, "{s}: {s}", .{ field.name, validator });
             try fields_outputs.append(output);
         }
     }
@@ -1449,11 +1442,11 @@ fn getValidatorsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]
 }
 
 fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
-    const array_format = "svt.arrayOf({})";
-    const optional_format = "svt.optional({})";
+    const array_format = "svt.arrayOf({s})";
+    const optional_format = "svt.optional({s})";
 
     return switch (t) {
-        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedTypeGuardReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
@@ -1484,7 +1477,7 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
             break :output try fmt.allocPrint(
                 allocator,
-                "is{}({})",
+                "is{s}({s})",
                 .{ applied_name.reference.name(), joined_predicates },
             );
         },
@@ -1494,11 +1487,11 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 }
 
 fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
-    const array_format = "svt.validateArray({})";
-    const optional_format = "svt.validateOptional({})";
+    const array_format = "svt.validateArray({s})";
+    const optional_format = "svt.validateOptional({s})";
 
     return switch (t) {
-        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedValidatorReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
@@ -1528,7 +1521,7 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
             break :output try fmt.allocPrint(
                 allocator,
-                "validate{}({})",
+                "validate{s}({s})",
                 .{ applied_name.reference.name(), joined_validators },
             );
         },
@@ -1634,14 +1627,14 @@ fn outputConstructor(
     defer allocator.free(enumeration_tag_output);
 
     const output_format_with_data =
-        \\export function {}{}(data: {}): {}{} {{
-        \\    return {{{}: {}, data}};
+        \\export function {s}{s}(data: {s}): {s}{s} {{
+        \\    return {{{s}: {s}, data}};
         \\}}
     ;
 
     const output_format_without_data =
-        \\export function {}(): {} {{
-        \\    return {{{}: {}}};
+        \\export function {s}(): {s} {{
+        \\    return {{{s}: {s}}};
         \\}}
     ;
 
@@ -1672,7 +1665,7 @@ fn outputEnumerationTag(
     union_name: []const u8,
     tag: []const u8,
 ) ![]const u8 {
-    return try fmt.allocPrint(allocator, "{}Tag.{}", .{ union_name, tag });
+    return try fmt.allocPrint(allocator, "{s}Tag.{s}", .{ union_name, tag });
 }
 
 fn outputConstructorName(
@@ -1682,7 +1675,7 @@ fn outputConstructorName(
 ) ![]const u8 {
     return try fmt.allocPrint(
         allocator,
-        "{}{}",
+        "{s}{s}",
         .{
             constructor.tag,
             try outputOpenNamesFromType(allocator, constructor.parameter, open_names),
@@ -1701,7 +1694,7 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
     defer utilities.freeStringList(field_type_guard_specifications);
 
     for (fields_in_structure) |f| {
-        const specification_format = "{}: {}";
+        const specification_format = "{s}: {s}";
         const nested = try getNestedTypeGuardFromType(allocator, f.@"type");
         defer allocator.free(nested);
 
@@ -1711,13 +1704,13 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
     }
 
     const type_guard_format_with_payload =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return svt.isInterface<{}>(value, {{{}: {}, {}}});
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return svt.isInterface<{s}>(value, {{{s}: {s}, {s}}});
         \\}}
     ;
     const type_guard_format_without_payload =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return svt.isInterface<{}>(value, {{{}: {}}});
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return svt.isInterface<{s}>(value, {{{s}: {s}}});
         \\}}
     ;
 
@@ -1769,7 +1762,7 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
     defer utilities.freeStringList(field_validator_specifications);
 
     for (fields_in_structure) |f| {
-        const specification_format = "{}: {}";
+        const specification_format = "{s}: {s}";
         const nested = try getNestedValidatorFromType(allocator, f.@"type");
         defer allocator.free(nested);
 
@@ -1783,13 +1776,13 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
     }
 
     const validator_format_with_payload =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validate<{}>(value, {{{}: {}, {}}});
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validate<{s}>(value, {{{s}: {s}, {s}}});
         \\}}
     ;
     const validator_format_without_payload =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validate<{}>(value, {{{}: {}}});
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validate<{s}>(value, {{{s}: {s}}});
         \\}}
     ;
 
@@ -1865,7 +1858,7 @@ fn outputTypeGuardForConstructor(
     for (open_name_predicate_types) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
-            "svt.TypePredicate<{}>",
+            "svt.TypePredicate<{s}>",
             .{constructor_open_names.items[i]},
         );
     }
@@ -1876,7 +1869,7 @@ fn outputTypeGuardForConstructor(
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
-            "{}: {}",
+            "{s}: {s}",
             .{ open_names_predicates.items[i], open_name_predicate_types[i] },
         );
     }
@@ -1897,16 +1890,16 @@ fn outputTypeGuardForConstructor(
     defer allocator.free(joined_open_names);
 
     const output_format_with_open_names =
-        \\export function is{}{}({}): svt.TypePredicate<{}{}> {{
-        \\    return function is{}{}(value: unknown): value is {}{} {{
-        \\        return svt.isInterface<{}{}>(value, {{{}: {}{}}});
+        \\export function is{s}{s}({s}): svt.TypePredicate<{s}{s}> {{
+        \\    return function is{s}{s}(value: unknown): value is {s}{s} {{
+        \\        return svt.isInterface<{s}{s}>(value, {{{s}: {s}{s}}});
         \\    }};
         \\}}
     ;
 
     const output_format_without_open_names =
-        \\export function is{}(value: unknown): value is {} {{
-        \\    return svt.isInterface<{}>(value, {{{}: {}{}}});
+        \\export function is{s}(value: unknown): value is {s} {{
+        \\    return svt.isInterface<{s}>(value, {{{s}: {s}{s}}});
         \\}}
     ;
 
@@ -1976,7 +1969,7 @@ fn outputValidatorForConstructor(
     for (open_name_validator_types) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
-            "svt.Validator<{}>",
+            "svt.Validator<{s}>",
             .{constructor_open_names.items[i]},
         );
     }
@@ -1987,7 +1980,7 @@ fn outputValidatorForConstructor(
     for (parameter_outputs) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
-            "{}: {}",
+            "{s}: {s}",
             .{ open_names_validators.items[i], open_name_validator_types[i] },
         );
     }
@@ -2005,15 +1998,15 @@ fn outputValidatorForConstructor(
     defer allocator.free(titlecased_tag);
 
     const format_without_open_names =
-        \\export function validate{}(value: unknown): svt.ValidationResult<{}> {{
-        \\    return svt.validate<{}>(value, {{{}: {}{}}});
+        \\export function validate{s}(value: unknown): svt.ValidationResult<{s}> {{
+        \\    return svt.validate<{s}>(value, {{{s}: {s}{s}}});
         \\}}
     ;
 
     const format_with_open_names =
-        \\export function validate{}<{}>({}): svt.Validator<{}<{}>> {{
-        \\    return function validate{}{}(value: unknown): svt.ValidationResult<{}<{}>> {{
-        \\        return svt.validate<{}<{}>>(value, {{{}: {}{}}});
+        \\export function validate{s}<{s}>({s}): svt.Validator<{s}<{s}>> {{
+        \\    return function validate{s}{s}(value: unknown): svt.ValidationResult<{s}<{s}>> {{
+        \\        return svt.validate<{s}<{s}>>(value, {{{s}: {s}{s}}});
         \\    }};
         \\}}
     ;
@@ -2052,9 +2045,9 @@ fn getDataSpecificationFromType(
     t: Type,
     open_names: []const []const u8,
 ) !?[]const u8 {
-    const bare_format = "{}";
-    const array_format = "{}[]";
-    const optional_format = "{} | null";
+    const bare_format = "{s}";
+    const array_format = "{s}[]";
+    const optional_format = "{s} | null";
 
     return switch (t) {
         .empty => null,
@@ -2090,7 +2083,7 @@ fn getDataSpecificationFromType(
 
             break :output try fmt.allocPrint(
                 allocator,
-                "{}{}",
+                "{s}{s}",
                 .{ applied_name.reference.name(), open_names_output },
             );
         },
@@ -2098,11 +2091,11 @@ fn getDataSpecificationFromType(
 }
 
 fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
-    const bare_format = ", data: {}";
-    const type_guard_format = ", data: {}";
-    const builtin_type_guard_format = ", data: svt.is{}";
-    const array_format = ", data: svt.arrayOf({})";
-    const optional_format = ", data: svt.optional({})";
+    const bare_format = ", data: {s}";
+    const type_guard_format = ", data: {s}";
+    const builtin_type_guard_format = ", data: svt.is{s}";
+    const array_format = ", data: svt.arrayOf({s})";
+    const optional_format = ", data: svt.optional({s})";
 
     return switch (t) {
         .empty => "",
@@ -2150,7 +2143,7 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 
             break :applied try fmt.allocPrint(
                 allocator,
-                ", data: is{}({})",
+                ", data: is{s}({s})",
                 .{ applied.reference.name(), joined_predicates },
             );
         },
@@ -2158,11 +2151,11 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 }
 
 fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
-    const bare_format = ", data: {}";
-    const validator_format = ", data: {}";
-    const builtin_type_guard_format = ", data: svt.validate{}";
-    const array_format = ", data: svt.validateArray({})";
-    const optional_format = ", data: svt.validateOptional({})";
+    const bare_format = ", data: {s}";
+    const validator_format = ", data: {s}";
+    const builtin_type_guard_format = ", data: svt.validate{s}";
+    const array_format = ", data: svt.validateArray({s})";
+    const optional_format = ", data: svt.validateOptional({s})";
 
     return switch (t) {
         .empty => "",
@@ -2206,7 +2199,7 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 
             break :applied try fmt.allocPrint(
                 allocator,
-                ", data: validate{}({})",
+                ", data: validate{s}({s})",
                 .{ applied.reference.name(), joined_validators },
             );
         },
@@ -2217,12 +2210,12 @@ fn getNestedDataSpecificationFromType(
     allocator: *mem.Allocator,
     t: Type,
 ) error{OutOfMemory}![]const u8 {
-    const array_format = "{}[]";
-    const optional_format = "{} | null";
+    const array_format = "{s}[]";
+    const optional_format = "{s} | null";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for data specification\n", .{}),
-        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try allocator.dupe(u8, translateReference(r)),
         .array => |a| output: {
             const nested = try getNestedDataSpecificationFromType(allocator, a.@"type".*);
@@ -2240,7 +2233,7 @@ fn getNestedDataSpecificationFromType(
             const nested = try getNestedDataSpecificationFromType(allocator, p.@"type".*);
             defer allocator.free(nested);
 
-            break :output try fmt.allocPrint(allocator, "is{}", .{nested});
+            break :output try fmt.allocPrint(allocator, "is{s}", .{nested});
         },
         .optional => |o| output: {
             const nested = try getNestedDataSpecificationFromType(allocator, o.@"type".*);
@@ -2254,7 +2247,7 @@ fn getNestedDataSpecificationFromType(
 
             break :output try fmt.allocPrint(
                 allocator,
-                "{}{}",
+                "{s}{s}",
                 .{ applied_name.reference.name(), open_names_output },
             );
         },
@@ -2262,12 +2255,12 @@ fn getNestedDataSpecificationFromType(
 }
 
 fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
-    const array_format = "svt.arrayOf({})";
-    const optional_format = "svt.optional({})";
+    const array_format = "svt.arrayOf({s})";
+    const optional_format = "svt.optional({s})";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for type guard\n", .{}),
-        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedTypeGuardReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
@@ -2285,7 +2278,7 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             const nested_validator = try getNestedTypeGuardFromType(allocator, p.@"type".*);
             defer allocator.free(nested_validator);
 
-            break :output try fmt.allocPrint(allocator, "is{}", .{nested_validator});
+            break :output try fmt.allocPrint(allocator, "is{s}", .{nested_validator});
         },
         .optional => |o| output: {
             const nested_validator = try getNestedTypeGuardFromType(allocator, o.@"type".*);
@@ -2302,7 +2295,7 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
 
             break :applied try fmt.allocPrint(
                 allocator,
-                "is{}({})",
+                "is{s}({s})",
                 .{ applied.reference.name(), joined_predicates },
             );
         },
@@ -2310,12 +2303,12 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
 }
 
 fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
-    const array_format = "svt.validateArray({})";
-    const optional_format = "svt.validateOptional({})";
+    const array_format = "svt.validateArray({s})";
+    const optional_format = "svt.validateOptional({s})";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for validator\n", .{}),
-        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedValidatorReference(allocator, r),
         .array => |a| output: {
             const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
@@ -2333,7 +2326,7 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             const nested_validator = try getNestedValidatorFromType(allocator, p.@"type".*);
             defer allocator.free(nested_validator);
 
-            break :output try fmt.allocPrint(allocator, "is{}", .{nested_validator});
+            break :output try fmt.allocPrint(allocator, "is{s}", .{nested_validator});
         },
         .optional => |o| output: {
             const nested_validator = try getNestedValidatorFromType(allocator, o.@"type".*);
@@ -2349,7 +2342,7 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
 
             break :applied try fmt.allocPrint(
                 allocator,
-                "validate{}({})",
+                "validate{s}({s})",
                 .{ applied.reference.name(), joined_validators },
             );
         },
@@ -2367,7 +2360,7 @@ fn outputCommonOpenNames(
     return if (common_names.items.len == 0)
         ""
     else
-        try fmt.allocPrint(allocator, "<{}>", .{try mem.join(allocator, ", ", common_names.items)});
+        try fmt.allocPrint(allocator, "<{s}>", .{try mem.join(allocator, ", ", common_names.items)});
 }
 
 fn outputTaggedStructures(
@@ -2452,15 +2445,15 @@ fn outputTaggedStructure(
     defer allocator.free(enumeration_tag_output);
 
     const output_format_with_parameter =
-        \\export type {} = {{
-        \\    {}: {};
-        \\    data: {};
+        \\export type {s} = {{
+        \\    {s}: {s};
+        \\    data: {s};
         \\}};
     ;
 
     const output_format_without_parameter =
-        \\export type {} = {{
-        \\    {}: {};
+        \\export type {s} = {{
+        \\    {s}: {s};
         \\}};
     ;
 
@@ -2494,7 +2487,7 @@ fn outputTaggedMaybeGenericStructure(
 
     const parameter_output = if (try outputType(allocator, constructor.parameter)) |output| p: {
         defer allocator.free(output);
-        break :p try fmt.allocPrint(allocator, "\n    data: {};", .{output});
+        break :p try fmt.allocPrint(allocator, "\n    data: {s};", .{output});
     } else "";
     defer allocator.free(parameter_output);
 
@@ -2502,8 +2495,8 @@ fn outputTaggedMaybeGenericStructure(
     defer allocator.free(enumeration_tag_output);
 
     const output_format =
-        \\export type {}{} = {{
-        \\    {}: {};{}
+        \\export type {s}{s} = {{
+        \\    {s}: {s};{s}
         \\}};
     ;
 
@@ -2594,13 +2587,13 @@ fn outputOpenNamesFromType(
     return if (type_open_names.items.len == 0)
         ""
     else
-        try fmt.allocPrint(allocator, "<{}>", .{joined_open_names});
+        try fmt.allocPrint(allocator, "<{s}>", .{joined_open_names});
 }
 
 fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
     return switch (t) {
         .empty => null,
-        .string => |s| try fmt.allocPrint(allocator, "\"{}\"", .{s}),
+        .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try allocator.dupe(u8, translateReference(r)),
 
         .array => |a| output: {
@@ -2614,7 +2607,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             };
             defer allocator.free(embedded_type);
 
-            break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
+            break :output try fmt.allocPrint(allocator, "{s}[]", .{embedded_type});
         },
 
         .slice => |s| output: {
@@ -2628,7 +2621,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             };
             defer allocator.free(embedded_type);
 
-            break :output try fmt.allocPrint(allocator, "{}[]", .{embedded_type});
+            break :output try fmt.allocPrint(allocator, "{s}[]", .{embedded_type});
         },
 
         .pointer => |p| output: {
@@ -2643,7 +2636,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
                     break :embedded_type try fmt.allocPrint(
                         allocator,
-                        "{}{}",
+                        "{s}{s}",
                         .{ applied_name.reference.name(), open_names },
                     );
                 },
@@ -2651,7 +2644,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             };
             defer allocator.free(embedded_type);
 
-            break :output try fmt.allocPrint(allocator, "{}", .{embedded_type});
+            break :output try fmt.allocPrint(allocator, "{s}", .{embedded_type});
         },
 
         .optional => |o| output: {
@@ -2665,7 +2658,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
                     break :embedded_type try fmt.allocPrint(
                         allocator,
-                        "{}{}",
+                        "{s}{s}",
                         .{ applied_name.reference.name(), open_names },
                     );
                 },
@@ -2673,7 +2666,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             };
             defer allocator.free(embedded_type);
 
-            break :output try fmt.allocPrint(allocator, "{} | null | undefined", .{embedded_type});
+            break :output try fmt.allocPrint(allocator, "{s} | null | undefined", .{embedded_type});
         },
 
         .applied_name => |applied_name| output: {
@@ -2682,7 +2675,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
             break :output try fmt.allocPrint(
                 allocator,
-                "{}{}",
+                "{s}{s}",
                 .{ applied_name.reference.name(), open_names },
             );
         },
@@ -2710,7 +2703,7 @@ fn outputOpenNames(allocator: *mem.Allocator, names: []const []const u8) ![]cons
     const joined_names = try mem.join(allocator, ", ", translated_names.items);
     defer allocator.free(joined_names);
 
-    return try fmt.allocPrint(allocator, "<{}>", .{joined_names});
+    return try fmt.allocPrint(allocator, "<{s}>", .{joined_names});
 }
 
 fn translateName(name: []const u8) []const u8 {
@@ -2787,7 +2780,7 @@ fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const
     else if (mem.eql(u8, name, "Boolean"))
         try allocator.dupe(u8, "svt.isBoolean")
     else
-        try fmt.allocPrint(allocator, "is{}", .{name});
+        try fmt.allocPrint(allocator, "is{s}", .{name});
 }
 
 fn translatedTypeGuardReference(allocator: *mem.Allocator, reference: TypeReference) ![]const u8 {
@@ -2810,9 +2803,9 @@ fn translatedTypeGuardReference(allocator: *mem.Allocator, reference: TypeRefere
             .F128,
             => try allocator.dupe(u8, "svt.isNumber"),
         },
-        .definition => |d| try fmt.allocPrint(allocator, "is{}", .{d.name().value}),
-        .loose => |l| try fmt.allocPrint(allocator, "is{}", .{l.name}),
-        .open => |n| try fmt.allocPrint(allocator, "is{}", .{n}),
+        .definition => |d| try fmt.allocPrint(allocator, "is{s}", .{d.name().value}),
+        .loose => |l| try fmt.allocPrint(allocator, "is{s}", .{l.name}),
+        .open => |n| try fmt.allocPrint(allocator, "is{s}", .{n}),
     };
 }
 
@@ -2824,11 +2817,11 @@ fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const
     else if (mem.eql(u8, name, "Boolean"))
         try allocator.dupe(u8, "svt.validateBoolean")
     else
-        try fmt.allocPrint(allocator, "validate{}", .{name});
+        try fmt.allocPrint(allocator, "validate{s}", .{name});
 }
 
 fn translatedValidatorReference(allocator: *mem.Allocator, reference: TypeReference) ![]const u8 {
-    const format = "validate{}";
+    const format = "validate{s}";
 
     return switch (reference) {
         .builtin => |b| switch (b) {
@@ -2864,7 +2857,7 @@ fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) 
 }
 
 fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
-    return fmt.allocPrint(allocator, "{c}{}", .{ std.ascii.toUpper(word[0]), word[1..] });
+    return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toUpper(word[0]), word[1..] });
 }
 
 test "Outputs `Person` struct correctly" {

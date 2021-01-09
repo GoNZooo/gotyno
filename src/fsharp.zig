@@ -88,14 +88,14 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
 
     // @TODO: add encoder output here
     const format =
-        \\type {} =
+        \\type {s} =
         \\    {{
-        \\{}
+        \\{s}
         \\    }}
         \\
-        \\{}
+        \\{s}
         \\
-        \\{}
+        \\{s}
     ;
 
     return try fmt.allocPrint(
@@ -128,10 +128,10 @@ fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
     defer allocator.free(decoders_output);
 
     const format =
-        \\    static member Decoder: Decoder<{}> =
+        \\    static member Decoder: Decoder<{s}> =
         \\        Decode.object (fun get ->
         \\            {{
-        \\{}
+        \\{s}
         \\            }}
         \\        )
     ;
@@ -145,7 +145,7 @@ fn isKeyword(string: []const u8) bool {
 
 fn maybeEscapeName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
     return if (isKeyword(name))
-        try fmt.allocPrint(allocator, "``{}``", .{name})
+        try fmt.allocPrint(allocator, "``{s}``", .{name})
     else
         try allocator.dupe(u8, name);
 }
@@ -157,8 +157,8 @@ fn outputDecoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
     const name = try maybeEscapeName(allocator, f.name);
     defer allocator.free(name);
 
-    const format = "              {} = get.Required.Field \"{}\" {}";
-    const format_for_optional = "              {} = get.Optional.Field \"{}\" {}";
+    const format = "              {s} = get.Required.Field \"{s}\" {s}";
+    const format_for_optional = "              {s} = get.Optional.Field \"{s}\" {s}";
 
     return switch (f.@"type") {
         .optional => try fmt.allocPrint(allocator, format_for_optional, .{ name, f.name, decoder }),
@@ -167,9 +167,9 @@ fn outputDecoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
 }
 
 fn decoderForType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
-    const array_format = "(Decode.list {})";
-    const applied_name_format = "({} {})";
-    const string_format = "(GotynoCoders.decodeLiteralString \"{}\")";
+    const array_format = "(Decode.list {s})";
+    const applied_name_format = "({s} {s})";
+    const string_format = "(GotynoCoders.decodeLiteralString \"{s}\")";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
@@ -206,8 +206,8 @@ fn decoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
     return switch (r) {
         .builtin => |d| try decoderForBuiltin(allocator, d),
         .definition => |d| try decoderForDefinition(allocator, d),
-        .loose => |d| try fmt.allocPrint(allocator, "{}.Decoder", .{d.name}),
-        .open => |d| try fmt.allocPrint(allocator, "decode{}", .{d}),
+        .loose => |d| try fmt.allocPrint(allocator, "{s}.Decoder", .{d.name}),
+        .open => |d| try fmt.allocPrint(allocator, "decode{s}", .{d}),
     };
 }
 
@@ -234,7 +234,7 @@ fn decoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
 fn decoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
     return switch (d) {
         .structure => |s| switch (s) {
-            .plain => |p| try fmt.allocPrint(allocator, "{}.Decoder", .{p.name.value}),
+            .plain => |p| try fmt.allocPrint(allocator, "{s}.Decoder", .{p.name.value}),
             .generic => debug.panic("Generic structure does not have decoder yet.\n", .{}),
         },
         .@"union" => debug.panic("Union does not have decoder yet.\n", .{}),
@@ -259,7 +259,7 @@ fn outputEncoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
         \\    static member Encoder value =
         \\        Encode.object
         \\            [
-        \\{}
+        \\{s}
         \\            ]
     ;
 
@@ -270,8 +270,8 @@ fn outputEncoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
     const encoder = try encoderForType(allocator, f.name, f.@"type");
     defer allocator.free(encoder);
 
-    const format = "                \"{}\", {}";
-    const format_for_optional = "              {} = get.Optional.Field \"{}\" {}";
+    const format = "                \"{s}\", {s}";
+    const format_for_optional = "              {s} = get.Optional.Field \"{s}\" {s}";
 
     return switch (f.@"type") {
         .optional => try fmt.allocPrint(allocator, format_for_optional, .{ f.name, f.name, encoder }),
@@ -280,9 +280,9 @@ fn outputEncoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
 }
 
 fn encoderForType(allocator: *mem.Allocator, name: []const u8, t: Type) error{OutOfMemory}![]const u8 {
-    const array_format = "GotynoCoders.encodeList {}";
-    const applied_name_format = "({} {})";
-    const string_format = "Encode.string \"{}\"";
+    const array_format = "GotynoCoders.encodeList {s}";
+    const applied_name_format = "({s} {s})";
+    const string_format = "Encode.string \"{s}\"";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
@@ -290,7 +290,7 @@ fn encoderForType(allocator: *mem.Allocator, name: []const u8, t: Type) error{Ou
             const encoder = try encoderForTypeReference(allocator, d);
             defer allocator.free(encoder);
 
-            break :o try fmt.allocPrint(allocator, "{} value.{}", .{ encoder, name });
+            break :o try fmt.allocPrint(allocator, "{s} value.{s}", .{ encoder, name });
         },
         .pointer => |d| try encoderForType(allocator, name, d.@"type".*),
         .array => |d| o: {
@@ -324,8 +324,8 @@ fn encoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
     return switch (r) {
         .builtin => |d| try encoderForBuiltin(allocator, d),
         .definition => |d| try encoderForDefinition(allocator, d),
-        .loose => |d| try fmt.allocPrint(allocator, "{}.Encoder", .{d.name}),
-        .open => |d| try fmt.allocPrint(allocator, "encode{}", .{d}),
+        .loose => |d| try fmt.allocPrint(allocator, "{s}.Encoder", .{d.name}),
+        .open => |d| try fmt.allocPrint(allocator, "encode{s}", .{d}),
     };
 }
 
@@ -352,7 +352,7 @@ fn encoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
 fn encoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
     return switch (d) {
         .structure => |s| switch (s) {
-            .plain => |p| try fmt.allocPrint(allocator, "{}.Encoder", .{p.name.value}),
+            .plain => |p| try fmt.allocPrint(allocator, "{s}.Encoder", .{p.name.value}),
             .generic => debug.panic("Generic structure does not have encoder yet.\n", .{}),
         },
         .@"union" => debug.panic("Union does not have encoder yet.\n", .{}),
@@ -366,7 +366,7 @@ fn outputStructureField(allocator: *mem.Allocator, field: Field) ![]const u8 {
     const type_output = try outputStructureFieldType(allocator, field.@"type");
     defer allocator.free(type_output);
 
-    const format = "        {}: {}";
+    const format = "        {s}: {s}";
 
     const name = try maybeEscapeName(allocator, field.name);
     defer allocator.free(name);
@@ -375,9 +375,9 @@ fn outputStructureField(allocator: *mem.Allocator, field: Field) ![]const u8 {
 }
 
 fn outputStructureFieldType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
-    const array_format = "list<{}>";
-    const optional_format = "option<{}>";
-    const applied_name_format = "{}<{}>";
+    const array_format = "list<{s}>";
+    const optional_format = "option<{s}>";
+    const applied_name_format = "{s}<{s}>";
 
     return switch (t) {
         .string => try allocator.dupe(u8, "string"),
@@ -453,7 +453,7 @@ fn outputLooseReference(allocator: *mem.Allocator, l: LooseReference) ![]const u
         const joined_open_names = try mem.join(allocator, ", ", l.open_names);
         defer allocator.free(joined_open_names);
 
-        break :o try fmt.allocPrint(allocator, "{}<{}>", .{ l.name, joined_open_names });
+        break :o try fmt.allocPrint(allocator, "{s}<{s}>", .{ l.name, joined_open_names });
     };
 }
 
