@@ -59,10 +59,13 @@ const CompilationOptions = struct {
             debug.print("Inputs:\n", .{});
 
             for (inputs.items) |input| {
-                debug.print("\t{}\n", .{input});
+                debug.print("\t{s}\n", .{input});
             }
 
-            debug.print("Outputs: {}\n", .{outputs});
+            const outputs_print = try outputs.print(allocator);
+            defer allocator.free(outputs_print);
+
+            debug.print("Output paths:\n{s}\n", .{outputs_print});
         }
 
         return Self{ .inputs = inputs.items, .outputs = outputs, .verbose = verbose };
