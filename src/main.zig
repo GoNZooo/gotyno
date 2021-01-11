@@ -30,23 +30,11 @@ const CompilationOptions = struct {
         while (argument_iterator.next(allocator)) |a| {
             if (mem.eql(u8, try a, "-ts") or mem.eql(u8, try a, "--typescript")) {
                 if (argument_iterator.next(allocator)) |path| {
-                    if (mem.eql(u8, try path, "=")) {
-                        outputs.typescript = OutputPath.input;
-                    } else {
-                        outputs.typescript = OutputPath{
-                            .path = try sanitizeFilename(allocator, try path),
-                        };
-                    }
+                    outputs.typescript = try OutputPath.fromString(allocator, try path);
                 }
             } else if (mem.eql(u8, try a, "-fs") or mem.eql(u8, try a, "--fsharp")) {
                 if (argument_iterator.next(allocator)) |path| {
-                    if (mem.eql(u8, try path, "=")) {
-                        outputs.fsharp = OutputPath.input;
-                    } else {
-                        outputs.fsharp = OutputPath{
-                            .path = try sanitizeFilename(allocator, try path),
-                        };
-                    }
+                    outputs.fsharp = try OutputPath.fromString(allocator, try path);
                 }
             } else if (mem.eql(u8, try a, "-v") or mem.eql(u8, try a, "--verbose")) {
                 verbose = true;
@@ -95,7 +83,7 @@ fn compileInputs(
     const current_directory = fs.cwd();
 
     for (files) |file| {
-        const sanitized_filename = try sanitizeFilename(allocator, file);
+        const sanitized_filename = try freeform.sanitizeFilename(allocator, file);
 
         const file_contents = try current_directory.readFileAlloc(
             allocator,
@@ -126,15 +114,4 @@ pub fn main() anyerror!void {
         compilation_options.outputs,
         compilation_options.verbose,
     );
-}
-
-fn sanitizeFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
-    return if (builtin.os.tag == .windows) filename: {
-        var new_filename = try allocator.dupe(u8, mem.trimLeft(u8, filename, ".\\"));
-        for (new_filename) |*character| {
-            if (character.* == '\\') character.* = '/';
-        }
-
-        break :filename new_filename;
-    } else filename;
 }

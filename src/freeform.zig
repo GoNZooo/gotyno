@@ -5,6 +5,7 @@ const fs = std.fs;
 const heap = std.heap;
 const time = std.time;
 const io = std.io;
+const builtin = @import("builtin");
 
 pub const tokenizer = @import("./freeform/tokenizer.zig");
 pub const parser = @import("./freeform/parser.zig");
@@ -42,6 +43,13 @@ pub const OutputPath = union(enum) {
 
     input,
     path: []const u8,
+
+    pub fn fromString(allocator: *mem.Allocator, path: []const u8) !Self {
+        return if (mem.eql(u8, path, "="))
+            OutputPath.input
+        else
+            OutputPath{ .path = try sanitizeFilename(allocator, path) };
+    }
 
     pub fn print(self: Self, allocator: *mem.Allocator, prefix: []const u8) ![]const u8 {
         return switch (self) {
@@ -160,6 +168,17 @@ pub fn compile(
             },
         );
     }
+}
+
+pub fn sanitizeFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
+    return if (builtin.os.tag == .windows) filename: {
+        var new_filename = try allocator.dupe(u8, mem.trimLeft(u8, filename, ".\\"));
+        for (new_filename) |*character| {
+            if (character.* == '\\') character.* = '/';
+        }
+
+        break :filename new_filename;
+    } else filename;
 }
 
 fn directoryOfInput(filename: []const u8) []const u8 {
