@@ -86,7 +86,6 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
     const encoder_output = try outputEncoderForPlainStructure(allocator, s);
     defer allocator.free(encoder_output);
 
-    // @TODO: add encoder output here
     const format =
         \\type {s} =
         \\    {{
