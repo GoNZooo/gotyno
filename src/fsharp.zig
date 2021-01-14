@@ -278,7 +278,7 @@ fn outputEncoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
     };
 }
 
-fn encoderForType(allocator: *mem.Allocator, name: []const u8, t: Type) error{OutOfMemory}![]const u8 {
+fn encoderForType(allocator: *mem.Allocator, field_name: ?[]const u8, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "GotynoCoders.encodeList {s}";
     const applied_name_format = "({s} {s})";
     const string_format = "Encode.string \"{s}\"";
@@ -287,24 +287,27 @@ fn encoderForType(allocator: *mem.Allocator, name: []const u8, t: Type) error{Ou
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
         .reference => |d| o: {
             const encoder = try encoderForTypeReference(allocator, d);
-            defer allocator.free(encoder);
 
-            break :o try fmt.allocPrint(allocator, "{s} value.{s}", .{ encoder, name });
+            if (field_name) |n| {
+                defer allocator.free(encoder);
+                break :o try fmt.allocPrint(allocator, "{s} value.{s}", .{ encoder, field_name });
+            } else
+                break :o encoder;
         },
-        .pointer => |d| try encoderForType(allocator, name, d.@"type".*),
+        .pointer => |d| try encoderForType(allocator, field_name, d.@"type".*),
         .array => |d| o: {
-            const nested_type_output = try encoderForType(allocator, name, d.@"type".*);
+            const nested_type_output = try encoderForType(allocator, field_name, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .slice => |d| o: {
-            const nested_type_output = try encoderForType(allocator, name, d.@"type".*);
+            const nested_type_output = try encoderForType(allocator, field_name, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
-        .optional => |d| try encoderForType(allocator, name, d.@"type".*),
+        .optional => |d| try encoderForType(allocator, field_name, d.@"type".*),
         .applied_name => |d| o: {
             const nested_type_output = try encoderForTypeReference(allocator, d.reference);
             defer allocator.free(nested_type_output);
@@ -479,19 +482,28 @@ fn outputPlainUnion(allocator: *mem.Allocator, s: PlainUnion) ![]const u8 {
     );
     defer allocator.free(decoder_output);
 
-    // @TODO: add encoder here
+    const encoder_output = try outputEncoderForUnion(
+        allocator,
+        s.name.value,
+        s.constructors,
+        s.tag_field,
+    );
+    defer allocator.free(encoder_output);
+
     const format =
         \\type {s} =
         \\{s}
         \\
         \\{s}
         \\
+        \\{s}
     ;
 
     return try fmt.allocPrint(allocator, format, .{
         s.name.value,
         joined_constructors,
         decoder_output,
+        encoder_output,
     });
 }
 
@@ -598,6 +610,69 @@ fn outputDecoderForUnion(
     ;
 
     return try fmt.allocPrint(allocator, format, .{ joined_constructor_decoders, union_decoder });
+}
+
+fn outputEncoderForUnion(
+    allocator: *mem.Allocator,
+    union_name: []const u8,
+    constructors: []const Constructor,
+    tag_field: []const u8,
+) ![]const u8 {
+    var encoder_clauses = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(encoder_clauses);
+
+    for (constructors) |c| {
+        const indentation = "        ";
+        const format =
+            \\{s}| {s} payload ->
+            \\{s}    Encode.object [ "{s}", Encode.string "{s}"
+            \\{s}                    "data", {s} payload ]
+        ;
+
+        const format_without_parameter =
+            \\{s}| {s} ->
+            \\{s}    Encode.object [ "{s}", Encode.string "{s}" ]
+        ;
+
+        const constructor_encoder_output = switch (c.parameter) {
+            .empty => try fmt.allocPrint(
+                allocator,
+                format_without_parameter,
+                .{ indentation, c.tag, indentation, tag_field, c.tag },
+            ),
+            else => o: {
+                const parameter_encoder_output = try encoderForType(allocator, null, c.parameter);
+                defer allocator.free(parameter_encoder_output);
+
+                break :o try fmt.allocPrint(
+                    allocator,
+                    format,
+                    .{
+                        indentation,
+                        c.tag,
+                        indentation,
+                        tag_field,
+                        c.tag,
+                        indentation,
+                        parameter_encoder_output,
+                    },
+                );
+            },
+        };
+
+        try encoder_clauses.append(constructor_encoder_output);
+    }
+
+    const joined_encoder_clauses = try mem.join(allocator, "\n\n", encoder_clauses.items);
+    defer allocator.free(joined_encoder_clauses);
+
+    const format =
+        \\    static member Encoder =
+        \\        function
+        \\{s}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{joined_encoder_clauses});
 }
 
 fn outputGenericUnion(allocator: *mem.Allocator, s: GenericUnion) ![]const u8 {
@@ -722,6 +797,26 @@ test "outputs plain union correctly" {
         \\                "Close", Event.CloseDecoder
         \\            |]
         \\
+        \\    static member Encoder =
+        \\        function
+        \\        | LogIn payload ->
+        \\            Encode.object [ "type", Encode.string "LogIn"
+        \\                            "data", LogInData.Encoder payload ]
+        \\
+        \\        | LogOut payload ->
+        \\            Encode.object [ "type", Encode.string "LogOut"
+        \\                            "data", UserId.Encoder payload ]
+        \\
+        \\        | JoinChannels payload ->
+        \\            Encode.object [ "type", Encode.string "JoinChannels"
+        \\                            "data", GotynoCoders.encodeList Channel.Encoder payload ]
+        \\
+        \\        | SetEmails payload ->
+        \\            Encode.object [ "type", Encode.string "SetEmails"
+        \\                            "data", GotynoCoders.encodeList Email.Encoder payload ]
+        \\
+        \\        | Close ->
+        \\            Encode.object [ "type", Encode.string "Close" ]
     ;
 
     var parsing_error: ParsingError = undefined;
