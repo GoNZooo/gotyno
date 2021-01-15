@@ -139,7 +139,7 @@ fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
 }
 
 fn isKeyword(string: []const u8) bool {
-    return utilities.isStringEqualToOneOf(string, &[_][]const u8{"type"});
+    return utilities.isStringEqualToOneOf(string, &[_][]const u8{ "type", "private" });
 }
 
 fn maybeEscapeName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
