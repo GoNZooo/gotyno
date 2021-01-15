@@ -290,7 +290,14 @@ fn encoderForType(allocator: *mem.Allocator, field_name: ?[]const u8, t: Type) e
 
             if (field_name) |n| {
                 defer allocator.free(encoder);
-                break :o try fmt.allocPrint(allocator, "{s} value.{s}", .{ encoder, field_name });
+                const escaped_field_name = try maybeEscapeName(allocator, n);
+                allocator.free(n);
+
+                break :o try fmt.allocPrint(
+                    allocator,
+                    "{s} value.{s}",
+                    .{ encoder, escaped_field_name },
+                );
             } else
                 break :o encoder;
         },
