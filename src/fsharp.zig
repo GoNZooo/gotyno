@@ -556,7 +556,7 @@ fn outputDecoderForUnion(
 
         const format_without_parameter =
             \\    static member {s}Decoder: Decoder<{s}> =
-            \\        Decode.object (fun _get -> {s})
+            \\        Decode.succeed {s}
         ;
 
         const constructor_decoder_output = switch (c.parameter) {
