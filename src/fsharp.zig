@@ -244,14 +244,7 @@ fn decoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
 }
 
 fn outputEncoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
-    var encoder_outputs = ArrayList([]const u8).init(allocator);
-    defer utilities.freeStringList(encoder_outputs);
-
-    for (s.fields) |f| {
-        try encoder_outputs.append(try outputEncoderForField(allocator, f));
-    }
-
-    const encoders_output = try mem.join(allocator, "\n", encoder_outputs.items);
+    const encoders_output = try outputEncodersForFields(allocator, s.fields, 16, "value");
     defer allocator.free(encoders_output);
 
     const format =
@@ -265,16 +258,39 @@ fn outputEncoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
     return try fmt.allocPrint(allocator, format, .{encoders_output});
 }
 
-fn outputEncoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
-    const encoder = try encoderForType(allocator, f.name, f.@"type");
-    defer allocator.free(encoder);
+fn outputEncodersForFields(
+    allocator: *mem.Allocator,
+    fields: []const Field,
+    comptime indentation: usize,
+    comptime value_name: []const u8,
+) ![]const u8 {
+    var encoder_outputs = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(encoder_outputs);
 
-    const format = "                \"{s}\", {s}";
+    for (fields) |f| {
+        try encoder_outputs.append(try outputEncoderForField(allocator, f, indentation, value_name));
+    }
 
-    return try fmt.allocPrint(allocator, format, .{ f.name, encoder });
+    return try mem.join(allocator, "\n", encoder_outputs.items);
 }
 
-fn encoderForType(allocator: *mem.Allocator, field_name: ?[]const u8, t: Type) error{OutOfMemory}![]const u8 {
+fn outputEncoderForField(
+    allocator: *mem.Allocator,
+    f: Field,
+    comptime indentation: usize,
+    comptime value_name: []const u8,
+) ![]const u8 {
+    var indentation_buffer = [_]u8{' '} ** indentation;
+
+    const encoder = try encoderForType(allocator, f.name, f.@"type", value_name);
+    defer allocator.free(encoder);
+
+    const format = "{s}\"{s}\", {s}";
+
+    return try fmt.allocPrint(allocator, format, .{ indentation_buffer, f.name, encoder });
+}
+
+fn encoderForType(allocator: *mem.Allocator, field_name: ?[]const u8, t: Type, comptime value_name: ?[]const u8) error{OutOfMemory}![]const u8 {
     const array_format = "GotynoCoders.encodeList {s}";
     const applied_name_format = "({s} {s})";
     const string_format = "Encode.string \"{s}\"";
@@ -284,33 +300,33 @@ fn encoderForType(allocator: *mem.Allocator, field_name: ?[]const u8, t: Type) e
         .reference => |d| o: {
             const encoder = try encoderForTypeReference(allocator, d);
 
-            if (field_name) |n| {
+            if (value_name != null and field_name != null) {
                 defer allocator.free(encoder);
-                const escaped_field_name = try maybeEscapeName(allocator, n);
+                const escaped_field_name = try maybeEscapeName(allocator, field_name.?);
                 defer allocator.free(escaped_field_name);
 
                 break :o try fmt.allocPrint(
                     allocator,
-                    "{s} value.{s}",
-                    .{ encoder, escaped_field_name },
+                    "{s} {s}.{s}",
+                    .{ encoder, value_name.?, escaped_field_name },
                 );
             } else
                 break :o encoder;
         },
-        .pointer => |d| try encoderForType(allocator, field_name, d.@"type".*),
+        .pointer => |d| try encoderForType(allocator, field_name, d.@"type".*, value_name),
         .array => |d| o: {
-            const nested_type_output = try encoderForType(allocator, field_name, d.@"type".*);
+            const nested_type_output = try encoderForType(allocator, field_name, d.@"type".*, value_name);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .slice => |d| o: {
-            const nested_type_output = try encoderForType(allocator, field_name, d.@"type".*);
+            const nested_type_output = try encoderForType(allocator, field_name, d.@"type".*, value_name);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
-        .optional => |d| try encoderForType(allocator, field_name, d.@"type".*),
+        .optional => |d| try encoderForType(allocator, field_name, d.@"type".*, value_name),
         .applied_name => |d| o: {
             const nested_type_output = try encoderForTypeReference(allocator, d.reference);
             defer allocator.free(nested_type_output);
@@ -644,7 +660,7 @@ fn outputEncoderForUnion(
                 .{ indentation, c.tag, indentation, tag_field, c.tag },
             ),
             else => o: {
-                const parameter_encoder_output = try encoderForType(allocator, null, c.parameter);
+                const parameter_encoder_output = try encoderForType(allocator, null, c.parameter, null);
                 defer allocator.free(parameter_encoder_output);
 
                 break :o try fmt.allocPrint(
@@ -689,32 +705,85 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     var tag_decoder_pairs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(tag_decoder_pairs);
 
+    var constructor_encoders = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(constructor_encoders);
+
     for (s.constructors) |c| {
         const format_with_payload = "    | {s} {s}";
         const format_without_payload = "    | {s}";
 
         if (c.parameter) |p| {
             const parameter_name = p.name().value;
+
             const tag_decoder_pair_indentation = "                ";
             const tag_decoder_pair_format = "{s}\"{s}\", {s}.Decoder";
+
+            var fields_with_type_field = ArrayList(Field).init(allocator);
+            defer fields_with_type_field.deinit();
+            try fields_with_type_field.append(Field{
+                .name = s.tag_field,
+                .@"type" = Type{ .string = c.tag },
+            });
+            const fields = switch (p) {
+                .plain => |plain| plain.fields,
+                .generic => |generic| generic.fields,
+            };
+            try fields_with_type_field.appendSlice(fields);
+
+            const joined_field_encoders = try outputEncodersForFields(
+                allocator,
+                fields_with_type_field.items,
+                20,
+                "payload",
+            );
+            defer allocator.free(joined_field_encoders);
+
+            const constructor_encoder_format =
+                \\        | {s} payload ->
+                \\            Encode.object
+                \\                [
+                \\{s}
+                \\                ]
+            ;
+
             try constructor_outputs.append(try fmt.allocPrint(
                 allocator,
                 format_with_payload,
                 .{ c.tag, parameter_name },
             ));
+
             try tag_decoder_pairs.append(try fmt.allocPrint(
                 allocator,
                 tag_decoder_pair_format,
                 .{ tag_decoder_pair_indentation, c.tag, parameter_name },
             ));
+
+            try constructor_encoders.append(try fmt.allocPrint(
+                allocator,
+                constructor_encoder_format,
+                .{ c.tag, joined_field_encoders },
+            ));
         } else {
             const tag_decoder_pair_indentation = "                ";
             const tag_decoder_pair_format = "{s}\"{s}\", Decode.succeed";
+
+            const constructor_encoder_format =
+                \\        | {s} ->
+                \\            Encode.object [ "{s}", Encode.string "{s}" ]
+            ;
+
             try constructor_outputs.append(try fmt.allocPrint(allocator, format_without_payload, .{c.tag}));
+
             try tag_decoder_pairs.append(try fmt.allocPrint(
                 allocator,
                 tag_decoder_pair_format,
                 .{ tag_decoder_pair_indentation, c.tag },
+            ));
+
+            try constructor_encoders.append(try fmt.allocPrint(
+                allocator,
+                constructor_encoder_format,
+                .{ c.tag, s.tag_field, c.tag },
             ));
         }
     }
@@ -740,8 +809,25 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     );
     defer allocator.free(decoder_output);
 
+    const joined_constructor_encoders = try mem.join(allocator, "\n\n", constructor_encoders.items);
+    defer allocator.free(joined_constructor_encoders);
+
+    const encoder_format =
+        \\    static member Encoder =
+        \\        function
+        \\{s}
+    ;
+    const encoder_output = try fmt.allocPrint(
+        allocator,
+        encoder_format,
+        .{joined_constructor_encoders},
+    );
+    defer allocator.free(encoder_output);
+
     const format =
         \\type {s} =
+        \\{s}
+        \\
         \\{s}
         \\
         \\{s}
@@ -750,7 +836,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     return try fmt.allocPrint(
         allocator,
         format,
-        .{ s.name.value, joined_constructors, decoder_output },
+        .{ s.name.value, joined_constructors, decoder_output, encoder_output },
     );
 }
 
@@ -945,6 +1031,26 @@ test "Union with embedded tag is output correctly" {
         \\                "WithTwo", Two.Decoder
         \\                "Empty", Decode.succeed
         \\            |]
+        \\
+        \\    static member Encoder =
+        \\        function
+        \\        | WithOne payload ->
+        \\            Encode.object
+        \\                [
+        \\                    "media_type", Encode.string "WithOne"
+        \\                    "field1", Encode.string payload.field1
+        \\                ]
+        \\
+        \\        | WithTwo payload ->
+        \\            Encode.object
+        \\                [
+        \\                    "media_type", Encode.string "WithTwo"
+        \\                    "field2", Encode.float32 payload.field2
+        \\                    "field3", Encode.bool payload.field3
+        \\                ]
+        \\
+        \\        | Empty ->
+        \\            Encode.object [ "media_type", Encode.string "Empty" ]
     ;
 
     var parsing_error: ParsingError = undefined;
