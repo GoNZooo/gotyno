@@ -270,12 +270,8 @@ fn outputEncoderForField(allocator: *mem.Allocator, f: Field) ![]const u8 {
     defer allocator.free(encoder);
 
     const format = "                \"{s}\", {s}";
-    const format_for_optional = "              {s} = get.Optional.Field \"{s}\" {s}";
 
-    return switch (f.@"type") {
-        .optional => try fmt.allocPrint(allocator, format_for_optional, .{ f.name, f.name, encoder }),
-        else => try fmt.allocPrint(allocator, format, .{ f.name, encoder }),
-    };
+    return try fmt.allocPrint(allocator, format, .{ f.name, encoder });
 }
 
 fn encoderForType(allocator: *mem.Allocator, field_name: ?[]const u8, t: Type) error{OutOfMemory}![]const u8 {
