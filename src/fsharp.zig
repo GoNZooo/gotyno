@@ -687,7 +687,30 @@ fn outputGenericUnion(allocator: *mem.Allocator, s: GenericUnion) ![]const u8 {
 }
 
 fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 {
-    return try allocator.dupe(u8, "");
+    var constructor_outputs = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(constructor_outputs);
+
+    for (s.constructors) |c| {
+        const format_with_payload = "    | {s} {s}";
+        const format_without_payload = "    | {s}";
+
+        const output = if (c.parameter) |p|
+            try fmt.allocPrint(allocator, format_with_payload, .{ c.tag, p.name().value })
+        else
+            try fmt.allocPrint(allocator, format_without_payload, .{c.tag});
+
+        try constructor_outputs.append(output);
+    }
+
+    const joined_constructors = try mem.join(allocator, "\n", constructor_outputs.items);
+    defer allocator.free(joined_constructors);
+
+    const format =
+        \\type {s} =
+        \\{s}
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ s.name.value, joined_constructors });
 }
 
 fn outputEnumeration(allocator: *mem.Allocator, s: Enumeration) ![]const u8 {
@@ -838,6 +861,53 @@ test "outputs plain union correctly" {
     const output = try outputPlainUnion(
         &allocator.allocator,
         (definitions).definitions[4].@"union".plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Union with embedded tag is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct One {
+        \\    field1: String
+        \\}
+        \\
+        \\struct Two {
+        \\    field2: F32
+        \\    field3: Boolean
+        \\}
+        \\
+        \\union(tag = media_type, embedded) Embedded {
+        \\    WithOne: One
+        \\    WithTwo: Two
+        \\    Empty
+        \\}
+    ;
+
+    const expected_output =
+        \\type Embedded =
+        \\    | WithOne One
+        \\    | WithTwo Two
+        \\    | Empty
+    ;
+
+    var parsing_error: ParsingError = undefined;
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    const output = try outputEmbeddedUnion(
+        &allocator.allocator,
+        definitions.definitions[2].@"union".embedded,
     );
 
     testing.expectEqualStrings(output, expected_output);
