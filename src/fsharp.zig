@@ -291,7 +291,7 @@ fn encoderForType(allocator: *mem.Allocator, field_name: ?[]const u8, t: Type) e
             if (field_name) |n| {
                 defer allocator.free(encoder);
                 const escaped_field_name = try maybeEscapeName(allocator, n);
-                allocator.free(n);
+                defer allocator.free(escaped_field_name);
 
                 break :o try fmt.allocPrint(
                     allocator,
@@ -791,7 +791,7 @@ test "outputs plain union correctly" {
         \\        Decode.object (fun get -> SetEmails(get.Required.Field "data" (Decode.list Email.Decoder)))
         \\
         \\    static member CloseDecoder: Decoder<Event> =
-        \\        Decode.object (fun get -> Close)
+        \\        Decode.succeed Close
         \\
         \\    static member Decoder: Decoder<Event> =
         \\        GotynoCoders.decodeWithTypeTag
