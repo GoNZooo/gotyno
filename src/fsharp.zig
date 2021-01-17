@@ -690,27 +690,72 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     var constructor_outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(constructor_outputs);
 
+    var tag_decoder_pairs = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(tag_decoder_pairs);
+
     for (s.constructors) |c| {
         const format_with_payload = "    | {s} {s}";
         const format_without_payload = "    | {s}";
 
-        const output = if (c.parameter) |p|
-            try fmt.allocPrint(allocator, format_with_payload, .{ c.tag, p.name().value })
-        else
-            try fmt.allocPrint(allocator, format_without_payload, .{c.tag});
-
-        try constructor_outputs.append(output);
+        if (c.parameter) |p| {
+            const parameter_name = p.name().value;
+            const tag_decoder_pair_indentation = "                ";
+            const tag_decoder_pair_format = "{s}\"{s}\", {s}.Decoder";
+            try constructor_outputs.append(try fmt.allocPrint(
+                allocator,
+                format_with_payload,
+                .{ c.tag, parameter_name },
+            ));
+            try tag_decoder_pairs.append(try fmt.allocPrint(
+                allocator,
+                tag_decoder_pair_format,
+                .{ tag_decoder_pair_indentation, c.tag, parameter_name },
+            ));
+        } else {
+            const tag_decoder_pair_indentation = "                ";
+            const tag_decoder_pair_format = "{s}\"{s}\", Decode.succeed";
+            try constructor_outputs.append(try fmt.allocPrint(allocator, format_without_payload, .{c.tag}));
+            try tag_decoder_pairs.append(try fmt.allocPrint(
+                allocator,
+                tag_decoder_pair_format,
+                .{ tag_decoder_pair_indentation, c.tag },
+            ));
+        }
     }
 
     const joined_constructors = try mem.join(allocator, "\n", constructor_outputs.items);
     defer allocator.free(joined_constructors);
 
+    const joined_tag_decoder_pairs = try mem.join(allocator, "\n", tag_decoder_pairs.items);
+    defer allocator.free(joined_tag_decoder_pairs);
+
+    const decoder_format =
+        \\    static member Decoder: Decoder<{s}> =
+        \\        GotynoCoders.decodeWithTypeTag
+        \\            "{s}"
+        \\            [|
+        \\{s}
+        \\            |]
+    ;
+    const decoder_output = try fmt.allocPrint(
+        allocator,
+        decoder_format,
+        .{ s.name.value, s.tag_field, joined_tag_decoder_pairs },
+    );
+    defer allocator.free(decoder_output);
+
     const format =
         \\type {s} =
         \\{s}
+        \\
+        \\{s}
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ s.name.value, joined_constructors });
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ s.name.value, joined_constructors, decoder_output },
+    );
 }
 
 fn outputEnumeration(allocator: *mem.Allocator, s: Enumeration) ![]const u8 {
@@ -895,6 +940,15 @@ test "Union with embedded tag is output correctly" {
         \\    | WithOne One
         \\    | WithTwo Two
         \\    | Empty
+        \\
+        \\    static member Decoder: Decoder<Embedded> =
+        \\        GotynoCoders.decodeWithTypeTag
+        \\            "media_type"
+        \\            [|
+        \\                "WithOne", One.Decoder
+        \\                "WithTwo", Two.Decoder
+        \\                "Empty", Decode.succeed
+        \\            |]
     ;
 
     var parsing_error: ParsingError = undefined;
