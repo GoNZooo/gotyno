@@ -34,3 +34,7 @@ pub fn freeStringList(strings: ArrayList([]const u8)) void {
     for (strings.items) |s| strings.allocator.free(s);
     strings.deinit();
 }
+
+pub fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
+    return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toUpper(word[0]), word[1..] });
+}

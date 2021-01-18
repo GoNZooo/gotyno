@@ -522,7 +522,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]co
             ),
         );
 
-        const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+        const titlecased_tag = try utilities.titleCaseWord(allocator, constructor.tag);
         defer allocator.free(titlecased_tag);
 
         try union_type_guards.append(try fmt.allocPrint(allocator, "is{s}", .{titlecased_tag}));
@@ -789,7 +789,7 @@ fn outputValidatorSpecification(
         const enumeration_tag = try outputEnumerationTag(allocator, name, c.tag);
         defer allocator.free(enumeration_tag);
 
-        const titlecased_tag = try titleCaseWord(allocator, c.tag);
+        const titlecased_tag = try utilities.titleCaseWord(allocator, c.tag);
         defer allocator.free(titlecased_tag);
         const payload_validator = try validatorFromConstructor(allocator, c, open_names);
         defer allocator.free(payload_validator);
@@ -817,7 +817,7 @@ fn outputValidatorSpecificationForEmbeddedUnion(
         const enumeration_tag = try outputEnumerationTag(allocator, e.name.value, c.tag);
         defer allocator.free(enumeration_tag);
 
-        const titlecased_tag = try titleCaseWord(allocator, c.tag);
+        const titlecased_tag = try utilities.titleCaseWord(allocator, c.tag);
         defer allocator.free(titlecased_tag);
         const payload_validator = try fmt.allocPrint(allocator, "validate{s}", .{titlecased_tag});
         defer allocator.free(payload_validator);
@@ -1062,7 +1062,7 @@ fn predicatesFromConstructors(
         );
         defer utilities.freeStringList(constructor_open_name_predicates);
 
-        const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+        const titlecased_tag = try utilities.titleCaseWord(allocator, constructor.tag);
         defer allocator.free(titlecased_tag);
 
         const joined_predicates = try mem.join(
@@ -1207,7 +1207,7 @@ fn validatorFromConstructor(
     );
     defer utilities.freeStringList(constructor_open_name_validators);
 
-    const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+    const titlecased_tag = try utilities.titleCaseWord(allocator, constructor.tag);
     defer allocator.free(titlecased_tag);
 
     const joined_validators = try mem.join(
@@ -1721,7 +1721,7 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
     );
     defer allocator.free(joined_specifications);
 
-    const titlecased_tag = try titleCaseWord(allocator, tag);
+    const titlecased_tag = try utilities.titleCaseWord(allocator, tag);
     defer allocator.free(titlecased_tag);
 
     return if (fields_in_structure.len != 0)
@@ -1793,7 +1793,7 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
     );
     defer allocator.free(joined_specifications);
 
-    const titlecased_tag = try titleCaseWord(allocator, tag);
+    const titlecased_tag = try utilities.titleCaseWord(allocator, tag);
     defer allocator.free(titlecased_tag);
 
     return if (fields_in_structure.len != 0)
@@ -1883,7 +1883,7 @@ fn outputTypeGuardForConstructor(
     const type_guard_output = try getDataTypeGuardFromType(allocator, constructor.parameter);
     defer allocator.free(type_guard_output);
 
-    const titlecased_tag = try titleCaseWord(allocator, tag);
+    const titlecased_tag = try utilities.titleCaseWord(allocator, tag);
     defer allocator.free(titlecased_tag);
 
     const joined_open_names = try mem.join(allocator, "", constructor_open_names.items);
@@ -1994,7 +1994,7 @@ fn outputValidatorForConstructor(
     const validator_output = try getDataValidatorFromType(allocator, constructor.parameter);
     defer allocator.free(validator_output);
 
-    const titlecased_tag = try titleCaseWord(allocator, constructor.tag);
+    const titlecased_tag = try utilities.titleCaseWord(allocator, constructor.tag);
     defer allocator.free(titlecased_tag);
 
     const format_without_open_names =
@@ -2854,10 +2854,6 @@ fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) 
     }
 
     return false;
-}
-
-fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
-    return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toUpper(word[0]), word[1..] });
 }
 
 test "Outputs `Person` struct correctly" {
