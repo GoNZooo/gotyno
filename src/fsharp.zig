@@ -711,6 +711,8 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     for (s.constructors) |c| {
         const format_with_payload = "    | {s} {s}";
         const format_without_payload = "    | {s}";
+        const titlecased_tag = try utilities.titleCaseWord(allocator, c.tag);
+        defer allocator.free(titlecased_tag);
 
         if (c.parameter) |p| {
             const parameter_name = p.name().value;
@@ -749,7 +751,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
             try constructor_outputs.append(try fmt.allocPrint(
                 allocator,
                 format_with_payload,
-                .{ c.tag, parameter_name },
+                .{ titlecased_tag, parameter_name },
             ));
 
             try tag_decoder_pairs.append(try fmt.allocPrint(
@@ -761,7 +763,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
             try constructor_encoders.append(try fmt.allocPrint(
                 allocator,
                 constructor_encoder_format,
-                .{ c.tag, joined_field_encoders },
+                .{ titlecased_tag, joined_field_encoders },
             ));
         } else {
             const tag_decoder_pair_indentation = "                ";
@@ -772,7 +774,11 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
                 \\            Encode.object [ "{s}", Encode.string "{s}" ]
             ;
 
-            try constructor_outputs.append(try fmt.allocPrint(allocator, format_without_payload, .{c.tag}));
+            try constructor_outputs.append(try fmt.allocPrint(
+                allocator,
+                format_without_payload,
+                .{titlecased_tag},
+            ));
 
             try tag_decoder_pairs.append(try fmt.allocPrint(
                 allocator,
@@ -783,7 +789,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
             try constructor_encoders.append(try fmt.allocPrint(
                 allocator,
                 constructor_encoder_format,
-                .{ c.tag, s.tag_field, c.tag },
+                .{ titlecased_tag, s.tag_field, c.tag },
             ));
         }
     }
@@ -1051,6 +1057,82 @@ test "Union with embedded tag is output correctly" {
         \\
         \\        | Empty ->
         \\            Encode.object [ "media_type", Encode.string "Empty" ]
+    ;
+
+    var parsing_error: ParsingError = undefined;
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    const output = try outputEmbeddedUnion(
+        &allocator.allocator,
+        definitions.definitions[2].@"union".embedded,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Union with embedded tag and lowercase constructors is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct One {
+        \\    field1: String
+        \\}
+        \\
+        \\struct Two {
+        \\    field2: F32
+        \\    field3: Boolean
+        \\}
+        \\
+        \\union(tag = media_type, embedded) Embedded {
+        \\    withOne: One
+        \\    withTwo: Two
+        \\    empty
+        \\}
+    ;
+
+    const expected_output =
+        \\type Embedded =
+        \\    | WithOne One
+        \\    | WithTwo Two
+        \\    | Empty
+        \\
+        \\    static member Decoder: Decoder<Embedded> =
+        \\        GotynoCoders.decodeWithTypeTag
+        \\            "media_type"
+        \\            [|
+        \\                "withOne", One.Decoder
+        \\                "withTwo", Two.Decoder
+        \\                "empty", Decode.succeed
+        \\            |]
+        \\
+        \\    static member Encoder =
+        \\        function
+        \\        | WithOne payload ->
+        \\            Encode.object
+        \\                [
+        \\                    "media_type", Encode.string "withOne"
+        \\                    "field1", Encode.string payload.field1
+        \\                ]
+        \\
+        \\        | WithTwo payload ->
+        \\            Encode.object
+        \\                [
+        \\                    "media_type", Encode.string "withTwo"
+        \\                    "field2", Encode.float32 payload.field2
+        \\                    "field3", Encode.bool payload.field3
+        \\                ]
+        \\
+        \\        | Empty ->
+        \\            Encode.object [ "media_type", Encode.string "empty" ]
     ;
 
     var parsing_error: ParsingError = undefined;
