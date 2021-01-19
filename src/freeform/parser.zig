@@ -220,6 +220,13 @@ pub const EnumerationValue = union(enum) {
     string: []const u8,
     unsigned_integer: u64,
 
+    pub fn toString(self: Self, allocator: *mem.Allocator) ![]const u8 {
+        return switch (self) {
+            .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
+            .unsigned_integer => |ui| try fmt.allocPrint(allocator, "{}", .{ui}),
+        };
+    }
+
     pub fn free(self: Self, allocator: *mem.Allocator) void {
         switch (self) {
             .string => |s| allocator.free(s),
