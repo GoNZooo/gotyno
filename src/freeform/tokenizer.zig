@@ -102,7 +102,7 @@ pub const Token = union(enum) {
             .unsigned_integer => |n| size: {
                 var remainder: usize = n;
                 var digits: usize = 1;
-                while (remainder > 10) : (remainder = @mod(remainder, 10)) {
+                while (remainder > 10) : (remainder = @divFloor(remainder, 10)) {
                     digits += 1;
                 }
 
@@ -231,7 +231,7 @@ pub const TokenIterator = struct {
                     );
                     break :token Token{ .unsigned_integer = unsigned_integer };
                 } else {
-                    @panic("unexpected endless pascal symbol");
+                    @panic("unexpected endless number");
                 }
             },
 
