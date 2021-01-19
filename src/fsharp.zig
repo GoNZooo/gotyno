@@ -867,8 +867,114 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     );
 }
 
-fn outputEnumeration(allocator: *mem.Allocator, s: Enumeration) ![]const u8 {
-    return try allocator.dupe(u8, "");
+fn outputEnumeration(allocator: *mem.Allocator, e: Enumeration) ![]const u8 {
+    var titlecased_tags = try allocator.alloc([]const u8, e.fields.len);
+    defer allocator.free(titlecased_tags);
+
+    for (titlecased_tags) |*t, i| {
+        t.* = try utilities.titleCaseWord(allocator, e.fields[i].tag);
+    }
+    defer for (titlecased_tags) |t| {
+        allocator.free(t);
+    };
+
+    var enumeration_tags = try allocator.alloc([]const u8, e.fields.len);
+    defer allocator.free(enumeration_tags);
+    for (enumeration_tags) |*t, i| {
+        t.* = try fmt.allocPrint(allocator, "    | {s}", .{titlecased_tags[i]});
+    }
+    defer for (enumeration_tags) |t| {
+        allocator.free(t);
+    };
+
+    const joined_enumeration_tags = try mem.join(allocator, "\n", enumeration_tags);
+    defer allocator.free(joined_enumeration_tags);
+
+    var value_constructors = try allocator.alloc([]const u8, e.fields.len);
+    defer allocator.free(value_constructors);
+    for (value_constructors) |*vc, i| {
+        const value_as_string = try e.fields[i].value.toString(allocator);
+        defer allocator.free(value_as_string);
+
+        vc.* = try fmt.allocPrint(
+            allocator,
+            "{s}, {s}",
+            .{ value_as_string, titlecased_tags[i] },
+        );
+    }
+    defer for (value_constructors) |vc| {
+        allocator.free(vc);
+    };
+
+    const joined_value_constructors = try mem.join(allocator, "; ", value_constructors);
+    defer allocator.free(joined_value_constructors);
+
+    debug.assert(e.fields.len > 0);
+    const enumeration_value_decoder = switch (e.fields[0].value) {
+        .string => "Decode.string",
+        .unsigned_integer => "Decode.uint32",
+    };
+
+    const decoder_format =
+        \\    static member Decoder: Decoder<{s}> =
+        \\        GotynoCoders.decodeOneOf {s} [|{s}|]
+    ;
+    const decoder_output = try fmt.allocPrint(
+        allocator,
+        decoder_format,
+        .{ e.name.value, enumeration_value_decoder, joined_value_constructors },
+    );
+    defer allocator.free(decoder_output);
+
+    const value_encoder = switch (e.fields[0].value) {
+        .string => "Encode.string",
+        .unsigned_integer => "Encode.uint32",
+    };
+
+    var constructor_encoders = try allocator.alloc([]const u8, e.fields.len);
+    defer allocator.free(constructor_encoders);
+    for (constructor_encoders) |*constructor_encoder, i| {
+        const value_as_string = try e.fields[i].value.toString(allocator);
+        defer allocator.free(value_as_string);
+
+        constructor_encoder.* = try fmt.allocPrint(
+            allocator,
+            "        | {s} -> {s} {s}",
+            .{ titlecased_tags[i], value_encoder, value_as_string },
+        );
+    }
+    defer for (constructor_encoders) |ce| {
+        allocator.free(ce);
+    };
+    const joined_constructor_encoders = try mem.join(allocator, "\n", constructor_encoders);
+    defer allocator.free(joined_constructor_encoders);
+
+    const encoder_format =
+        \\    static member Encoder =
+        \\        function
+        \\{s}
+    ;
+    const encoder_output = try fmt.allocPrint(
+        allocator,
+        encoder_format,
+        .{joined_constructor_encoders},
+    );
+    defer allocator.free(encoder_output);
+
+    const format =
+        \\type {s} =
+        \\{s}
+        \\
+        \\{s}
+        \\
+        \\{s}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ e.name.value, joined_enumeration_tags, decoder_output, encoder_output },
+    );
 }
 
 fn outputUntaggedUnion(allocator: *mem.Allocator, s: UntaggedUnion) ![]const u8 {
@@ -1275,6 +1381,147 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
     const output = try outputEmbeddedUnion(
         &allocator.allocator,
         definitions.definitions[2].@"union".embedded,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Enumeration is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\enum BackdropSize {
+        \\    W300 = "w300"
+        \\    W1280 = "w1280"
+        \\    Original = "original"
+        \\}
+    ;
+
+    const expected_output =
+        \\type BackdropSize =
+        \\    | W300
+        \\    | W1280
+        \\    | Original
+        \\
+        \\    static member Decoder: Decoder<BackdropSize> =
+        \\        GotynoCoders.decodeOneOf Decode.string [|"w300", W300; "w1280", W1280; "original", Original|]
+        \\
+        \\    static member Encoder =
+        \\        function
+        \\        | W300 -> Encode.string "w300"
+        \\        | W1280 -> Encode.string "w1280"
+        \\        | Original -> Encode.string "original"
+    ;
+
+    var parsing_error: ParsingError = undefined;
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    const output = try outputEnumeration(
+        &allocator.allocator,
+        definitions.definitions[0].enumeration,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Enumeration with lowercased tags is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\enum BackdropSize {
+        \\    w300 = "w300"
+        \\    w1280 = "w1280"
+        \\    original = "original"
+        \\}
+    ;
+
+    const expected_output =
+        \\type BackdropSize =
+        \\    | W300
+        \\    | W1280
+        \\    | Original
+        \\
+        \\    static member Decoder: Decoder<BackdropSize> =
+        \\        GotynoCoders.decodeOneOf Decode.string [|"w300", W300; "w1280", W1280; "original", Original|]
+        \\
+        \\    static member Encoder =
+        \\        function
+        \\        | W300 -> Encode.string "w300"
+        \\        | W1280 -> Encode.string "w1280"
+        \\        | Original -> Encode.string "original"
+    ;
+
+    var parsing_error: ParsingError = undefined;
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    const output = try outputEnumeration(
+        &allocator.allocator,
+        definitions.definitions[0].enumeration,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Enumeration with integer values is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\enum Indices {
+        \\    First = 0
+        \\    Second = 1
+        \\    Indeterminate = 999
+        \\}
+    ;
+
+    const expected_output =
+        \\type Indices =
+        \\    | First
+        \\    | Second
+        \\    | Indeterminate
+        \\
+        \\    static member Decoder: Decoder<Indices> =
+        \\        GotynoCoders.decodeOneOf Decode.uint32 [|0, First; 1, Second; 999, Indeterminate|]
+        \\
+        \\    static member Encoder =
+        \\        function
+        \\        | First -> Encode.uint32 0
+        \\        | Second -> Encode.uint32 1
+        \\        | Indeterminate -> Encode.uint32 999
+    ;
+
+    var parsing_error: ParsingError = undefined;
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    const output = try outputEnumeration(
+        &allocator.allocator,
+        definitions.definitions[0].enumeration,
     );
 
     testing.expectEqualStrings(output, expected_output);
