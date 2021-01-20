@@ -8,6 +8,7 @@ const testing = std.testing;
 const ArrayList = std.ArrayList;
 
 const parser = @import("./freeform/parser.zig");
+const general = @import("./general.zig");
 const tokenizer = @import("./freeform/tokenizer.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 const utilities = @import("./freeform/utilities.zig");
@@ -637,7 +638,6 @@ fn outputPlainUnion(allocator: *mem.Allocator, s: PlainUnion) ![]const u8 {
 
     const encoder_output = try outputEncoderForUnion(
         allocator,
-        s.name.value,
         titlecased_tags,
         s.constructors,
         s.tag_field,
@@ -771,7 +771,6 @@ fn outputDecoderForUnion(
 
 fn outputEncoderForUnion(
     allocator: *mem.Allocator,
-    union_name: []const u8,
     tags: []const []const u8,
     constructors: []const Constructor,
     tag_field: []const u8,
@@ -835,8 +834,272 @@ fn outputEncoderForUnion(
     return try fmt.allocPrint(allocator, format, .{joined_encoder_clauses});
 }
 
-fn outputGenericUnion(allocator: *mem.Allocator, s: GenericUnion) ![]const u8 {
-    return try allocator.dupe(u8, "");
+fn outputGenericUnion(allocator: *mem.Allocator, u: GenericUnion) ![]const u8 {
+    var type_variables = try openNamesAsFSharpTypeVariables(allocator, u.open_names);
+    defer utilities.freeStringArray(allocator, type_variables);
+
+    const joined_type_variables = try mem.join(allocator, ", ", type_variables);
+    defer allocator.free(joined_type_variables);
+
+    var constructors = try allocator.alloc([]const u8, u.constructors.len);
+    defer utilities.freeStringArray(allocator, constructors);
+    for (constructors) |*c, i| {
+        c.* = try outputConstructor(allocator, u.constructors[i].tag, u.constructors[i].parameter);
+    }
+    const joined_constructors = try mem.join(allocator, "\n", constructors);
+    defer allocator.free(joined_constructors);
+
+    var titlecased_tags = try allocator.alloc([]const u8, u.constructors.len);
+    defer utilities.freeStringArray(allocator, titlecased_tags);
+    for (titlecased_tags) |*t, i| {
+        t.* = try utilities.titleCaseWord(allocator, u.constructors[i].tag);
+    }
+
+    const decoder_output = try outputDecoderForGenericUnion(allocator, u, titlecased_tags);
+    defer allocator.free(decoder_output);
+
+    const encoder_output = try outputEncoderForGenericUnion(allocator, u, titlecased_tags);
+    defer allocator.free(encoder_output);
+
+    const format =
+        \\type {s}<{s}> =
+        \\{s}
+        \\
+        \\{s}
+        \\
+        \\{s}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{
+            u.name.value,
+            joined_type_variables,
+            joined_constructors,
+            decoder_output,
+            encoder_output,
+        },
+    );
+}
+
+fn outputDecoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags: []const []const u8) ![]const u8 {
+    const union_name = u.name.value;
+
+    const type_variables = try openNamesAsFSharpTypeVariables(allocator, u.open_names);
+    defer utilities.freeStringArray(allocator, type_variables);
+
+    const joined_type_variables = try mem.join(allocator, ", ", type_variables);
+    defer allocator.free(joined_type_variables);
+
+    const tag_decoder_pairs = try allocator.alloc([]const u8, u.constructors.len);
+    defer utilities.freeStringArray(allocator, tag_decoder_pairs);
+
+    const constructor_decoders = try allocator.alloc([]const u8, u.constructors.len);
+    defer utilities.freeStringArray(allocator, constructor_decoders);
+
+    var union_open_name_decoders = try allocator.alloc([]const u8, u.open_names.len);
+    defer utilities.freeStringArray(allocator, union_open_name_decoders);
+    for (union_open_name_decoders) |*d, i| {
+        d.* = try fmt.allocPrint(allocator, "decode{s}", .{u.open_names[i]});
+    }
+    const joined_union_open_name_decoders = try mem.join(allocator, " ", union_open_name_decoders);
+    defer allocator.free(joined_union_open_name_decoders);
+
+    for (tag_decoder_pairs) |*p, i| {
+        const c = u.constructors[i];
+
+        const open_names_for_constructor = try general.openNamesFromType(
+            allocator,
+            c.parameter,
+            u.open_names,
+        );
+        defer utilities.freeStringList(open_names_for_constructor);
+        var open_name_decoders = try allocator.alloc([]const u8, open_names_for_constructor.items.len);
+        defer utilities.freeStringArray(allocator, open_name_decoders);
+        for (open_name_decoders) |*d, di| {
+            d.* = try fmt.allocPrint(allocator, "decode{s}", .{open_names_for_constructor.items[di]});
+        }
+
+        const joined_open_name_decoders = try mem.join(allocator, " ", open_name_decoders);
+        defer allocator.free(joined_open_name_decoders);
+        const space_for_decoder = if (open_names_for_constructor.items.len > 0) " " else "";
+
+        p.* = try fmt.allocPrint(
+            allocator,
+            "                \"{s}\", {s}.{s}Decoder{s}{s}",
+            .{
+                u.constructors[i].tag,
+                u.name.value,
+                u.constructors[i].tag,
+                space_for_decoder,
+                joined_open_name_decoders,
+            },
+        );
+
+        const format =
+            \\    static member {s}Decoder{s}{s}: Decoder<{s}<{s}>> =
+            \\        Decode.object (fun get -> {s}(get.Required.Field "data" {s}))
+        ;
+
+        const format_without_parameter =
+            \\    static member {s}Decoder: Decoder<{s}<{s}>> =
+            \\        Decode.succeed {s}
+        ;
+
+        const titlecased_tag = tags[i];
+
+        const constructor_decoder_output = switch (c.parameter) {
+            .empty => try fmt.allocPrint(
+                allocator,
+                format_without_parameter,
+                .{ titlecased_tag, union_name, joined_type_variables, titlecased_tag },
+            ),
+            else => o: {
+                const parameter_decoder_output = try decoderForType(allocator, c.parameter);
+                defer allocator.free(parameter_decoder_output);
+
+                break :o try fmt.allocPrint(
+                    allocator,
+                    format,
+                    .{
+                        titlecased_tag,
+                        space_for_decoder,
+                        joined_open_name_decoders,
+                        union_name,
+                        joined_type_variables,
+                        titlecased_tag,
+                        parameter_decoder_output,
+                    },
+                );
+            },
+        };
+
+        constructor_decoders[i] = constructor_decoder_output;
+    }
+
+    const joined_tag_decoder_pairs = try mem.join(allocator, "\n", tag_decoder_pairs);
+    defer allocator.free(joined_tag_decoder_pairs);
+
+    const joined_constructor_decoders = try mem.join(allocator, "\n\n", constructor_decoders);
+    defer allocator.free(joined_constructor_decoders);
+
+    const format =
+        \\{s}
+        \\
+        \\    static member Decoder {s}: Decoder<{s}<{s}>> =
+        \\        GotynoCoders.decodeWithTypeTag
+        \\            "{s}"
+        \\            [|
+        \\{s}
+        \\            |]
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{
+            joined_constructor_decoders,
+            joined_union_open_name_decoders,
+            u.name.value,
+            joined_type_variables,
+            u.tag_field,
+            joined_tag_decoder_pairs,
+        },
+    );
+}
+
+fn outputEncoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags: []const []const u8) ![]const u8 {
+    const union_name = u.name.value;
+
+    const type_variables = try openNamesAsFSharpTypeVariables(allocator, u.open_names);
+    defer utilities.freeStringArray(allocator, type_variables);
+
+    const joined_type_variables = try mem.join(allocator, ", ", type_variables);
+    defer allocator.free(joined_type_variables);
+
+    const constructor_encoders = try allocator.alloc([]const u8, u.constructors.len);
+    defer utilities.freeStringArray(allocator, constructor_encoders);
+
+    var union_open_name_encoders = try allocator.alloc([]const u8, u.open_names.len);
+    defer utilities.freeStringArray(allocator, union_open_name_encoders);
+    for (union_open_name_encoders) |*d, i| {
+        d.* = try fmt.allocPrint(allocator, "encode{s}", .{u.open_names[i]});
+    }
+    const joined_union_open_name_encoders = try mem.join(allocator, " ", union_open_name_encoders);
+    defer allocator.free(joined_union_open_name_encoders);
+
+    for (constructor_encoders) |*e, i| {
+        const c = u.constructors[i];
+
+        const open_names_for_constructor = try general.openNamesFromType(
+            allocator,
+            c.parameter,
+            u.open_names,
+        );
+        defer utilities.freeStringList(open_names_for_constructor);
+
+        const format =
+            \\        | {s} payload ->
+            \\            Encode.object [ "{s}", Encode.string "{s}"
+            \\                            "data", {s} payload ]
+        ;
+
+        const format_without_parameter =
+            \\        | {s} ->
+            \\            Encode.object [ "{s}", Encode.string "{s}" ]
+        ;
+
+        const titlecased_tag = tags[i];
+
+        const constructor_encoder_output = switch (c.parameter) {
+            .empty => try fmt.allocPrint(
+                allocator,
+                format_without_parameter,
+                .{ titlecased_tag, u.tag_field, c.tag },
+            ),
+            else => o: {
+                const parameter_encoder_output = try encoderForType(
+                    allocator,
+                    null,
+                    c.parameter,
+                    "payload",
+                );
+                defer allocator.free(parameter_encoder_output);
+
+                break :o try fmt.allocPrint(
+                    allocator,
+                    format,
+                    .{
+                        titlecased_tag,
+                        u.tag_field,
+                        c.tag,
+                        parameter_encoder_output,
+                    },
+                );
+            },
+        };
+
+        e.* = constructor_encoder_output;
+    }
+
+    const joined_constructor_encoders = try mem.join(allocator, "\n\n", constructor_encoders);
+    defer allocator.free(joined_constructor_encoders);
+
+    const format =
+        \\    static member Encoder {s} =
+        \\        function
+        \\{s}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{
+            joined_union_open_name_encoders,
+            joined_constructor_encoders,
+        },
+    );
 }
 
 fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 {
@@ -1396,6 +1659,92 @@ test "outputs plain union with lowercased constructors correctly" {
     const output = try outputPlainUnion(
         &allocator.allocator,
         (definitions).definitions[4].@"union".plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+// \\    static member LogInDecoder: Decoder<Event> =
+// \\        Decode.object (fun get -> LogIn(get.Required.Field "data" LogInData.Decoder))
+// \\
+// \\    static member LogOutDecoder: Decoder<Event> =
+// \\        Decode.object (fun get -> LogOut(get.Required.Field "data" UserId.Decoder))
+// \\
+// \\    static member JoinChannelsDecoder: Decoder<Event> =
+// \\        Decode.object (fun get -> JoinChannels(get.Required.Field "data" (Decode.list Channel.Decoder)))
+// \\
+// \\    static member SetEmailsDecoder: Decoder<Event> =
+// \\        Decode.object (fun get -> SetEmails(get.Required.Field "data" (Decode.list Email.Decoder)))
+// \\
+// \\    static member CloseDecoder: Decoder<Event> =
+// \\        Decode.succeed Close
+// \\
+// \\    static member Decoder: Decoder<Event> =
+// \\        GotynoCoders.decodeWithTypeTag
+// \\            "type"
+// \\            [|
+// \\                "LogIn", Event.LogInDecoder
+// \\                "LogOut", Event.LogOutDecoder
+// \\                "JoinChannels", Event.JoinChannelsDecoder
+// \\                "SetEmails", Event.SetEmailsDecoder
+// \\                "Close", Event.CloseDecoder
+// \\            |]
+// \\
+test "outputs Maybe union correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\union Maybe <T>{
+        \\    Nothing
+        \\    Just: T
+        \\}
+    ;
+
+    const expected_output =
+        \\type Maybe<'t> =
+        \\    | Nothing
+        \\    | Just of 't
+        \\
+        \\    static member NothingDecoder: Decoder<Maybe<'t>> =
+        \\        Decode.succeed Nothing
+        \\
+        \\    static member JustDecoder decodeT: Decoder<Maybe<'t>> =
+        \\        Decode.object (fun get -> Just(get.Required.Field "data" decodeT))
+        \\
+        \\    static member Decoder decodeT: Decoder<Maybe<'t>> =
+        \\        GotynoCoders.decodeWithTypeTag
+        \\            "type"
+        \\            [|
+        \\                "Nothing", Maybe.NothingDecoder
+        \\                "Just", Maybe.JustDecoder decodeT
+        \\            |]
+        \\
+        \\    static member Encoder encodeT =
+        \\        function
+        \\        | Nothing ->
+        \\            Encode.object [ "type", Encode.string "Nothing" ]
+        \\
+        \\        | Just payload ->
+        \\            Encode.object [ "type", Encode.string "Just"
+        \\                            "data", encodeT payload ]
+    ;
+
+    var parsing_error: ParsingError = undefined;
+
+    var definitions = try parser.parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    const output = try outputGenericUnion(
+        &allocator.allocator,
+        (definitions).definitions[0].@"union".generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
