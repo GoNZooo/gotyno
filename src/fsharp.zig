@@ -138,6 +138,48 @@ fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
     return try fmt.allocPrint(allocator, format, .{ s.name.value, decoders_output });
 }
 
+fn outputDecoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]const u8 {
+    var decoder_outputs = ArrayList([]const u8).init(allocator);
+    defer utilities.freeStringList(decoder_outputs);
+
+    const type_variables = try openNamesAsFSharpTypeVariables(allocator, s.open_names);
+    defer utilities.freeStringArray(allocator, type_variables);
+
+    const joined_type_variables = try mem.join(allocator, ", ", type_variables);
+    defer allocator.free(joined_type_variables);
+
+    var open_name_decoders = try allocator.alloc([]const u8, s.open_names.len);
+    defer utilities.freeStringArray(allocator, open_name_decoders);
+    for (open_name_decoders) |*d, i| {
+        d.* = try fmt.allocPrint(allocator, "decode{s}", .{s.open_names[i]});
+    }
+
+    for (s.fields) |f| {
+        try decoder_outputs.append(try outputDecoderForField(allocator, f));
+    }
+
+    const decoders_output = try mem.join(allocator, "\n", decoder_outputs.items);
+    defer allocator.free(decoders_output);
+
+    const joined_open_name_decoders = try mem.join(allocator, " ", open_name_decoders);
+    defer allocator.free(joined_open_name_decoders);
+
+    const format =
+        \\    static member Decoder {s}: Decoder<{s}<{s}>> =
+        \\        Decode.object (fun get ->
+        \\            {{
+        \\{s}
+        \\            }}
+        \\        )
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ joined_open_name_decoders, s.name.value, joined_type_variables, decoders_output },
+    );
+}
+
 fn isKeyword(string: []const u8) bool {
     return utilities.isStringEqualToOneOf(string, &[_][]const u8{ "type", "private" });
 }
@@ -256,6 +298,30 @@ fn outputEncoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
     ;
 
     return try fmt.allocPrint(allocator, format, .{encoders_output});
+}
+
+fn outputEncoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]const u8 {
+    const encoders_output = try outputEncodersForFields(allocator, s.fields, 16, "value");
+    defer allocator.free(encoders_output);
+
+    var open_name_encoders = try allocator.alloc([]const u8, s.open_names.len);
+    defer utilities.freeStringArray(allocator, open_name_encoders);
+    for (open_name_encoders) |*e, i| {
+        e.* = try fmt.allocPrint(allocator, "encode{s}", .{s.open_names[i]});
+    }
+
+    const joined_open_name_encoders = try mem.join(allocator, " ", open_name_encoders);
+    defer allocator.free(joined_open_name_encoders);
+
+    const format =
+        \\    static member Encoder {s} value =
+        \\        Encode.object
+        \\            [
+        \\{s}
+        \\            ]
+    ;
+
+    return try fmt.allocPrint(allocator, format, .{ joined_open_name_encoders, encoders_output });
 }
 
 fn outputEncodersForFields(
@@ -425,7 +491,11 @@ fn outputStructureFieldType(allocator: *mem.Allocator, t: Type) error{OutOfMemor
         .applied_name => |d| o: {
             const nested_type_output = try outputTypeReference(allocator, d.reference);
             defer allocator.free(nested_type_output);
-            const joined_open_names = try mem.join(allocator, ", ", d.open_names);
+
+            const fsharped_open_names = try openNamesAsFSharpTypeVariables(allocator, d.open_names);
+            defer utilities.freeStringArray(allocator, fsharped_open_names);
+
+            const joined_open_names = try mem.join(allocator, ", ", fsharped_open_names);
             defer allocator.free(joined_open_names);
 
             break :o try fmt.allocPrint(
@@ -443,7 +513,7 @@ fn outputTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 
         .builtin => |b| try outputBuiltinReference(allocator, b),
         .definition => |d| try allocator.dupe(u8, d.name().value),
         .loose => |l| try outputLooseReference(allocator, l),
-        .open => |o| try allocator.dupe(u8, o),
+        .open => |o| try makeFSharpTypeVariable(allocator, o),
     };
 }
 
@@ -479,7 +549,57 @@ fn outputLooseReference(allocator: *mem.Allocator, l: LooseReference) ![]const u
 }
 
 fn outputGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]const u8 {
-    return try allocator.dupe(u8, "");
+    const type_variables = try openNamesAsFSharpTypeVariables(allocator, s.open_names);
+    defer utilities.freeStringArray(allocator, type_variables);
+
+    const fields = try outputStructureFields(allocator, s.fields);
+    defer allocator.free(fields);
+
+    const joined_type_variables = try mem.join(allocator, ", ", type_variables);
+    defer allocator.free(joined_type_variables);
+
+    const decoder_output = try outputDecoderForGenericStructure(allocator, s);
+    defer allocator.free(decoder_output);
+
+    const encoder_output = try outputEncoderForGenericStructure(allocator, s);
+    defer allocator.free(encoder_output);
+
+    const format =
+        \\type {s}<{s}> =
+        \\    {{
+        \\{s}
+        \\    }}
+        \\
+        \\{s}
+        \\
+        \\{s}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ s.name.value, joined_type_variables, fields, decoder_output, encoder_output },
+    );
+}
+
+fn openNamesAsFSharpTypeVariables(
+    allocator: *mem.Allocator,
+    open_names: []const []const u8,
+) ![]const []const u8 {
+    const type_variables = try allocator.alloc([]const u8, open_names.len);
+
+    for (type_variables) |*v, i| {
+        v.* = try makeFSharpTypeVariable(allocator, open_names[i]);
+    }
+
+    return type_variables;
+}
+
+fn makeFSharpTypeVariable(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+    const lowercased_name = try utilities.camelCaseWord(allocator, name);
+    defer allocator.free(lowercased_name);
+
+    return try fmt.allocPrint(allocator, "'{s}", .{lowercased_name});
 }
 
 fn outputPlainUnion(allocator: *mem.Allocator, s: PlainUnion) ![]const u8 {
@@ -1041,6 +1161,53 @@ test "outputs plain structure correctly" {
     const output = try outputPlainStructure(
         &allocator.allocator,
         (definitions).definitions[0].structure.plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "outputs generic structure correctly" {
+    var allocator = TestingAllocator{};
+
+    const expected_output =
+        \\type Node<'t, 'u> =
+        \\    {
+        \\        data: 't
+        \\        otherData: 'u
+        \\    }
+        \\
+        \\    static member Decoder decodeT decodeU: Decoder<Node<'t, 'u>> =
+        \\        Decode.object (fun get ->
+        \\            {
+        \\              data = get.Required.Field "data" decodeT
+        \\              otherData = get.Required.Field "otherData" decodeU
+        \\            }
+        \\        )
+        \\
+        \\    static member Encoder encodeT encodeU value =
+        \\        Encode.object
+        \\            [
+        \\                "data", encodeT value.data
+        \\                "otherData", encodeU value.otherData
+        \\            ]
+    ;
+
+    var parsing_error: ParsingError = undefined;
+
+    var definitions = try parser.parse(
+        &allocator.allocator,
+        &allocator.allocator,
+        type_examples.node_structure,
+        &parsing_error,
+    );
+
+    const output = try outputGenericStructure(
+        &allocator.allocator,
+        (definitions).definitions[0].structure.generic,
     );
 
     testing.expectEqualStrings(output, expected_output);
