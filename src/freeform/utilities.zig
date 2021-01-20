@@ -35,6 +35,15 @@ pub fn freeStringList(strings: ArrayList([]const u8)) void {
     strings.deinit();
 }
 
+pub fn freeStringArray(allocator: *mem.Allocator, strings: []const []const u8) void {
+    for (strings) |s| allocator.free(s);
+    allocator.free(strings);
+}
+
 pub fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
     return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toUpper(word[0]), word[1..] });
+}
+
+pub fn camelCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
+    return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toLower(word[0]), word[1..] });
 }

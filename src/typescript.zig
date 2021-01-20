@@ -8,6 +8,7 @@ const testing = std.testing;
 const ArrayList = std.ArrayList;
 
 const parser = @import("./freeform/parser.zig");
+const general = @import("./general.zig");
 const tokenizer = @import("./freeform/tokenizer.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 const utilities = @import("./freeform/utilities.zig");
@@ -1049,7 +1050,7 @@ fn predicatesFromConstructors(
     var predicate_list_outputs = ArrayList([]const u8).init(allocator);
 
     for (constructors) |constructor| {
-        const constructor_open_names = try openNamesFromType(
+        const constructor_open_names = try general.openNamesFromType(
             allocator,
             constructor.parameter,
             open_names,
@@ -1192,7 +1193,7 @@ fn validatorFromConstructor(
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
-    const constructor_open_names = try openNamesFromType(
+    const constructor_open_names = try general.openNamesFromType(
         allocator,
         constructor.parameter,
         open_names,
@@ -1832,7 +1833,7 @@ fn outputTypeGuardForConstructor(
 ) ![]const u8 {
     const tag = constructor.tag;
 
-    const constructor_open_names = try openNamesFromType(
+    const constructor_open_names = try general.openNamesFromType(
         allocator,
         constructor.parameter,
         open_names,
@@ -1941,7 +1942,7 @@ fn outputValidatorForConstructor(
 ) ![]const u8 {
     const tag = constructor.tag;
 
-    const constructor_open_names = try openNamesFromType(
+    const constructor_open_names = try general.openNamesFromType(
         allocator,
         constructor.parameter,
         open_names,
@@ -2513,72 +2514,12 @@ fn outputTaggedMaybeGenericStructure(
     );
 }
 
-fn openNamesFromType(
-    allocator: *mem.Allocator,
-    t: Type,
-    open_names: []const []const u8,
-) error{OutOfMemory}!ArrayList([]const u8) {
-    return switch (t) {
-        .pointer => |p| try openNamesFromType(allocator, p.@"type".*, open_names),
-        .array => |a| try openNamesFromType(allocator, a.@"type".*, open_names),
-        .slice => |s| try openNamesFromType(allocator, s.@"type".*, open_names),
-        .optional => |o| try openNamesFromType(allocator, o.@"type".*, open_names),
-
-        .applied_name => |applied| try commonOpenNames(allocator, open_names, applied.open_names),
-
-        .reference => |r| reference: {
-            var open_name_list = ArrayList([]const u8).init(allocator);
-
-            switch (r) {
-                .builtin => {},
-                .definition => |d| switch (d) {
-                    .structure => |s| switch (s) {
-                        .generic => |g| try open_name_list.appendSlice(g.open_names),
-                        .plain => {},
-                    },
-                    .@"union" => |u| switch (u) {
-                        .generic => |g| try open_name_list.appendSlice(g.open_names),
-                        .plain, .embedded => {},
-                    },
-                    .untagged_union, .import, .enumeration => {},
-                },
-                .loose => |l| try open_name_list.appendSlice(
-                    try allocator.dupe([]const u8, l.open_names),
-                ),
-                .open => |n| try open_name_list.append(try allocator.dupe(u8, n)),
-            }
-
-            break :reference open_name_list;
-        },
-
-        .string, .empty => ArrayList([]const u8).init(allocator),
-    };
-}
-
-fn commonOpenNames(
-    allocator: *mem.Allocator,
-    as: []const []const u8,
-    bs: []const []const u8,
-) !ArrayList([]const u8) {
-    var common_names = ArrayList([]const u8).init(allocator);
-
-    for (as) |a| {
-        for (bs) |b| {
-            if (mem.eql(u8, a, b) and !isTranslatedName(a)) {
-                try common_names.append(try allocator.dupe(u8, a));
-            }
-        }
-    }
-
-    return common_names;
-}
-
 fn outputOpenNamesFromType(
     allocator: *mem.Allocator,
     t: Type,
     open_names: []const []const u8,
 ) error{OutOfMemory}![]const u8 {
-    const type_open_names = try openNamesFromType(allocator, t, open_names);
+    const type_open_names = try general.openNamesFromType(allocator, t, open_names);
     defer utilities.freeStringList(type_open_names);
 
     const joined_open_names = try mem.join(allocator, ", ", type_open_names.items);
@@ -2688,7 +2629,7 @@ fn actualOpenNames(allocator: *mem.Allocator, names: []const []const u8) !ArrayL
     var open_names = ArrayList([]const u8).init(allocator);
 
     for (names) |name| {
-        if (!isTranslatedName(name)) try open_names.append(try allocator.dupe(u8, name));
+        if (!general.isTranslatedName(name)) try open_names.append(try allocator.dupe(u8, name));
     }
 
     return open_names;
@@ -2709,7 +2650,7 @@ fn outputOpenNames(allocator: *mem.Allocator, names: []const []const u8) ![]cons
 fn translateName(name: []const u8) []const u8 {
     return if (mem.eql(u8, name, "String"))
         "string"
-    else if (isNumberType(name))
+    else if (general.isNumberType(name))
         "number"
     else if (mem.eql(u8, name, "Boolean"))
         "boolean"
@@ -2749,33 +2690,10 @@ fn translateReference(reference: TypeReference) []const u8 {
     };
 }
 
-fn isNumberType(name: []const u8) bool {
-    return isStringEqualToOneOf(name, &[_][]const u8{
-        "U8",
-        "U16",
-        "U32",
-        "U64",
-        "U128",
-        "I8",
-        "I16",
-        "I32",
-        "I64",
-        "I128",
-        "F32",
-        "F64",
-        "F128",
-    });
-}
-
-fn isTranslatedName(name: []const u8) bool {
-    return isNumberType(name) or
-        isStringEqualToOneOf(name, &[_][]const u8{ "String", "Boolean" });
-}
-
 fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
     return if (mem.eql(u8, name, "String"))
         try allocator.dupe(u8, "svt.isString")
-    else if (isNumberType(name))
+    else if (general.isNumberType(name))
         try allocator.dupe(u8, "svt.isNumber")
     else if (mem.eql(u8, name, "Boolean"))
         try allocator.dupe(u8, "svt.isBoolean")
@@ -2812,7 +2730,7 @@ fn translatedTypeGuardReference(allocator: *mem.Allocator, reference: TypeRefere
 fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
     return if (mem.eql(u8, name, "String"))
         try allocator.dupe(u8, "svt.validateString")
-    else if (isNumberType(name))
+    else if (general.isNumberType(name))
         try allocator.dupe(u8, "svt.validateNumber")
     else if (mem.eql(u8, name, "Boolean"))
         try allocator.dupe(u8, "svt.validateBoolean")
@@ -2846,14 +2764,6 @@ fn translatedValidatorReference(allocator: *mem.Allocator, reference: TypeRefere
         .loose => |l| try fmt.allocPrint(allocator, format, .{l.name}),
         .open => |n| try fmt.allocPrint(allocator, format, .{n}),
     };
-}
-
-fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) bool {
-    for (compared_values) |compared_value| {
-        if (mem.eql(u8, value, compared_value)) return true;
-    }
-
-    return false;
 }
 
 test "Outputs `Person` struct correctly" {
