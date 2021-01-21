@@ -201,9 +201,6 @@ fn outputDecoderForField(
     f: Field,
     open_names: []const []const u8,
 ) ![]const u8 {
-    const decoder = try decoderForType(allocator, open_names, f.@"type");
-    defer allocator.free(decoder);
-
     const name = try maybeEscapeName(allocator, f.name);
     defer allocator.free(name);
 
@@ -211,8 +208,22 @@ fn outputDecoderForField(
     const format_for_optional = "              {s} = get.Optional.Field \"{s}\" {s}";
 
     return switch (f.@"type") {
-        .optional => try fmt.allocPrint(allocator, format_for_optional, .{ name, f.name, decoder }),
-        else => try fmt.allocPrint(allocator, format, .{ name, f.name, decoder }),
+        .optional => |o| output: {
+            const decoder_for_nested_type = try decoderForType(allocator, open_names, o.@"type".*);
+            defer allocator.free(decoder_for_nested_type);
+
+            break :output try fmt.allocPrint(
+                allocator,
+                format_for_optional,
+                .{ name, f.name, decoder_for_nested_type },
+            );
+        },
+        else => output: {
+            const decoder = try decoderForType(allocator, open_names, f.@"type");
+            defer allocator.free(decoder);
+
+            break :output try fmt.allocPrint(allocator, format, .{ name, f.name, decoder });
+        },
     };
 }
 
@@ -241,7 +252,16 @@ fn decoderForType(
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
-        .optional => |d| try decoderForType(allocator, parent_open_names, d.@"type".*),
+        .optional => |d| o: {
+            const nested_type_output = try decoderForType(
+                allocator,
+                parent_open_names,
+                d.@"type".*,
+            );
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(allocator, "(Decode.option {s})", .{nested_type_output});
+        },
         .applied_name => |d| o: {
             const open_name_decoders = try openNameDecoders(
                 allocator,
@@ -563,13 +583,18 @@ fn encoderForType(
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
-        .optional => |d| try encoderForType(
-            allocator,
-            field_name,
-            d.@"type".*,
-            value_name,
-            parent_open_names,
-        ),
+        .optional => |d| o: {
+            const nested_type_output = try encoderForType(
+                allocator,
+                field_name,
+                d.@"type".*,
+                value_name,
+                parent_open_names,
+            );
+            defer allocator.free(nested_type_output);
+
+            break :o try fmt.allocPrint(allocator, "(Encode.option {s})", .{nested_type_output});
+        },
         .applied_name => |d| o: {
             const open_name_encoders = try openNameEncoders(
                 allocator,
