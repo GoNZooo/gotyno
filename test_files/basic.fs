@@ -6,7 +6,7 @@ type Recruiter =
     static member Decoder: Decoder<Recruiter> =
         Decode.object (fun get ->
             {
-              name = get.Required.Field "name" Decode.string
+                name = get.Required.Field "name" Decode.string
             }
         )
 
@@ -58,14 +58,14 @@ type Person =
     static member Decoder: Decoder<Person> =
         Decode.object (fun get ->
             {
-              name = get.Required.Field "name" Decode.string
-              age = get.Required.Field "age" Decode.byte
-              efficiency = get.Required.Field "efficiency" Decode.float32
-              on_vacation = get.Required.Field "on_vacation" Decode.bool
-              hobbies = get.Required.Field "hobbies" (Decode.list Decode.string)
-              last_fifteen_comments = get.Required.Field "last_fifteen_comments" (Decode.list Decode.string)
-              recruiter = get.Required.Field "recruiter" Recruiter.Decoder
-              spouse = get.Required.Field "spouse" (Maybe.Decoder Person.Decoder)
+                name = get.Required.Field "name" Decode.string
+                age = get.Required.Field "age" Decode.byte
+                efficiency = get.Required.Field "efficiency" Decode.float32
+                on_vacation = get.Required.Field "on_vacation" Decode.bool
+                hobbies = get.Required.Field "hobbies" (Decode.list Decode.string)
+                last_fifteen_comments = get.Required.Field "last_fifteen_comments" (Decode.list Decode.string)
+                recruiter = get.Required.Field "recruiter" Recruiter.Decoder
+                spouse = get.Required.Field "spouse" (Maybe.Decoder Person.Decoder)
             }
         )
 
@@ -79,7 +79,7 @@ type Person =
                 "hobbies", GotynoCoders.encodeList Encode.string value.hobbies
                 "last_fifteen_comments", GotynoCoders.encodeList Encode.string value.last_fifteen_comments
                 "recruiter", Recruiter.Encoder value.recruiter
-                "spouse", (Maybe.Encoder Person.Encoder)
+                "spouse", (Maybe.Encoder Person.Encoder) value.spouse
             ]
 
 type LogInData =
@@ -91,8 +91,8 @@ type LogInData =
     static member Decoder: Decoder<LogInData> =
         Decode.object (fun get ->
             {
-              username = get.Required.Field "username" Decode.string
-              password = get.Required.Field "password" Decode.string
+                username = get.Required.Field "username" Decode.string
+                password = get.Required.Field "password" Decode.string
             }
         )
 
@@ -111,7 +111,7 @@ type UserId =
     static member Decoder: Decoder<UserId> =
         Decode.object (fun get ->
             {
-              value = get.Required.Field "value" Decode.string
+                value = get.Required.Field "value" Decode.string
             }
         )
 
@@ -130,8 +130,8 @@ type Channel =
     static member Decoder: Decoder<Channel> =
         Decode.object (fun get ->
             {
-              name = get.Required.Field "name" Decode.string
-              ``private`` = get.Required.Field "private" Decode.bool
+                name = get.Required.Field "name" Decode.string
+                ``private`` = get.Required.Field "private" Decode.bool
             }
         )
 
@@ -150,7 +150,7 @@ type Email =
     static member Decoder: Decoder<Email> =
         Decode.object (fun get ->
             {
-              value = get.Required.Field "value" Decode.string
+                value = get.Required.Field "value" Decode.string
             }
         )
 
@@ -279,10 +279,10 @@ type ImageConfigurationData =
     static member Decoder: Decoder<ImageConfigurationData> =
         Decode.object (fun get ->
             {
-              base_url = get.Required.Field "base_url" Decode.string
-              secure_base_url = get.Required.Field "secure_base_url" Decode.string
-              still_sizes = get.Required.Field "still_sizes" (Decode.list StillSize.Decoder)
-              backdrop_sizes = get.Required.Field "backdrop_sizes" (Decode.list BackdropSize.Decoder)
+                base_url = get.Required.Field "base_url" Decode.string
+                secure_base_url = get.Required.Field "secure_base_url" Decode.string
+                still_sizes = get.Required.Field "still_sizes" (Decode.list StillSize.Decoder)
+                backdrop_sizes = get.Required.Field "backdrop_sizes" (Decode.list BackdropSize.Decoder)
             }
         )
 
@@ -304,8 +304,8 @@ type ConfigurationData =
     static member Decoder: Decoder<ConfigurationData> =
         Decode.object (fun get ->
             {
-              images = get.Required.Field "images" ImageConfigurationData.Decoder
-              change_keys = get.Required.Field "change_keys" (Decode.list Decode.string)
+                images = get.Required.Field "images" ImageConfigurationData.Decoder
+                change_keys = get.Required.Field "change_keys" (Decode.list Decode.string)
             }
         )
 
@@ -330,13 +330,13 @@ type KnownForMovie =
     static member Decoder: Decoder<KnownForMovie> =
         Decode.object (fun get ->
             {
-              media_type = get.Required.Field "media_type" (GotynoCoders.decodeLiteralString "movie")
-              poster_path = get.Optional.Field "poster_path" Decode.string
-              id = get.Required.Field "id" Decode.uint32
-              title = get.Optional.Field "title" Decode.string
-              vote_average = get.Required.Field "vote_average" Decode.float32
-              release_date = get.Optional.Field "release_date" Decode.string
-              overview = get.Required.Field "overview" Decode.string
+                media_type = get.Required.Field "media_type" (GotynoCoders.decodeLiteralString "movie")
+                poster_path = get.Optional.Field "poster_path" Decode.string
+                id = get.Required.Field "id" Decode.uint32
+                title = get.Optional.Field "title" Decode.string
+                vote_average = get.Required.Field "vote_average" Decode.float32
+                release_date = get.Optional.Field "release_date" Decode.string
+                overview = get.Required.Field "overview" Decode.string
             }
         )
 
@@ -366,13 +366,13 @@ type KnownForShow =
     static member Decoder: Decoder<KnownForShow> =
         Decode.object (fun get ->
             {
-              media_type = get.Required.Field "media_type" (GotynoCoders.decodeLiteralString "tv")
-              poster_path = get.Optional.Field "poster_path" Decode.string
-              id = get.Required.Field "id" Decode.uint32
-              vote_average = get.Required.Field "vote_average" Decode.float32
-              overview = get.Required.Field "overview" Decode.string
-              first_air_date = get.Optional.Field "first_air_date" Decode.string
-              name = get.Optional.Field "name" Decode.string
+                media_type = get.Required.Field "media_type" (GotynoCoders.decodeLiteralString "tv")
+                poster_path = get.Optional.Field "poster_path" Decode.string
+                id = get.Required.Field "id" Decode.uint32
+                vote_average = get.Required.Field "vote_average" Decode.float32
+                overview = get.Required.Field "overview" Decode.string
+                first_air_date = get.Optional.Field "first_air_date" Decode.string
+                name = get.Optional.Field "name" Decode.string
             }
         )
 
@@ -394,14 +394,26 @@ type KnownFor =
     | KnownForString of string
     | KnownForF32 of float32
 
+    static member KnownForKnownForShowDecoder: Decoder<KnownFor> =
+        Decode.map KnownForKnownForShow KnownForShow.Decoder
+
+    static member KnownForKnownForMovieDecoder: Decoder<KnownFor> =
+        Decode.map KnownForKnownForMovie KnownForMovie.Decoder
+
+    static member KnownForStringDecoder: Decoder<KnownFor> =
+        Decode.map KnownForString Decode.string
+
+    static member KnownForF32Decoder: Decoder<KnownFor> =
+        Decode.map KnownForF32 Decode.float32
+
     static member Decoder: Decoder<KnownFor> =
-        GotynoCoders.decodeIntoOneOf
-        [|
-            KnownForShow.Decoder, KnownForKnownForShow
-            KnownForMovie.Decoder, KnownForKnownForMovie
-            Decode.string, KnownForString
-            Decode.float32, KnownForF32
-        |]
+        Decode.oneOf
+            [
+                KnownFor.KnownForKnownForShowDecoder
+                KnownFor.KnownForKnownForMovieDecoder
+                KnownFor.KnownForStringDecoder
+                KnownFor.KnownForF32Decoder
+            ]
 
     static member Encoder =
         function
@@ -430,12 +442,12 @@ type KnownForMovieWithoutTypeTag =
     static member Decoder: Decoder<KnownForMovieWithoutTypeTag> =
         Decode.object (fun get ->
             {
-              poster_path = get.Optional.Field "poster_path" Decode.string
-              id = get.Required.Field "id" Decode.uint32
-              title = get.Optional.Field "title" Decode.string
-              vote_average = get.Required.Field "vote_average" Decode.float32
-              release_date = get.Optional.Field "release_date" Decode.string
-              overview = get.Required.Field "overview" Decode.string
+                poster_path = get.Optional.Field "poster_path" Decode.string
+                id = get.Required.Field "id" Decode.uint32
+                title = get.Optional.Field "title" Decode.string
+                vote_average = get.Required.Field "vote_average" Decode.float32
+                release_date = get.Optional.Field "release_date" Decode.string
+                overview = get.Required.Field "overview" Decode.string
             }
         )
 
@@ -463,12 +475,12 @@ type KnownForShowWithoutTypeTag =
     static member Decoder: Decoder<KnownForShowWithoutTypeTag> =
         Decode.object (fun get ->
             {
-              poster_path = get.Optional.Field "poster_path" Decode.string
-              id = get.Required.Field "id" Decode.uint32
-              vote_average = get.Required.Field "vote_average" Decode.float32
-              overview = get.Required.Field "overview" Decode.string
-              first_air_date = get.Optional.Field "first_air_date" Decode.string
-              name = get.Optional.Field "name" Decode.string
+                poster_path = get.Optional.Field "poster_path" Decode.string
+                id = get.Required.Field "id" Decode.uint32
+                vote_average = get.Required.Field "vote_average" Decode.float32
+                overview = get.Required.Field "overview" Decode.string
+                first_air_date = get.Optional.Field "first_air_date" Decode.string
+                name = get.Optional.Field "name" Decode.string
             }
         )
 
@@ -487,12 +499,36 @@ type KnownForEmbedded =
     | Movie of KnownForMovieWithoutTypeTag
     | TV of KnownForShowWithoutTypeTag
 
+    static member MovieDecoder: Decoder<KnownForEmbedded> =
+        Decode.object (fun get ->
+            Movie {
+                poster_path = get.Optional.Field "poster_path" Decode.string
+                id = get.Required.Field "id" Decode.uint32
+                title = get.Optional.Field "title" Decode.string
+                vote_average = get.Required.Field "vote_average" Decode.float32
+                release_date = get.Optional.Field "release_date" Decode.string
+                overview = get.Required.Field "overview" Decode.string
+            }
+        )
+
+    static member TVDecoder: Decoder<KnownForEmbedded> =
+        Decode.object (fun get ->
+            TV {
+                poster_path = get.Optional.Field "poster_path" Decode.string
+                id = get.Required.Field "id" Decode.uint32
+                vote_average = get.Required.Field "vote_average" Decode.float32
+                overview = get.Required.Field "overview" Decode.string
+                first_air_date = get.Optional.Field "first_air_date" Decode.string
+                name = get.Optional.Field "name" Decode.string
+            }
+        )
+
     static member Decoder: Decoder<KnownForEmbedded> =
         GotynoCoders.decodeWithTypeTag
             "media_type"
             [|
-                "Movie", KnownForMovieWithoutTypeTag.Decoder
-                "TV", KnownForShowWithoutTypeTag.Decoder
+                "Movie", KnownForEmbedded.MovieDecoder
+                "TV", KnownForEmbedded.TVDecoder
             |]
 
     static member Encoder =
