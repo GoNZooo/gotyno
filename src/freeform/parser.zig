@@ -162,6 +162,10 @@ pub const UntaggedUnionValue = union(enum) {
 
     reference: TypeReference,
 
+    pub fn toString(self: Self, allocator: *mem.Allocator) ![]const u8 {
+        return try self.reference.toString(allocator);
+    }
+
     pub fn free(self: Self, allocator: *mem.Allocator) void {
         self.reference.free(allocator);
     }
@@ -415,6 +419,15 @@ pub const TypeReference = union(enum) {
     definition: Definition,
     loose: LooseReference,
     open: []const u8,
+
+    pub fn toString(self: Self, allocator: *mem.Allocator) ![]const u8 {
+        return switch (self) {
+            .builtin => |b| try allocator.dupe(u8, b.toString()),
+            .definition => |d| try allocator.dupe(u8, d.name().value),
+            .loose => |l| try allocator.dupe(u8, l.name),
+            .open => |o| try allocator.dupe(u8, o),
+        };
+    }
 
     pub fn free(self: Self, allocator: *mem.Allocator) void {
         switch (self) {
