@@ -121,7 +121,7 @@ fn outputStructureFields(
 }
 
 fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
-    var decoder_output = try outputDecodersForFields(allocator, s.fields, &[_][]const u8{});
+    var decoder_output = try outputDecodersForFields(allocator, s.fields, &[_][]const u8{}, 16);
     defer allocator.free(decoder_output);
 
     const format =
@@ -140,12 +140,13 @@ fn outputDecodersForFields(
     allocator: *mem.Allocator,
     fields: []const Field,
     open_names: []const []const u8,
+    comptime indentation_size: u32,
 ) ![]const u8 {
     var decoder_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, decoder_outputs);
 
     for (decoder_outputs) |*o, i| {
-        o.* = try outputDecoderForField(allocator, fields[i], open_names);
+        o.* = try outputDecoderForField(allocator, fields[i], open_names, indentation_size);
     }
 
     return try mem.join(allocator, "\n", decoder_outputs);
@@ -168,7 +169,7 @@ fn outputDecoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructu
     }
 
     for (s.fields) |f| {
-        try decoder_outputs.append(try outputDecoderForField(allocator, f, s.open_names));
+        try decoder_outputs.append(try outputDecoderForField(allocator, f, s.open_names, 16));
     }
 
     const decoders_output = try mem.join(allocator, "\n", decoder_outputs.items);
@@ -208,12 +209,14 @@ fn outputDecoderForField(
     allocator: *mem.Allocator,
     f: Field,
     open_names: []const []const u8,
+    comptime indentation_size: u32,
 ) ![]const u8 {
     const name = try maybeEscapeName(allocator, f.name);
     defer allocator.free(name);
+    const indentation = [_]u8{' '} ** indentation_size;
 
-    const format = "              {s} = get.Required.Field \"{s}\" {s}";
-    const format_for_optional = "              {s} = get.Optional.Field \"{s}\" {s}";
+    const format = "{s}{s} = get.Required.Field \"{s}\" {s}";
+    const format_for_optional = "{s}{s} = get.Optional.Field \"{s}\" {s}";
 
     return switch (f.@"type") {
         .optional => |o| output: {
@@ -223,14 +226,18 @@ fn outputDecoderForField(
             break :output try fmt.allocPrint(
                 allocator,
                 format_for_optional,
-                .{ name, f.name, decoder_for_nested_type },
+                .{ indentation, name, f.name, decoder_for_nested_type },
             );
         },
         else => output: {
             const decoder = try decoderForType(allocator, open_names, f.@"type");
             defer allocator.free(decoder);
 
-            break :output try fmt.allocPrint(allocator, format, .{ name, f.name, decoder });
+            break :output try fmt.allocPrint(
+                allocator,
+                format,
+                .{ indentation, name, f.name, decoder },
+            );
         },
     };
 }
@@ -1512,7 +1519,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
                 .{ titlecased_tag, joined_field_encoders },
             ));
 
-            const field_decoders = try outputDecodersForFields(allocator, fields, s.open_names);
+            const field_decoders = try outputDecodersForFields(allocator, fields, s.open_names, 16);
             defer allocator.free(field_decoders);
 
             const constructor_decoder_format =
@@ -1772,7 +1779,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
 
         p.* = try fmt.allocPrint(
             allocator,
-            "            {s}, {s}",
+            "                {s}, {s}",
             .{ type_reference_decoder, constructor_names[i] },
         );
     }
@@ -1859,14 +1866,14 @@ test "outputs plain structure correctly" {
         \\    static member Decoder: Decoder<Person> =
         \\        Decode.object (fun get ->
         \\            {
-        \\              ``type`` = get.Required.Field "type" (GotynoCoders.decodeLiteralString "Person")
-        \\              name = get.Required.Field "name" Decode.string
-        \\              age = get.Required.Field "age" Decode.byte
-        \\              efficiency = get.Required.Field "efficiency" Decode.float32
-        \\              on_vacation = get.Required.Field "on_vacation" Decode.bool
-        \\              hobbies = get.Required.Field "hobbies" (Decode.list Decode.string)
-        \\              last_fifteen_comments = get.Required.Field "last_fifteen_comments" (Decode.list Decode.string)
-        \\              recruiter = get.Required.Field "recruiter" Person.Decoder
+        \\                ``type`` = get.Required.Field "type" (GotynoCoders.decodeLiteralString "Person")
+        \\                name = get.Required.Field "name" Decode.string
+        \\                age = get.Required.Field "age" Decode.byte
+        \\                efficiency = get.Required.Field "efficiency" Decode.float32
+        \\                on_vacation = get.Required.Field "on_vacation" Decode.bool
+        \\                hobbies = get.Required.Field "hobbies" (Decode.list Decode.string)
+        \\                last_fifteen_comments = get.Required.Field "last_fifteen_comments" (Decode.list Decode.string)
+        \\                recruiter = get.Required.Field "recruiter" Person.Decoder
         \\            }
         \\        )
         \\
@@ -1918,8 +1925,8 @@ test "outputs generic structure correctly" {
         \\    static member Decoder decodeT decodeU: Decoder<Node<'t, 'u>> =
         \\        Decode.object (fun get ->
         \\            {
-        \\              data = get.Required.Field "data" decodeT
-        \\              otherData = get.Required.Field "otherData" decodeU
+        \\                data = get.Required.Field "data" decodeT
+        \\                otherData = get.Required.Field "otherData" decodeU
         \\            }
         \\        )
         \\
@@ -2229,15 +2236,15 @@ test "Union with embedded tag is output correctly" {
         \\    static member WithOneDecoder: Decoder<Embedded> =
         \\        Decode.object (fun get ->
         \\            WithOne {
-        \\              field1 = get.Required.Field "field1" Decode.string
+        \\                field1 = get.Required.Field "field1" Decode.string
         \\            }
         \\        )
         \\
         \\    static member WithTwoDecoder: Decoder<Embedded> =
         \\        Decode.object (fun get ->
         \\            WithTwo {
-        \\              field2 = get.Required.Field "field2" Decode.float32
-        \\              field3 = get.Required.Field "field3" Decode.bool
+        \\                field2 = get.Required.Field "field2" Decode.float32
+        \\                field3 = get.Required.Field "field3" Decode.bool
         \\            }
         \\        )
         \\
@@ -2323,15 +2330,15 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
         \\    static member WithOneDecoder: Decoder<Embedded> =
         \\        Decode.object (fun get ->
         \\            WithOne {
-        \\              field1 = get.Required.Field "field1" Decode.string
+        \\                field1 = get.Required.Field "field1" Decode.string
         \\            }
         \\        )
         \\
         \\    static member WithTwoDecoder: Decoder<Embedded> =
         \\        Decode.object (fun get ->
         \\            WithTwo {
-        \\              field2 = get.Required.Field "field2" Decode.float32
-        \\              field3 = get.Required.Field "field3" Decode.bool
+        \\                field2 = get.Required.Field "field2" Decode.float32
+        \\                field3 = get.Required.Field "field3" Decode.bool
         \\            }
         \\        )
         \\
