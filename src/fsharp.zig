@@ -1725,9 +1725,9 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     const decoder_format =
         \\    static member Decoder: Decoder<{s}> =
         \\        GotynoCoders.decodeIntoOneOf
-        \\        [|
+        \\            [|
         \\{s}
-        \\        |]
+        \\            |]
     ;
 
     const decoder_output = try fmt.allocPrint(allocator, decoder_format, .{ u.name.value, joined_decoder_pairs });
@@ -2526,12 +2526,12 @@ test "Basic untagged union is output correctly" {
         \\
         \\    static member Decoder: Decoder<KnownFor> =
         \\        GotynoCoders.decodeIntoOneOf
-        \\        [|
-        \\            KnownForMovie.Decoder, KnownForKnownForMovie
-        \\            KnownForShow.Decoder, KnownForKnownForShow
-        \\            Decode.string, KnownForString
-        \\            Decode.float32, KnownForF32
-        \\        |]
+        \\            [|
+        \\                KnownForMovie.Decoder, KnownForKnownForMovie
+        \\                KnownForShow.Decoder, KnownForKnownForShow
+        \\                Decode.string, KnownForString
+        \\                Decode.float32, KnownForF32
+        \\            |]
         \\
         \\    static member Encoder =
         \\        function
