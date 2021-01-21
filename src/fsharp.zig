@@ -121,15 +121,8 @@ fn outputStructureFields(
 }
 
 fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
-    var decoder_outputs = ArrayList([]const u8).init(allocator);
-    defer utilities.freeStringList(decoder_outputs);
-
-    for (s.fields) |f| {
-        try decoder_outputs.append(try outputDecoderForField(allocator, f, &[_][]const u8{}));
-    }
-
-    const decoders_output = try mem.join(allocator, "\n", decoder_outputs.items);
-    defer allocator.free(decoders_output);
+    var decoder_output = try outputDecodersForFields(allocator, s.fields, &[_][]const u8{});
+    defer allocator.free(decoder_output);
 
     const format =
         \\    static member Decoder: Decoder<{s}> =
@@ -140,7 +133,22 @@ fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
         \\        )
     ;
 
-    return try fmt.allocPrint(allocator, format, .{ s.name.value, decoders_output });
+    return try fmt.allocPrint(allocator, format, .{ s.name.value, decoder_output });
+}
+
+fn outputDecodersForFields(
+    allocator: *mem.Allocator,
+    fields: []const Field,
+    open_names: []const []const u8,
+) ![]const u8 {
+    var decoder_outputs = try allocator.alloc([]const u8, fields.len);
+    defer utilities.freeStringArray(allocator, decoder_outputs);
+
+    for (decoder_outputs) |*o, i| {
+        o.* = try outputDecoderForField(allocator, fields[i], open_names);
+    }
+
+    return try mem.join(allocator, "\n", decoder_outputs);
 }
 
 fn outputDecoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]const u8 {
@@ -605,11 +613,24 @@ fn encoderForType(
             const joined_open_name_encoders = try mem.join(allocator, " ", open_name_encoders.items);
             defer allocator.free(joined_open_name_encoders);
 
-            break :o try fmt.allocPrint(
+            const encoder = try fmt.allocPrint(
                 allocator,
                 applied_name_format,
                 .{ d.reference.name(), joined_open_name_encoders },
             );
+
+            if (value_name != null and field_name != null) {
+                defer allocator.free(encoder);
+                const escaped_field_name = try maybeEscapeName(allocator, field_name.?);
+                defer allocator.free(escaped_field_name);
+
+                break :o try fmt.allocPrint(
+                    allocator,
+                    "{s} {s}.{s}",
+                    .{ encoder, value_name.?, escaped_field_name },
+                );
+            } else
+                break :o encoder;
         },
         .empty => debug.panic("Structure field cannot be empty\n", .{}),
     };
@@ -1429,7 +1450,10 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     var constructor_encoders = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(constructor_encoders);
 
-    for (s.constructors) |c| {
+    var constructor_decoders = try allocator.alloc([]const u8, s.constructors.len);
+    defer utilities.freeStringArray(allocator, constructor_decoders);
+
+    for (s.constructors) |c, i| {
         const format_with_payload = "    | {s} of {s}";
         const format_without_payload = "    | {s}";
         const titlecased_tag = try utilities.titleCaseWord(allocator, c.tag);
@@ -1439,7 +1463,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
             const parameter_name = p.name().value;
 
             const tag_decoder_pair_indentation = "                ";
-            const tag_decoder_pair_format = "{s}\"{s}\", {s}.Decoder";
+            const tag_decoder_pair_format = "{s}\"{s}\", {s}.{s}Decoder";
 
             var fields_with_type_field = ArrayList(Field).init(allocator);
             defer fields_with_type_field.deinit();
@@ -1479,7 +1503,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
             try tag_decoder_pairs.append(try fmt.allocPrint(
                 allocator,
                 tag_decoder_pair_format,
-                .{ tag_decoder_pair_indentation, c.tag, parameter_name },
+                .{ tag_decoder_pair_indentation, c.tag, s.name.value, titlecased_tag },
             ));
 
             try constructor_encoders.append(try fmt.allocPrint(
@@ -1487,9 +1511,27 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
                 constructor_encoder_format,
                 .{ titlecased_tag, joined_field_encoders },
             ));
+
+            const field_decoders = try outputDecodersForFields(allocator, fields, s.open_names);
+            defer allocator.free(field_decoders);
+
+            const constructor_decoder_format =
+                \\    static member {s}Decoder: Decoder<{s}> =
+                \\        Decode.object (fun get ->
+                \\            {s} {{
+                \\{s}
+                \\            }}
+                \\        )
+            ;
+
+            constructor_decoders[i] = try fmt.allocPrint(
+                allocator,
+                constructor_decoder_format,
+                .{ titlecased_tag, s.name.value, titlecased_tag, field_decoders },
+            );
         } else {
             const tag_decoder_pair_indentation = "                ";
-            const tag_decoder_pair_format = "{s}\"{s}\", Decode.succeed";
+            const tag_decoder_pair_format = "{s}\"{s}\", {s}.{s}Decoder";
 
             const constructor_encoder_format =
                 \\        | {s} ->
@@ -1505,7 +1547,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
             try tag_decoder_pairs.append(try fmt.allocPrint(
                 allocator,
                 tag_decoder_pair_format,
-                .{ tag_decoder_pair_indentation, c.tag },
+                .{ tag_decoder_pair_indentation, c.tag, s.name.value, titlecased_tag },
             ));
 
             try constructor_encoders.append(try fmt.allocPrint(
@@ -1513,6 +1555,17 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
                 constructor_encoder_format,
                 .{ titlecased_tag, s.tag_field, c.tag },
             ));
+
+            const constructor_decoder_format =
+                \\    static member {s}Decoder: Decoder<{s}> =
+                \\        Decode.succeed {s}
+            ;
+
+            constructor_decoders[i] = try fmt.allocPrint(
+                allocator,
+                constructor_decoder_format,
+                .{ titlecased_tag, s.name.value, titlecased_tag },
+            );
         }
     }
 
@@ -1522,7 +1575,12 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     const joined_tag_decoder_pairs = try mem.join(allocator, "\n", tag_decoder_pairs.items);
     defer allocator.free(joined_tag_decoder_pairs);
 
+    const joined_constructor_decoders = try mem.join(allocator, "\n\n", constructor_decoders);
+    defer allocator.free(joined_constructor_decoders);
+
     const decoder_format =
+        \\{s}
+        \\
         \\    static member Decoder: Decoder<{s}> =
         \\        GotynoCoders.decodeWithTypeTag
         \\            "{s}"
@@ -1533,7 +1591,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     const decoder_output = try fmt.allocPrint(
         allocator,
         decoder_format,
-        .{ s.name.value, s.tag_field, joined_tag_decoder_pairs },
+        .{ joined_constructor_decoders, s.name.value, s.tag_field, joined_tag_decoder_pairs },
     );
     defer allocator.free(decoder_output);
 
@@ -2168,13 +2226,31 @@ test "Union with embedded tag is output correctly" {
         \\    | WithTwo of Two
         \\    | Empty
         \\
+        \\    static member WithOneDecoder: Decoder<Embedded> =
+        \\        Decode.object (fun get ->
+        \\            WithOne {
+        \\              field1 = get.Required.Field "field1" Decode.string
+        \\            }
+        \\        )
+        \\
+        \\    static member WithTwoDecoder: Decoder<Embedded> =
+        \\        Decode.object (fun get ->
+        \\            WithTwo {
+        \\              field2 = get.Required.Field "field2" Decode.float32
+        \\              field3 = get.Required.Field "field3" Decode.bool
+        \\            }
+        \\        )
+        \\
+        \\    static member EmptyDecoder: Decoder<Embedded> =
+        \\        Decode.succeed Empty
+        \\
         \\    static member Decoder: Decoder<Embedded> =
         \\        GotynoCoders.decodeWithTypeTag
         \\            "media_type"
         \\            [|
-        \\                "WithOne", One.Decoder
-        \\                "WithTwo", Two.Decoder
-        \\                "Empty", Decode.succeed
+        \\                "WithOne", Embedded.WithOneDecoder
+        \\                "WithTwo", Embedded.WithTwoDecoder
+        \\                "Empty", Embedded.EmptyDecoder
         \\            |]
         \\
         \\    static member Encoder =
@@ -2244,13 +2320,31 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
         \\    | WithTwo of Two
         \\    | Empty
         \\
+        \\    static member WithOneDecoder: Decoder<Embedded> =
+        \\        Decode.object (fun get ->
+        \\            WithOne {
+        \\              field1 = get.Required.Field "field1" Decode.string
+        \\            }
+        \\        )
+        \\
+        \\    static member WithTwoDecoder: Decoder<Embedded> =
+        \\        Decode.object (fun get ->
+        \\            WithTwo {
+        \\              field2 = get.Required.Field "field2" Decode.float32
+        \\              field3 = get.Required.Field "field3" Decode.bool
+        \\            }
+        \\        )
+        \\
+        \\    static member EmptyDecoder: Decoder<Embedded> =
+        \\        Decode.succeed Empty
+        \\
         \\    static member Decoder: Decoder<Embedded> =
         \\        GotynoCoders.decodeWithTypeTag
         \\            "media_type"
         \\            [|
-        \\                "withOne", One.Decoder
-        \\                "withTwo", Two.Decoder
-        \\                "empty", Decode.succeed
+        \\                "withOne", Embedded.WithOneDecoder
+        \\                "withTwo", Embedded.WithTwoDecoder
+        \\                "empty", Embedded.EmptyDecoder
         \\            |]
         \\
         \\    static member Encoder =
