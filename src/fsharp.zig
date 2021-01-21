@@ -1405,7 +1405,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     defer utilities.freeStringList(constructor_encoders);
 
     for (s.constructors) |c| {
-        const format_with_payload = "    | {s} {s}";
+        const format_with_payload = "    | {s} of {s}";
         const format_without_payload = "    | {s}";
         const titlecased_tag = try utilities.titleCaseWord(allocator, c.tag);
         defer allocator.free(titlecased_tag);
@@ -2139,8 +2139,8 @@ test "Union with embedded tag is output correctly" {
 
     const expected_output =
         \\type Embedded =
-        \\    | WithOne One
-        \\    | WithTwo Two
+        \\    | WithOne of One
+        \\    | WithTwo of Two
         \\    | Empty
         \\
         \\    static member Decoder: Decoder<Embedded> =
@@ -2215,8 +2215,8 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
 
     const expected_output =
         \\type Embedded =
-        \\    | WithOne One
-        \\    | WithTwo Two
+        \\    | WithOne of One
+        \\    | WithTwo of Two
         \\    | Empty
         \\
         \\    static member Decoder: Decoder<Embedded> =
