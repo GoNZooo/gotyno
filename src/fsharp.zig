@@ -1360,8 +1360,104 @@ fn outputEnumeration(allocator: *mem.Allocator, e: Enumeration) ![]const u8 {
     );
 }
 
-fn outputUntaggedUnion(allocator: *mem.Allocator, s: UntaggedUnion) ![]const u8 {
-    return try allocator.dupe(u8, "");
+fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+    var constructors = try allocator.alloc([]const u8, u.values.len);
+    defer utilities.freeStringArray(allocator, constructors);
+
+    var constructor_names = try allocator.alloc([]const u8, u.values.len);
+    defer utilities.freeStringArray(allocator, constructor_names);
+    for (constructor_names) |*n, i| {
+        const value_type_name = try u.values[i].toString(allocator);
+        defer allocator.free(value_type_name);
+
+        n.* = try fmt.allocPrint(allocator, "{s}{s}", .{ u.name.value, value_type_name });
+    }
+
+    for (constructors) |*c, i| {
+        const value_type = try outputTypeReference(allocator, u.values[i].reference);
+        defer allocator.free(value_type);
+
+        c.* = try fmt.allocPrint(
+            allocator,
+            "    | {s} of {s}",
+            .{ constructor_names[i], value_type },
+        );
+    }
+
+    const joined_constructors = try mem.join(allocator, "\n", constructors);
+    defer allocator.free(joined_constructors);
+
+    var decoder_pairs = try allocator.alloc([]const u8, u.values.len);
+    defer utilities.freeStringArray(allocator, decoder_pairs);
+
+    for (decoder_pairs) |*p, i| {
+        const type_reference_decoder = try decoderForTypeReference(allocator, u.values[i].reference);
+        defer allocator.free(type_reference_decoder);
+
+        p.* = try fmt.allocPrint(
+            allocator,
+            "            {s}, {s}",
+            .{ type_reference_decoder, constructor_names[i] },
+        );
+    }
+
+    const joined_decoder_pairs = try mem.join(allocator, "\n", decoder_pairs);
+    defer allocator.free(joined_decoder_pairs);
+
+    const decoder_format =
+        \\    static member Decoder: Decoder<{s}> =
+        \\        GotynoCoders.decodeIntoOneOf
+        \\        [|
+        \\{s}
+        \\        |]
+    ;
+
+    const decoder_output = try fmt.allocPrint(allocator, decoder_format, .{ u.name.value, joined_decoder_pairs });
+    defer allocator.free(decoder_output);
+
+    var constructor_encoders = try allocator.alloc([]const u8, u.values.len);
+    defer utilities.freeStringArray(allocator, constructor_encoders);
+
+    const constructor_encoder_format =
+        \\        | {s} payload ->
+        \\            {s} payload
+    ;
+
+    for (constructor_encoders) |*e, i| {
+        const reference_encoder = try encoderForTypeReference(allocator, u.values[i].reference);
+        defer allocator.free(reference_encoder);
+        e.* = try fmt.allocPrint(
+            allocator,
+            constructor_encoder_format,
+            .{ constructor_names[i], reference_encoder },
+        );
+    }
+
+    const joined_constructor_encoders = try mem.join(allocator, "\n\n", constructor_encoders);
+    defer allocator.free(joined_constructor_encoders);
+
+    const encoder_format =
+        \\    static member Encoder =
+        \\        function
+        \\{s}
+    ;
+    const encoder_output = try fmt.allocPrint(allocator, encoder_format, .{joined_constructor_encoders});
+    defer allocator.free(encoder_output);
+
+    const format =
+        \\type {s} =
+        \\{s}
+        \\
+        \\{s}
+        \\
+        \\{s}
+    ;
+
+    return try fmt.allocPrint(
+        allocator,
+        format,
+        .{ u.name.value, joined_constructors, decoder_output, encoder_output },
+    );
 }
 
 fn outputImport(allocator: *mem.Allocator, s: Import) ![]const u8 {
@@ -1668,32 +1764,6 @@ test "outputs plain union with lowercased constructors correctly" {
     testing_utilities.expectNoLeaks(&allocator);
 }
 
-// \\    static member LogInDecoder: Decoder<Event> =
-// \\        Decode.object (fun get -> LogIn(get.Required.Field "data" LogInData.Decoder))
-// \\
-// \\    static member LogOutDecoder: Decoder<Event> =
-// \\        Decode.object (fun get -> LogOut(get.Required.Field "data" UserId.Decoder))
-// \\
-// \\    static member JoinChannelsDecoder: Decoder<Event> =
-// \\        Decode.object (fun get -> JoinChannels(get.Required.Field "data" (Decode.list Channel.Decoder)))
-// \\
-// \\    static member SetEmailsDecoder: Decoder<Event> =
-// \\        Decode.object (fun get -> SetEmails(get.Required.Field "data" (Decode.list Email.Decoder)))
-// \\
-// \\    static member CloseDecoder: Decoder<Event> =
-// \\        Decode.succeed Close
-// \\
-// \\    static member Decoder: Decoder<Event> =
-// \\        GotynoCoders.decodeWithTypeTag
-// \\            "type"
-// \\            [|
-// \\                "LogIn", Event.LogInDecoder
-// \\                "LogOut", Event.LogOutDecoder
-// \\                "JoinChannels", Event.JoinChannelsDecoder
-// \\                "SetEmails", Event.SetEmailsDecoder
-// \\                "Close", Event.CloseDecoder
-// \\            |]
-// \\
 test "outputs Maybe union correctly" {
     var allocator = TestingAllocator{};
 
@@ -2038,6 +2108,77 @@ test "Enumeration with integer values is output correctly" {
     const output = try outputEnumeration(
         &allocator.allocator,
         definitions.definitions[0].enumeration,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Basic untagged union is output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct KnownForShow {
+        \\    f: String
+        \\}
+        \\
+        \\struct KnownForMovie {
+        \\    f: U32
+        \\}
+        \\
+        \\untagged union KnownFor {
+        \\    KnownForMovie
+        \\    KnownForShow
+        \\    String
+        \\    F32
+        \\}
+    ;
+
+    const expected_output =
+        \\type KnownFor =
+        \\    | KnownForKnownForMovie of KnownForMovie
+        \\    | KnownForKnownForShow of KnownForShow
+        \\    | KnownForString of string
+        \\    | KnownForF32 of float32
+        \\
+        \\    static member Decoder: Decoder<KnownFor> =
+        \\        GotynoCoders.decodeIntoOneOf
+        \\        [|
+        \\            KnownForMovie.Decoder, KnownForKnownForMovie
+        \\            KnownForShow.Decoder, KnownForKnownForShow
+        \\            Decode.string, KnownForString
+        \\            Decode.float32, KnownForF32
+        \\        |]
+        \\
+        \\    static member Encoder =
+        \\        function
+        \\        | KnownForKnownForMovie payload ->
+        \\            KnownForMovie.Encoder payload
+        \\
+        \\        | KnownForKnownForShow payload ->
+        \\            KnownForShow.Encoder payload
+        \\
+        \\        | KnownForString payload ->
+        \\            Encode.string payload
+        \\
+        \\        | KnownForF32 payload ->
+        \\            Encode.float32 payload
+    ;
+
+    var parsing_error: ParsingError = undefined;
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        definition_buffer,
+        &parsing_error,
+    );
+
+    const output = try outputUntaggedUnion(
+        &allocator.allocator,
+        definitions.definitions[2].untagged_union,
     );
 
     testing.expectEqualStrings(output, expected_output);
