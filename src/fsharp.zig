@@ -1749,57 +1749,80 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
 
     var constructor_names = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, constructor_names);
+
+    var constructor_decoders = try allocator.alloc([]const u8, u.values.len);
+    defer utilities.freeStringArray(allocator, constructor_decoders);
+
+    var constructor_decoder_one_of_entries = try allocator.alloc([]const u8, u.values.len);
+    defer utilities.freeStringArray(allocator, constructor_decoder_one_of_entries);
+
+    var constructor_encoders = try allocator.alloc([]const u8, u.values.len);
+    defer utilities.freeStringArray(allocator, constructor_encoders);
+
     for (constructor_names) |*n, i| {
         const value_type_name = try u.values[i].toString(allocator);
         defer allocator.free(value_type_name);
 
         n.* = try fmt.allocPrint(allocator, "{s}{s}", .{ u.name.value, value_type_name });
-    }
 
-    for (constructors) |*c, i| {
         const value_type = try outputTypeReference(allocator, u.values[i].reference);
         defer allocator.free(value_type);
 
-        c.* = try fmt.allocPrint(
+        constructors[i] = try fmt.allocPrint(
             allocator,
             "    | {s} of {s}",
-            .{ constructor_names[i], value_type },
+            .{ n.*, value_type },
+        );
+
+        const type_reference_decoder = try decoderForTypeReference(allocator, u.values[i].reference);
+        defer allocator.free(type_reference_decoder);
+
+        const constructor_decoder_format =
+            \\    static member {s}Decoder: Decoder<{s}> =
+            \\        Decode.map {s} {s}
+        ;
+        constructor_decoders[i] = try fmt.allocPrint(
+            allocator,
+            constructor_decoder_format,
+            .{ n.*, u.name.value, n.*, type_reference_decoder },
+        );
+
+        constructor_decoder_one_of_entries[i] = try fmt.allocPrint(
+            allocator,
+            "                {s}.{s}Decoder",
+            .{ u.name.value, n.* },
         );
     }
 
     const joined_constructors = try mem.join(allocator, "\n", constructors);
     defer allocator.free(joined_constructors);
 
-    var decoder_pairs = try allocator.alloc([]const u8, u.values.len);
-    defer utilities.freeStringArray(allocator, decoder_pairs);
+    const joined_constructor_decoders = try mem.join(allocator, "\n\n", constructor_decoders);
+    defer allocator.free(joined_constructor_decoders);
 
-    for (decoder_pairs) |*p, i| {
-        const type_reference_decoder = try decoderForTypeReference(allocator, u.values[i].reference);
-        defer allocator.free(type_reference_decoder);
-
-        p.* = try fmt.allocPrint(
-            allocator,
-            "                {s}, {s}",
-            .{ type_reference_decoder, constructor_names[i] },
-        );
-    }
-
-    const joined_decoder_pairs = try mem.join(allocator, "\n", decoder_pairs);
-    defer allocator.free(joined_decoder_pairs);
+    const joined_constructor_decoder_one_of_entries = try mem.join(
+        allocator,
+        "\n",
+        constructor_decoder_one_of_entries,
+    );
+    defer allocator.free(joined_constructor_decoder_one_of_entries);
 
     const decoder_format =
-        \\    static member Decoder: Decoder<{s}> =
-        \\        GotynoCoders.decodeIntoOneOf
-        \\            [|
         \\{s}
-        \\            |]
+        \\
+        \\    static member Decoder: Decoder<{s}> =
+        \\        Decode.oneOf
+        \\            [
+        \\{s}
+        \\            ]
     ;
 
-    const decoder_output = try fmt.allocPrint(allocator, decoder_format, .{ u.name.value, joined_decoder_pairs });
+    const decoder_output = try fmt.allocPrint(
+        allocator,
+        decoder_format,
+        .{ joined_constructor_decoders, u.name.value, joined_constructor_decoder_one_of_entries },
+    );
     defer allocator.free(decoder_output);
-
-    var constructor_encoders = try allocator.alloc([]const u8, u.values.len);
-    defer utilities.freeStringArray(allocator, constructor_encoders);
 
     const constructor_encoder_format =
         \\        | {s} payload ->
@@ -2625,14 +2648,26 @@ test "Basic untagged union is output correctly" {
         \\    | KnownForString of string
         \\    | KnownForF32 of float32
         \\
+        \\    static member KnownForKnownForMovieDecoder: Decoder<KnownFor> =
+        \\        Decode.map KnownForKnownForMovie KnownForMovie.Decoder
+        \\
+        \\    static member KnownForKnownForShowDecoder: Decoder<KnownFor> =
+        \\        Decode.map KnownForKnownForShow KnownForShow.Decoder
+        \\
+        \\    static member KnownForStringDecoder: Decoder<KnownFor> =
+        \\        Decode.map KnownForString Decode.string
+        \\
+        \\    static member KnownForF32Decoder: Decoder<KnownFor> =
+        \\        Decode.map KnownForF32 Decode.float32
+        \\
         \\    static member Decoder: Decoder<KnownFor> =
-        \\        GotynoCoders.decodeIntoOneOf
-        \\            [|
-        \\                KnownForMovie.Decoder, KnownForKnownForMovie
-        \\                KnownForShow.Decoder, KnownForKnownForShow
-        \\                Decode.string, KnownForString
-        \\                Decode.float32, KnownForF32
-        \\            |]
+        \\        Decode.oneOf
+        \\            [
+        \\                KnownFor.KnownForKnownForMovieDecoder
+        \\                KnownFor.KnownForKnownForShowDecoder
+        \\                KnownFor.KnownForStringDecoder
+        \\                KnownFor.KnownForF32Decoder
+        \\            ]
         \\
         \\    static member Encoder =
         \\        function
