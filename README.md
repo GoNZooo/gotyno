@@ -6,7 +6,7 @@ different languages (eventually).
 ## Supported languages
 
 - [x] TypeScript
-- [ ] F#
+- [x] F#
 - [ ] OCaml
 - [ ] Haskell
 - [ ] PureScript
@@ -19,8 +19,17 @@ different languages (eventually).
 defined and [basic.ts](./test_files/basic.ts) is the automatically generated
 TypeScript output from this file.
 
-Behind the scenens it's using a validation library I wrote for validating
+Behind the scenes it's using a validation library I wrote for validating
 `unknown` values (for the most part against given interface definitions).
+
+### F# example
+
+[basic.gotyno](./test_files/basic.gotyno) has an example of some types being
+defined and [basic.fs](./test_files/basic.fs) is the automatically generated
+F# output from this file.
+
+The F# version uses `Thoth` for JSON decoding, as well as an additional
+extension library to it for some custom decoding helpers that I wrote.
 
 ## The Language
 
@@ -178,19 +187,19 @@ $ zig build -Drelease-fast
 And running:
 
 ```
-$ ./zig-cache/bin/gotyno --verbose --typescript = inputFile.gotyno
+$ ./zig-cache/bin/gotyno --verbose --typescript = --fsharp = inputFile.gotyno
 # or
-$ ./zig-cache/bin/gotyno -v -ts = inputFile.gotyno
+$ ./zig-cache/bin/gotyno -v -ts = -fs = inputFile.gotyno
 ```
 
 Optionally you can also specify a different output directory after
 `-ts`/`--typescript`:
 
 ```
-$ ./zig-cache/bin/gotyno --verbose --typescript other/directory inputFile.gotyno
+$ ./zig-cache/bin/gotyno --verbose --typescript other/directory/ts --fsharp other/directory/fs inputFile.gotyno
 # or
-$ ./zig-cache/bin/gotyno -v -ts other/directory inputFile.gotyno
+$ ./zig-cache/bin/gotyno -v -ts other/directory/ts -fs other/directory/fs inputFile.gotyno
 ```
 
-The output files for TypeScript output will then be written in that directory,
+The output files for TypeScript/F# output will then be written in that directory,
 still with the same module names as the input file.

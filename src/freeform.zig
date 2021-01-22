@@ -149,12 +149,14 @@ pub fn compile(
 
     if (verbose) {
         const out = io.getStdOut().writer();
+
         if (compilation_times.typescript) |t| {
             try out.print(
                 "TypeScript compilation time: {d:.5} ms\n",
                 .{@intToFloat(f32, t) / 1000000.0},
             );
         }
+
         if (compilation_times.fsharp) |t| {
             try out.print(
                 "FSharp compilation time: {d:.5} ms\n",
