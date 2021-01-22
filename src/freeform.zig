@@ -155,6 +155,12 @@ pub fn compile(
                 .{@intToFloat(f32, t) / 1000000.0},
             );
         }
+        if (compilation_times.fsharp) |t| {
+            try out.print(
+                "FSharp compilation time: {d:.5} ms\n",
+                .{@intToFloat(f32, t) / 1000000.0},
+            );
+        }
 
         try out.print(
             "Total compilation & output time: {d:.5} ms for {} lines & {} definitions.\n\t({d:.5} ms/line & {d:.5} ms/definition)\n",
