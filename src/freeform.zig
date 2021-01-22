@@ -132,6 +132,7 @@ pub fn compile(
         const fsharp_output = try fsharp.compileDefinitions(
             compilation_allocator,
             definitions.definitions,
+            fsharp_filename,
         );
 
         try output_directory.writeFile(fsharp_filename, fsharp_output);

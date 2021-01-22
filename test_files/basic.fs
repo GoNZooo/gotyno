@@ -1,3 +1,7 @@
+module Basic
+
+open Thoth.Json.Net
+
 type Recruiter =
     {
         name: string

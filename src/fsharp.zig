@@ -51,9 +51,29 @@ pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const 
     return mem.join(allocator, "", &[_][]const u8{ only_filename, ".fs" });
 }
 
-pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []const Definition) ![]const u8 {
+pub fn compileDefinitions(
+    allocator: *mem.Allocator,
+    definitions: []const Definition,
+    filename: []const u8,
+) ![]const u8 {
+    debug.assert(mem.endsWith(u8, filename, ".fs"));
+
+    var split_iterator = mem.split(filename, ".fs");
+    const before_extension = split_iterator.next().?;
+
+    const only_filename = if (mem.lastIndexOf(u8, before_extension, "/")) |index|
+        before_extension[(index + 1)..]
+    else
+        before_extension;
+
+    const module_name = try utilities.titleCaseWord(allocator, only_filename);
+
     var outputs = ArrayList([]const u8).init(allocator);
     defer utilities.freeStringList(outputs);
+
+    try outputs.append(try fmt.allocPrint(allocator, "module {s}", .{module_name}));
+
+    try outputs.append(try allocator.dupe(u8, "open Thoth.Json.Net"));
 
     for (definitions) |definition| try outputs.append(try outputDefinition(allocator, definition));
 
