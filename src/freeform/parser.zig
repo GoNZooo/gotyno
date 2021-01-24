@@ -25,6 +25,7 @@ pub const ParsingError = union(enum) {
     expect: ExpectError,
     invalid_payload: InvalidPayload,
     unknown_reference: UnknownReference,
+    unknown_module: UnknownModule,
     duplicate_definition: DuplicateDefinition,
 };
 
@@ -51,9 +52,21 @@ pub const UnknownReference = struct {
     column: usize,
 };
 
+/// Indicates that we've referenced an unknown module, meaning one that hasn't been defined yet.
+pub const UnknownModule = struct {
+    name: []const u8,
+    line: usize,
+    column: usize,
+};
+
 const Location = struct {
     line: usize,
     column: usize,
+};
+
+pub const BufferData = struct {
+    filename: []const u8,
+    buffer: []const u8,
 };
 
 pub const DefinitionName = struct {
@@ -109,6 +122,11 @@ pub const Definition = union(enum) {
             .import => |i| i.name,
         };
     }
+};
+
+pub const ImportedDefinition = struct {
+    import_name: []const u8,
+    definition: Definition,
 };
 
 pub const Import = struct {
@@ -417,6 +435,7 @@ pub const TypeReference = union(enum) {
 
     builtin: Builtin,
     definition: Definition,
+    imported_definition: ImportedDefinition,
     loose: LooseReference,
     open: []const u8,
 
@@ -424,6 +443,11 @@ pub const TypeReference = union(enum) {
         return switch (self) {
             .builtin => |b| try allocator.dupe(u8, b.toString()),
             .definition => |d| try allocator.dupe(u8, d.name().value),
+            .imported_definition => |id| try fmt.allocPrint(
+                allocator,
+                "{s}.{s}",
+                .{ id.import_name, id.definition.name().value },
+            ),
             .loose => |l| try allocator.dupe(u8, l.name),
             .open => |o| try allocator.dupe(u8, o),
         };
@@ -433,7 +457,7 @@ pub const TypeReference = union(enum) {
         switch (self) {
             .loose => |*l| l.free(allocator),
             .open => |n| allocator.free(n),
-            .builtin, .definition => {},
+            .builtin, .imported_definition, .definition => {},
         }
     }
 
@@ -442,6 +466,12 @@ pub const TypeReference = union(enum) {
             .builtin => |b| b == other.builtin,
             .loose => |l| l.isEqual(other.loose),
             .definition => |d| d.isEqual(other.definition),
+            .imported_definition => |id| mem.eql(
+                u8,
+                id.import_name,
+                other.imported_definition.import_name,
+            ) and
+                id.definition.isEqual(other.imported_definition.definition),
             .open => |n| mem.eql(u8, n, other.open),
         };
     }
@@ -450,6 +480,7 @@ pub const TypeReference = union(enum) {
         return switch (self) {
             .builtin => |b| b.toString(),
             .definition => |d| d.name().value,
+            .imported_definition => |id| id.definition.name().value,
             .loose => |l| l.name,
             .open => |n| n,
         };
@@ -778,9 +809,11 @@ pub const Constructor = struct {
     }
 };
 
-pub const ParsedDefinitions = struct {
+pub const Module = struct {
     const Self = @This();
 
+    name: []const u8,
+    filename: []const u8,
     definitions: []const Definition,
     definition_iterator: DefinitionIterator,
     allocator: *mem.Allocator,
@@ -794,14 +827,29 @@ pub const ParsedDefinitions = struct {
 pub fn parse(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
+    filename: []const u8,
     buffer: []const u8,
+    modules: ?ModuleMap,
     parsing_error: *ParsingError,
-) !ParsedDefinitions {
+) !Module {
+    debug.assert(mem.endsWith(u8, filename, ".gotyno"));
+
+    var split_iterator = mem.split(filename, ".gotyno");
+    const before_extension = split_iterator.next().?;
+
+    const only_filename = if (mem.lastIndexOf(u8, before_extension, "/")) |index|
+        before_extension[(index + 1)..]
+    else
+        before_extension;
+
+    const module_name = only_filename;
+
     var definitions = ArrayList(Definition).init(allocator);
     var expect_error: ExpectError = undefined;
     var definition_iterator = DefinitionIterator.init(
         allocator,
         buffer,
+        if (modules) |m| m else ModuleMap.init(allocator),
         parsing_error,
         &expect_error,
     );
@@ -817,7 +865,9 @@ pub fn parse(
         try definitions.append(definition);
     }
 
-    return ParsedDefinitions{
+    return Module{
+        .name = module_name,
+        .filename = filename,
         .definitions = definitions.items,
         .definition_iterator = definition_iterator,
         .allocator = allocator,
@@ -827,13 +877,16 @@ pub fn parse(
 pub fn parseWithDescribedError(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
+    filename: []const u8,
     buffer: []const u8,
+    modules: ?ModuleMap,
     parsing_error: *ParsingError,
-) !ParsedDefinitions {
-    return parse(allocator, error_allocator, buffer, parsing_error) catch |e| {
+) !Module {
+    return parse(allocator, error_allocator, filename, buffer, modules, parsing_error) catch |e| {
         switch (e) {
             error.UnexpectedToken,
             error.UnknownReference,
+            error.UnknownModule,
             error.InvalidPayload,
             error.UnexpectedEndOfTokenStream,
             error.DuplicateDefinition,
@@ -871,7 +924,7 @@ pub fn parseWithDescribedError(
 
                     .unknown_reference => |unknown_reference| {
                         debug.panic(
-                            "Unknown reference found at {}:{}, name: {}\n",
+                            "Unknown reference found at {}:{}, name: {s}\n",
                             .{
                                 unknown_reference.line,
                                 unknown_reference.column,
@@ -880,9 +933,16 @@ pub fn parseWithDescribedError(
                         );
                     },
 
+                    .unknown_module => |unknown_module| {
+                        debug.panic(
+                            "Unknown module found at {}:{}, name: {s}\n",
+                            .{ unknown_module.line, unknown_module.column, unknown_module.name },
+                        );
+                    },
+
                     .duplicate_definition => |d| {
                         debug.panic(
-                            "Duplicate definition found at {}:{}, name: {}, previously defined at {}:{}\n",
+                            "Duplicate definition found at {}:{}, name: {s}, previously defined at {}:{}\n",
                             .{
                                 d.location.line,
                                 d.location.column,
@@ -899,6 +959,34 @@ pub fn parseWithDescribedError(
     };
 }
 
+pub fn parseModulesWithDescribedError(
+    allocator: *mem.Allocator,
+    error_allocator: *mem.Allocator,
+    buffers: []BufferData,
+    parsing_error: *ParsingError,
+) !ModuleMap {
+    var modules = ModuleMap.init(allocator);
+    for (buffers) |b| {
+        const module = try parseWithDescribedError(
+            allocator,
+            error_allocator,
+            b.filename,
+            b.buffer,
+            modules,
+            parsing_error,
+        );
+        const get_or_put_result = try modules.getOrPut(module.name);
+        if (get_or_put_result.found_existing) {
+            debug.panic("Multiple definitions of module with name '{s}'\n", .{b.filename});
+        } else {
+            get_or_put_result.entry.value = module;
+        }
+    }
+
+    return modules;
+}
+
+const ModuleMap = std.StringHashMap(Module);
 const DefinitionMap = std.StringHashMap(Definition);
 
 /// `DefinitionIterator` is iterator that attempts to return the next definition in a source, based
@@ -913,6 +1001,9 @@ pub const DefinitionIterator = struct {
     parsing_error: *ParsingError,
     expect_error: *ExpectError,
 
+    /// Holds previously compiled modules.
+    modules: ModuleMap,
+
     /// Holds all of the named definitions that have been parsed and is filled in each time a
     /// definition is successfully parsed, making it possible to refer to already parsed definitions
     /// when parsing later ones.
@@ -924,6 +1015,7 @@ pub const DefinitionIterator = struct {
     pub fn init(
         allocator: *mem.Allocator,
         buffer: []const u8,
+        modules: ModuleMap,
         parsing_error: *ParsingError,
         expect_error: *ExpectError,
     ) Self {
@@ -933,6 +1025,7 @@ pub const DefinitionIterator = struct {
             .token_iterator = token_iterator,
             .allocator = allocator,
             .parsing_error = parsing_error,
+            .modules = modules,
             .named_definitions = DefinitionMap.init(allocator),
             .imports = ArrayList(Import).init(allocator),
             .expect_error = expect_error,
@@ -1633,7 +1726,7 @@ pub const DefinitionIterator = struct {
         const tokens = &self.token_iterator;
 
         const field_type_start_token = try tokens.expectOneOf(
-            &[_]TokenTag{ .string, .name, .left_bracket, .asterisk, .question_mark },
+            &[_]TokenTag{ .string, .name, .symbol, .left_bracket, .asterisk, .question_mark },
             self.expect_error,
         );
 
@@ -1646,6 +1739,34 @@ pub const DefinitionIterator = struct {
                     break :field_type Type{
                         .reference = try self.getTypeReference(name, definition_name, open_names),
                     };
+                }
+            },
+            .symbol => |s| field_type: {
+                const module_name = s;
+                _ = try tokens.expect(Token.period, self.expect_error);
+                const module_definition_name = try self.allocator.dupe(
+                    u8,
+                    (try tokens.expect(Token.name, self.expect_error)).name,
+                );
+
+                if (self.getModule(module_name)) |module| {
+                    if (module.definition_iterator.getDefinition(module_definition_name)) |d| {
+                        break :field_type Type{
+                            .reference = TypeReference{
+                                .imported_definition = ImportedDefinition{
+                                    .import_name = module_name,
+                                    .definition = d,
+                                },
+                            },
+                        };
+                    } else {
+                        break :field_type try self.returnUnknownReferenceError(
+                            Type,
+                            module_definition_name,
+                        );
+                    }
+                } else {
+                    break :field_type try self.returnUnknownModuleError(Type, module_name);
                 }
             },
 
@@ -1754,7 +1875,7 @@ pub const DefinitionIterator = struct {
             result.entry.*.value = definition;
     }
 
-    fn getDefinition(self: Self, name: []const u8) ?Definition {
+    pub fn getDefinition(self: Self, name: []const u8) ?Definition {
         return if (self.named_definitions.getEntry(name)) |definition|
             definition.value
         else
@@ -1786,6 +1907,13 @@ pub const DefinitionIterator = struct {
             try self.returnUnknownReferenceError(TypeReference, name);
     }
 
+    fn getModule(self: Self, name: []const u8) ?Module {
+        return if (self.modules.getEntry(name)) |module|
+            module.value
+        else
+            null;
+    }
+
     fn returnUnknownReferenceError(self: Self, comptime T: type, name: []const u8) !T {
         self.parsing_error.* = ParsingError{
             .unknown_reference = UnknownReference{
@@ -1796,6 +1924,18 @@ pub const DefinitionIterator = struct {
         };
 
         return error.UnknownReference;
+    }
+
+    fn returnUnknownModuleError(self: Self, comptime T: type, name: []const u8) !T {
+        self.parsing_error.* = ParsingError{
+            .unknown_module = UnknownModule{
+                .line = self.token_iterator.line,
+                .column = self.token_iterator.column - name.len,
+                .name = name,
+            },
+        };
+
+        return error.UnknownModule;
     }
 
     fn returnDuplicateDefinition(
@@ -1899,7 +2039,9 @@ test "Parsing `Person` structure" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.person_structure,
+        null,
         &parsing_error,
     );
 
@@ -1936,7 +2078,9 @@ test "Parsing basic generic structure" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.node_structure,
+        null,
         &parsing_error,
     );
 
@@ -2073,7 +2217,9 @@ test "Parsing basic plain union" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.event_union,
+        null,
         &parsing_error,
     );
 
@@ -2112,7 +2258,9 @@ test "Parsing `Maybe` union" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.maybe_union,
+        null,
         &parsing_error,
     );
 
@@ -2154,7 +2302,9 @@ test "Parsing `Either` union" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.either_union,
+        null,
         &parsing_error,
     );
 
@@ -2201,7 +2351,9 @@ test "Parsing `List` union" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.list_union,
+        null,
         &parsing_error,
     );
 
@@ -2242,7 +2394,9 @@ test "Parsing basic string-based enumeration" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2325,51 +2479,9 @@ test "Parsing untagged union" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
-        &parsing_error,
-    );
-
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
-
-    definitions.deinit();
-    testing_utilities.expectNoLeaks(&allocator);
-}
-
-test "Parsing imports, without and with alias, respectively" {
-    var allocator = TestingAllocator{};
-
-    const expected_definitions = [_]Definition{
-        .{
-            .import = Import{
-                .name = DefinitionName{
-                    .value = "other",
-                    .location = Location{ .line = 1, .column = 8 },
-                },
-                .alias = "other",
-            },
-        },
-        .{
-            .import = Import{
-                .name = DefinitionName{
-                    .value = "importName",
-                    .location = Location{ .line = 2, .column = 8 },
-                },
-                .alias = "aliasedName",
-            },
-        },
-    };
-
-    const definition_buffer =
-        \\import other
-        \\import importName = aliasedName
-        \\
-    ;
-
-    var parsing_error: ParsingError = undefined;
-    var definitions = try parseWithDescribedError(
-        &allocator.allocator,
-        &allocator.allocator,
-        definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2439,7 +2551,9 @@ test "Parsing unions with options" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2469,7 +2583,9 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
     var definitions = parse(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2481,7 +2597,7 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
             testing.expectEqualStrings(unknown_reference.name, "One");
         },
 
-        .invalid_payload, .expect, .duplicate_definition => unreachable,
+        .unknown_module, .invalid_payload, .expect, .duplicate_definition => unreachable,
     }
 }
 
@@ -2491,7 +2607,9 @@ test "Parsing invalid normal structure" {
     const definitions = parse(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         "struct Container T{",
+        null,
         &parsing_error,
     );
     testing.expectError(error.UnexpectedToken, definitions);
@@ -2575,7 +2693,9 @@ test "Parsing same definition twice results in error" {
     const definitions = parse(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definitions_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2676,7 +2796,9 @@ test "Parsing union with embedded type tag" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2759,7 +2881,9 @@ test "Parsing union with embedded type tag and lowercase tags" {
     var definitions = try parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2767,6 +2891,52 @@ test "Parsing union with embedded type tag and lowercase tags" {
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Parsing an import reference leads to two identical definitions in definition & reference" {
+    var allocator = TestingAllocator{};
+    var parsing_error: ParsingError = undefined;
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\struct One {
+        \\    field1: String
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\struct Two {
+        \\    field1: module1.One
+        \\}
+    ;
+
+    var buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
+    };
+
+    const compiled_modules = try parseModulesWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+
+    const maybe_module1 = compiled_modules.get(module1_name);
+    testing.expect(maybe_module1 != null);
+    const module1 = maybe_module1.?;
+
+    const maybe_module2 = compiled_modules.get(module2_name);
+    testing.expect(maybe_module2 != null);
+    const module2 = maybe_module2.?;
+
+    const module1_definition = module1.definitions[0];
+    const module2_field_reference = module2.definitions[0].structure.plain.fields[0].@"type".reference.imported_definition.definition;
+
+    expectEqualDefinitions(&[_]Definition{module1_definition}, &[_]Definition{module2_field_reference});
 }
 
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
