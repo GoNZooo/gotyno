@@ -80,25 +80,7 @@ fn compileInputs(
     output_languages: OutputLanguages,
     verbose: bool,
 ) !void {
-    const current_directory = fs.cwd();
-
-    for (files) |file| {
-        const sanitized_filename = try freeform.sanitizeFilename(allocator, file);
-
-        const file_contents = try current_directory.readFileAlloc(
-            allocator,
-            sanitized_filename,
-            10_000_000,
-        );
-
-        try freeform.compile(
-            allocator,
-            sanitized_filename,
-            file_contents,
-            output_languages,
-            verbose,
-        );
-    }
+    try freeform.compileModules(allocator, files, output_languages, verbose);
 }
 
 pub fn main() anyerror!void {
