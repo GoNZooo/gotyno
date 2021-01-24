@@ -436,6 +436,19 @@ fn decoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
     return switch (r) {
         .builtin => |d| try decoderForBuiltin(allocator, d),
         .definition => |d| try decoderForDefinition(allocator, d),
+        .imported_definition => |id| id: {
+            const definition_decoder = try decoderForDefinition(allocator, id.definition);
+            defer allocator.free(definition_decoder);
+
+            const module_name = try utilities.titleCaseWord(allocator, id.import_name);
+            defer allocator.free(module_name);
+
+            break :id try fmt.allocPrint(
+                allocator,
+                "{s}.{s}",
+                .{ module_name, definition_decoder },
+            );
+        },
         .loose => |d| try fmt.allocPrint(allocator, "{s}.Decoder", .{d.name}),
         .open => |d| try fmt.allocPrint(allocator, "decode{s}", .{d}),
     };
@@ -667,6 +680,19 @@ fn encoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
     return switch (r) {
         .builtin => |d| try encoderForBuiltin(allocator, d),
         .definition => |d| try encoderForDefinition(allocator, d),
+        .imported_definition => |id| id: {
+            const definition_encoder = try decoderForDefinition(allocator, id.definition);
+            defer allocator.free(definition_encoder);
+
+            const module_name = try utilities.titleCaseWord(allocator, id.import_name);
+            defer allocator.free(module_name);
+
+            break :id try fmt.allocPrint(
+                allocator,
+                "{s}.{s}",
+                .{ module_name, definition_encoder },
+            );
+        },
         .loose => |d| try fmt.allocPrint(allocator, "{s}.Encoder", .{d.name}),
         .open => |d| try fmt.allocPrint(allocator, "encode{s}", .{d}),
     };
@@ -759,6 +785,16 @@ fn outputTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 
     return switch (r) {
         .builtin => |b| try outputBuiltinReference(allocator, b),
         .definition => |d| try allocator.dupe(u8, d.name().value),
+        .imported_definition => |id| d: {
+            const module_name = try utilities.titleCaseWord(allocator, id.import_name);
+            defer allocator.free(module_name);
+
+            break :d try fmt.allocPrint(
+                allocator,
+                "{s}.{s}",
+                .{ module_name, id.definition.name().value },
+            );
+        },
         .loose => |l| try outputLooseReference(allocator, l),
         .open => |o| try makeFSharpTypeVariable(allocator, o),
     };
@@ -1936,10 +1972,12 @@ test "outputs plain structure correctly" {
 
     var parsing_error: ParsingError = undefined;
 
-    var definitions = try parser.parse(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.person_structure,
+        null,
         &parsing_error,
     );
 
@@ -1983,10 +2021,12 @@ test "outputs generic structure correctly" {
 
     var parsing_error: ParsingError = undefined;
 
-    var definitions = try parser.parse(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.node_structure,
+        null,
         &parsing_error,
     );
 
@@ -2063,10 +2103,12 @@ test "outputs plain union correctly" {
 
     var parsing_error: ParsingError = undefined;
 
-    var definitions = try parser.parse(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.event_union,
+        null,
         &parsing_error,
     );
 
@@ -2171,10 +2213,12 @@ test "outputs plain union with lowercased constructors correctly" {
 
     var parsing_error: ParsingError = undefined;
 
-    var definitions = try parser.parse(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2231,10 +2275,12 @@ test "outputs Maybe union correctly" {
 
     var parsing_error: ParsingError = undefined;
 
-    var definitions = try parser.parse(
+    var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2328,7 +2374,9 @@ test "Union with embedded tag is output correctly" {
     var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2422,7 +2470,9 @@ test "Union with embedded tag and lowercase constructors is output correctly" {
     var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2469,7 +2519,9 @@ test "Enumeration is output correctly" {
     var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2516,7 +2568,9 @@ test "Enumeration with lowercased tags is output correctly" {
     var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2578,7 +2632,9 @@ test "Union with different `Maybe`s is output correctly" {
     var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.union_with_different_maybes,
+        null,
         &parsing_error,
     );
 
@@ -2625,7 +2681,9 @@ test "Enumeration with integer values is output correctly" {
     var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 
@@ -2708,7 +2766,9 @@ test "Basic untagged union is output correctly" {
     var definitions = try parser.parseWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         definition_buffer,
+        null,
         &parsing_error,
     );
 

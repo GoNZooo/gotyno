@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const parser = @import("./freeform/parser.zig");
 const Type = parser.Type;
+const Definition = parser.Definition;
 
 const ArrayList = std.ArrayList;
 
@@ -23,17 +24,12 @@ pub fn openNamesFromType(
 
             switch (r) {
                 .builtin => {},
-                .definition => |d| switch (d) {
-                    .structure => |s| switch (s) {
-                        .generic => |g| try open_name_list.appendSlice(g.open_names),
-                        .plain => {},
-                    },
-                    .@"union" => |u| switch (u) {
-                        .generic => |g| try open_name_list.appendSlice(g.open_names),
-                        .plain, .embedded => {},
-                    },
-                    .untagged_union, .import, .enumeration => {},
-                },
+                .imported_definition => |id| try open_name_list.appendSlice(
+                    try openNamesFromDefinition(allocator, id.definition),
+                ),
+                .definition => |d| try open_name_list.appendSlice(
+                    try openNamesFromDefinition(allocator, d),
+                ),
                 .loose => |l| try open_name_list.appendSlice(
                     try allocator.dupe([]const u8, l.open_names),
                 ),
@@ -44,6 +40,23 @@ pub fn openNamesFromType(
         },
 
         .string, .empty => ArrayList([]const u8).init(allocator),
+    };
+}
+
+fn openNamesFromDefinition(
+    allocator: *mem.Allocator,
+    d: Definition,
+) ![]const []const u8 {
+    return switch (d) {
+        .structure => |s| switch (s) {
+            .generic => |g| g.open_names,
+            .plain => &[_][]const u8{},
+        },
+        .@"union" => |u| switch (u) {
+            .generic => |g| g.open_names,
+            .plain, .embedded => &[_][]const u8{},
+        },
+        .untagged_union, .import, .enumeration => &[_][]const u8{},
     };
 }
 
