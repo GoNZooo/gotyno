@@ -47,3 +47,10 @@ pub fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
 pub fn camelCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
     return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toLower(word[0]), word[1..] });
 }
+
+pub fn withoutExtension(allocator: *mem.Allocator, path: []const u8) ![]const u8 {
+    return if (mem.lastIndexOf(u8, path, ".")) |index|
+        try allocator.dupe(u8, path[0..index])
+    else
+        try allocator.dupe(u8, path);
+}
