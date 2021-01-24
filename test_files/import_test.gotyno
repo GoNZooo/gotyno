@@ -1,0 +1,10 @@
+import basic
+
+struct StructureUsingImport {
+    event: basic.Event
+}
+
+union UnionUsingImport {
+    CoolEvent: basic.Event
+    Other: basic.Person
+}
