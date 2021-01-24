@@ -37,6 +37,7 @@ pub const Token = union(enum) {
     space,
     question_mark,
     asterisk,
+    period,
     name: []const u8,
     symbol: []const u8,
     unsigned_integer: usize,
@@ -61,6 +62,7 @@ pub const Token = union(enum) {
             .space,
             .question_mark,
             .asterisk,
+            .period,
             => meta.activeTag(self) == meta.activeTag(t),
 
             // keywords/symbols have to also match
@@ -93,6 +95,7 @@ pub const Token = union(enum) {
             .space,
             .question_mark,
             .asterisk,
+            .period,
             => 1,
 
             .symbol => |s| s.len,
@@ -158,7 +161,7 @@ pub const ExpectError = union(enum) {
 
 pub const TokenIterator = struct {
     const Self = @This();
-    const delimiters = ";:\" \t\n{}[]<>(),";
+    const delimiters = ";:\" \t\n{}[]<>(),.";
 
     buffer: []const u8,
     i: usize,
@@ -197,6 +200,7 @@ pub const TokenIterator = struct {
             ':' => Token.colon,
             '?' => Token.question_mark,
             '*' => Token.asterisk,
+            '.' => Token.period,
             ' ' => Token.space,
             '\n' => token: {
                 if (!options.peek) self.line += 1;
@@ -217,7 +221,7 @@ pub const TokenIterator = struct {
                     const symbol_end = self.i + delimiter_index;
                     break :token Token{ .symbol = self.buffer[self.i..symbol_end] };
                 } else {
-                    @panic("unexpected endless pascal symbol");
+                    @panic("unexpected endless lowercase symbol");
                 }
             },
 
