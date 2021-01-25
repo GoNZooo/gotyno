@@ -5,8 +5,10 @@ if (process.platform !== "darwin") {
   const maybeExtension = process.platform === "win32" ? ".exe" : "";
   const BIN_PATH = `./bin/gotyno${maybeExtension}`;
 
-  fs.symlinkSync(`${process.platform}/gotyno${maybeExtension}`, BIN_PATH);
-  fs.chmodSync(BIN_PATH, 0o755);
+  if (!fs.existsSync(BIN_PATH)) {
+    fs.symlinkSync(`${process.platform}/gotyno${maybeExtension}`, BIN_PATH);
+    fs.chmodSync(BIN_PATH, 0o755);
+  }
 } else {
   console.warn("Unfortunately MacOS users currently need to compile `gotyno` themselves.");
   console.warn(
