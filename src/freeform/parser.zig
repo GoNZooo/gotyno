@@ -380,6 +380,7 @@ pub const Type = union(enum) {
     slice: Slice,
     pointer: Pointer,
     optional: Optional,
+    // @TODO: move `AppliedName` into `TypeReference` and make sure it contains reference
     applied_name: AppliedName,
 
     pub fn free(self: Self, allocator: *mem.Allocator) void {
