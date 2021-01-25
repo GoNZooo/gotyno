@@ -2897,6 +2897,9 @@ test "Parsing an import reference leads to two identical definitions in definiti
     var allocator = TestingAllocator{};
     var parsing_error: ParsingError = undefined;
 
+    // @TODO: add testing for parsing applied names with imported references in them with nested
+    // references: `fieldHolding: HoldsSomething<basic.Maybe<basic.Either<String, Plainstruct>>`
+
     const module1_filename = "module1.gotyno";
     const module1_name = "module1";
     const module1_buffer =
