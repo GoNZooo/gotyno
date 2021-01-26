@@ -9,7 +9,9 @@ const testing_utilities = @import("./testing_utilities.zig");
 const type_examples = @import("./type_examples.zig");
 
 const Definition = parser.Definition;
+const ImportedDefinition = parser.ImportedDefinition;
 const AppliedName = parser.AppliedName;
+const AppliedOpenName = parser.AppliedOpenName;
 const ParsingError = parser.ParsingError;
 const TokenTag = tokenizer.TokenTag;
 const Token = tokenizer.Token;
@@ -392,7 +394,7 @@ test "Parsing `List` union" {
         .reference = TypeReference{
             .applied_name = AppliedName{
                 .reference = &applied_reference,
-                .open_names = &[_][]const u8{"T"},
+                .open_names = &[_]AppliedOpenName{.{ .open = "T" }},
             },
         },
     };
@@ -1013,6 +1015,225 @@ test "Parsing an import reference leads to two identical definitions in definiti
     expectEqualDefinitions(&[_]Definition{module1_definition}, &[_]Definition{module2_field_reference});
 }
 
+test "Parsing an imported reference works even with nested ones" {
+    var allocator = TestingAllocator{};
+    var parsing_error: ParsingError = undefined;
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\union Maybe <T>{
+        \\    Nothing
+        \\    Just: T
+        \\}
+        \\
+        \\union Either <L, R>{
+        \\    Left: L
+        \\    Right: R
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\struct HoldsSomething <T>{
+        \\    holdingField: T
+        \\}
+        \\
+        \\struct PlainStruct {
+        \\    normalField: String
+        \\}
+        \\
+        \\struct Two {
+        \\    fieldHolding: HoldsSomething<module1.Maybe<module1.Either<String, PlainStruct>>>
+        \\}
+    ;
+
+    var plain_struct_applied_name = AppliedOpenName{
+        .reference = TypeReference{
+            .definition = Definition{
+                .structure = Structure{
+                    .plain = PlainStructure{
+                        .name = DefinitionName{
+                            .value = "PlainStruct",
+                            .location = Location{ .line = 5, .column = 8 },
+                        },
+                        .fields = &[_]Field{
+                            .{
+                                .name = "normalField",
+                                .@"type" = Type{
+                                    .reference = TypeReference{ .builtin = Builtin.String },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    var string_applied_name = AppliedOpenName{
+        .reference = TypeReference{ .builtin = Builtin.String },
+    };
+
+    var either_reference = TypeReference{
+        .imported_definition = ImportedDefinition{
+            .import_name = "module1",
+            .definition = Definition{
+                .@"union" = Union{
+                    .generic = GenericUnion{
+                        .tag_field = "type",
+                        .open_names = &[_][]const u8{ "L", "R" },
+                        .name = DefinitionName{
+                            .value = "Either",
+                            .location = Location{ .line = 6, .column = 7 },
+                        },
+                        .constructors = &[_]Constructor{
+                            .{
+                                .tag = "Left",
+                                .parameter = Type{
+                                    .reference = TypeReference{ .open = "L" },
+                                },
+                            },
+                            .{
+                                .tag = "Right",
+                                .parameter = Type{
+                                    .reference = TypeReference{ .open = "R" },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    var either_applied_name = AppliedOpenName{
+        .reference = TypeReference{
+            .applied_name = AppliedName{
+                .reference = &either_reference,
+                .open_names = &[_]AppliedOpenName{ string_applied_name, plain_struct_applied_name },
+            },
+        },
+    };
+
+    var maybe_reference = TypeReference{
+        .imported_definition = ImportedDefinition{
+            .import_name = "module1",
+            .definition = Definition{
+                .@"union" = Union{
+                    .generic = GenericUnion{
+                        .tag_field = "type",
+                        .open_names = &[_][]const u8{"T"},
+                        .name = DefinitionName{
+                            .value = "Maybe",
+                            .location = Location{ .line = 1, .column = 7 },
+                        },
+                        .constructors = &[_]Constructor{
+                            .{
+                                .tag = "Nothing",
+                                .parameter = Type.empty,
+                            },
+                            .{
+                                .tag = "Just",
+                                .parameter = Type{
+                                    .reference = TypeReference{ .open = "T" },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    var maybe_applied_name = AppliedOpenName{
+        .reference = TypeReference{
+            .applied_name = AppliedName{
+                .reference = &maybe_reference,
+                .open_names = &[_]AppliedOpenName{either_applied_name},
+            },
+        },
+    };
+
+    var holds_something_reference = TypeReference{
+        .definition = Definition{
+            .structure = Structure{
+                .generic = GenericStructure{
+                    .name = DefinitionName{
+                        .value = "HoldsSomething",
+                        .location = Location{ .line = 1, .column = 8 },
+                    },
+                    .open_names = &[_][]const u8{"T"},
+                    .fields = &[_]Field{
+                        .{
+                            .name = "holdingField",
+                            .@"type" = Type{
+                                .reference = TypeReference{ .open = "T" },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    var holds_something_applied_name = AppliedName{
+        .reference = &holds_something_reference,
+        .open_names = &[_]AppliedOpenName{maybe_applied_name},
+    };
+
+    const expected_two_struct = Definition{
+        .structure = Structure{
+            .plain = PlainStructure{
+                .name = DefinitionName{
+                    .value = "Two",
+                    .location = Location{
+                        .line = 9,
+                        .column = 8,
+                    },
+                },
+                .fields = &[_]Field{
+                    .{
+                        .name = "fieldHolding",
+                        .@"type" = Type{
+                            .reference = TypeReference{
+                                .applied_name = holds_something_applied_name,
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    var buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
+    };
+
+    const compiled_modules = try parser.parseModulesWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+
+    const maybe_module1 = compiled_modules.get(module1_name);
+    testing.expect(maybe_module1 != null);
+    const module1 = maybe_module1.?;
+
+    const maybe_module2 = compiled_modules.get(module2_name);
+    testing.expect(maybe_module2 != null);
+    const module2 = maybe_module2.?;
+
+    // const module1_definition = module1.definitions[0];
+    // const module2_field_reference = module2.definitions[0].structure.plain.fields[0].@"type".reference.imported_definition.definition;
+    const parsed_two_struct = module2.definitions[2];
+
+    expectEqualDefinitions(&[_]Definition{parsed_two_struct}, &[_]Definition{expected_two_struct});
+}
+
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
     const Names = struct {
         a: DefinitionName,
@@ -1160,7 +1381,7 @@ fn expectEqualFields(as: []const Field, bs: []const Field) void {
     for (as) |a, i| {
         if (!a.isEqual(bs[i])) {
             testing_utilities.testPanic(
-                "Different field at index {}:\n\tExpected: {}\n\tGot: {}\n",
+                "Different field at index {}:\nExpected:\n\t{}\nGot:\n\t{}\n",
                 .{ i, a, bs[i] },
             );
         }

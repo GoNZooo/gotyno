@@ -76,6 +76,19 @@ pub const DefinitionName = struct {
             self.location.column == other.location.column and
             self.location.line == other.location.line;
     }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try fmt.format(
+            writer,
+            "{s}({}:{})",
+            .{ self.value, self.location.line, self.location.column },
+        );
+    }
 };
 
 pub const Definition = union(enum) {
@@ -118,11 +131,37 @@ pub const Definition = union(enum) {
             .import => |i| i.name,
         };
     }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        return switch (self) {
+            .structure => |s| try fmt.format(writer, "{}", .{s}),
+            .@"union" => |u| try fmt.format(writer, "{}", .{u}),
+            .enumeration => |e| try fmt.format(writer, "{}", .{e}),
+            .untagged_union => |u| try fmt.format(writer, "{}", .{u}),
+            .import => |i| try fmt.format(writer, "{}", .{i}),
+        };
+    }
 };
 
 pub const ImportedDefinition = struct {
+    const Self = @This();
+
     import_name: []const u8,
     definition: Definition,
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try fmt.format(writer, "{s}.{}", .{ self.import_name, self.definition });
+    }
 };
 
 pub const Import = struct {
@@ -291,6 +330,18 @@ pub const Structure = union(enum) {
             .generic => |generic| generic.name,
         };
     }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        return switch (self) {
+            .plain => |p| try fmt.format(writer, "{}", .{p}),
+            .generic => |g| try fmt.format(writer, "{}", .{g}),
+        };
+    }
 };
 
 pub const PlainStructure = struct {
@@ -315,6 +366,19 @@ pub const PlainStructure = struct {
 
             return true;
         }
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try fmt.format(writer, "{}{{ ", .{self.name});
+        for (self.fields) |f| {
+            try fmt.format(writer, "{}", .{f});
+        }
+        try fmt.format(writer, " }}", .{});
     }
 };
 
@@ -348,6 +412,23 @@ pub const GenericStructure = struct {
             return true;
         }
     }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        if (self.fields.len > 0) {
+            try fmt.format(writer, "{}{{ {}", .{ self.name, self.fields[0] });
+            for (self.fields[1..]) |f| {
+                try fmt.format(writer, ", {}", .{f});
+            }
+            try fmt.format(writer, " }}", .{});
+        } else {
+            try fmt.format(writer, "{}{{ }}", .{self.name});
+        }
+    }
 };
 
 pub const Field = struct {
@@ -363,6 +444,15 @@ pub const Field = struct {
 
     pub fn isEqual(self: Self, other: Self) bool {
         return self.@"type".isEqual(other.@"type") and mem.eql(u8, self.name, other.name);
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try fmt.format(writer, "{s}: {}", .{ self.name, self.@"type" });
     }
 };
 
@@ -415,6 +505,23 @@ pub const Type = union(enum) {
                 optional.isEqual(other.optional),
         };
     }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        return switch (self) {
+            .empty => try fmt.format(writer, ".empty", .{}),
+            .reference => |r| fmt.format(writer, "{}", .{r}),
+            .string => |s| fmt.format(writer, "{s}", .{s}),
+            .array => |array| fmt.format(writer, "[{}]", .{array.size}),
+            .slice => |slice| fmt.format(writer, "[]", .{}),
+            .pointer => |pointer| fmt.format(writer, "*", .{}),
+            .optional => |optional| fmt.format(writer, "?", .{}),
+        };
+    }
 };
 
 pub const TypeReference = union(enum) {
@@ -451,7 +558,7 @@ pub const TypeReference = union(enum) {
                 allocator.destroy(a.reference);
 
                 for (a.open_names) |n| {
-                    allocator.free(n);
+                    n.free(allocator);
                 }
                 allocator.free(a.open_names);
             },
@@ -461,18 +568,19 @@ pub const TypeReference = union(enum) {
 
     pub fn isEqual(self: Self, other: Self) bool {
         return switch (self) {
-            .builtin => |b| b == other.builtin,
-            .loose => |l| l.isEqual(other.loose),
-            .definition => |d| d.isEqual(other.definition),
-            .imported_definition => |id| mem.eql(
+            .builtin => |b| meta.activeTag(other) == .builtin and b == other.builtin,
+            .loose => |l| meta.activeTag(other) == .loose and l.isEqual(other.loose),
+            .definition => |d| meta.activeTag(other) == .definition and d.isEqual(other.definition),
+            .imported_definition => |id| meta.activeTag(other) == .imported_definition and
+                mem.eql(
                 u8,
                 id.import_name,
                 other.imported_definition.import_name,
             ) and
                 id.definition.isEqual(other.imported_definition.definition),
             .applied_name => |a| meta.activeTag(other) == .applied_name and
-                a.reference.isEqual(other.applied_name.reference.*),
-            .open => |n| mem.eql(u8, n, other.open),
+                a.isEqual(other.applied_name),
+            .open => |n| meta.activeTag(other) == .open and mem.eql(u8, n, other.open),
         };
     }
 
@@ -484,6 +592,22 @@ pub const TypeReference = union(enum) {
             .applied_name => |a| a.reference.name(),
             .loose => |l| l.name,
             .open => |n| n,
+        };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        return switch (self) {
+            .builtin => |b| try fmt.format(writer, "{s}", .{b.toString()}),
+            .definition => |d| try fmt.format(writer, "{}", .{d}),
+            .imported_definition => |id| fmt.format(writer, "{}", .{id}),
+            .applied_name => |a| try fmt.format(writer, "{}", .{a}),
+            .loose => |l| try fmt.format(writer, "LOOSE<{s}>", .{l}),
+            .open => |o| try fmt.format(writer, "{s}", .{o}),
         };
     }
 };
@@ -632,16 +756,69 @@ pub const AppliedName = struct {
     const Self = @This();
 
     reference: *TypeReference,
-    open_names: []const []const u8,
+    open_names: []const AppliedOpenName,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        if (!self.reference.isEqual(other.reference)) return false;
+        if (!self.reference.isEqual(other.reference.*)) return false;
+
+        if (self.open_names.len != other.open_names.len) return false;
 
         for (self.open_names) |open_name, i| {
-            if (!mem.eql(u8, open_name, other.open_names[i])) return false;
+            const result = open_name.isEqual(other.open_names[i]);
+
+            if (!result) return false;
         }
 
         return true;
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        if (self.open_names.len > 0) {
+            try fmt.format(writer, "{}<{}", .{ self.reference, self.open_names[0] });
+            for (self.open_names[1..]) |n| {
+                try fmt.format(writer, ", {}", .{n});
+            }
+        } else {
+            try fmt.format(writer, "{}<>", .{self.reference});
+        }
+    }
+};
+
+pub const AppliedOpenName = union(enum) {
+    const Self = @This();
+
+    open: []const u8,
+    reference: TypeReference,
+
+    pub fn free(self: Self, allocator: *mem.Allocator) void {
+        switch (self) {
+            .open => |o| allocator.free(o),
+            .reference => |*r| r.free(allocator),
+        }
+    }
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return switch (self) {
+            .open => |o| meta.activeTag(other) == .open and mem.eql(u8, o, other.open),
+            .reference => |r| meta.activeTag(other) == .reference and r.isEqual(other.reference),
+        };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        return switch (self) {
+            .open => |o| try fmt.format(writer, "{s}", .{o}),
+            .reference => |r| try fmt.format(writer, "{}", .{r}),
+        };
     }
 };
 
@@ -673,6 +850,19 @@ pub const Union = union(enum) {
             .plain => |plain| plain.name,
             .generic => |generic| generic.name,
             .embedded => |embedded| embedded.name,
+        };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        return switch (self) {
+            .plain => |p| try fmt.format(writer, "{}", .{p}),
+            .generic => |g| try fmt.format(writer, "{}", .{g}),
+            .embedded => |e| try fmt.format(writer, "{}", .{e}),
         };
     }
 };
@@ -738,6 +928,23 @@ pub const GenericUnion = struct {
         }
 
         return true;
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        if (self.constructors.len > 0) {
+            try fmt.format(writer, "{}<{s}>{{ {}", .{ self.name, self.open_names, self.constructors[0] });
+            for (self.constructors[1..]) |c| {
+                try fmt.format(writer, ", {}", .{c});
+            }
+            try fmt.format(writer, " }}", .{});
+        } else {
+            try fmt.format(writer, "{}<{s}>{{ }}", .{ self.name, self.open_names });
+        }
     }
 };
 
@@ -807,6 +1014,15 @@ pub const Constructor = struct {
 
     pub fn isEqual(self: Self, other: Self) bool {
         return mem.eql(u8, self.tag, other.tag) and self.parameter.isEqual(other.parameter);
+    }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try fmt.format(writer, "{s}: {}", .{ self.tag, self.parameter });
     }
 };
 
@@ -1700,6 +1916,7 @@ pub const DefinitionIterator = struct {
         self: *Self,
         definition_name: DefinitionName,
         name: []const u8,
+        open_names: []const []const u8,
     ) !?AppliedName {
         const tokens = &self.token_iterator;
 
@@ -1709,18 +1926,148 @@ pub const DefinitionIterator = struct {
                 // we have an applied name
                 .left_angle => {
                     _ = try tokens.expect(Token.left_angle, self.expect_error);
-                    const open_names = try self.parseOpenNames();
+                    const applied_open_names = try self.parseAppliedOpenNames(
+                        tokens,
+                        self,
+                        definition_name,
+                        open_names,
+                    );
 
                     const reference = try self.allocator.create(TypeReference);
-                    reference.* = try self.getTypeReference(name, definition_name, open_names);
+                    reference.* = try self.getTypeReference(
+                        name,
+                        definition_name,
+                        open_names,
+                    );
 
-                    return AppliedName{ .reference = reference, .open_names = open_names };
+                    return AppliedName{ .reference = reference, .open_names = applied_open_names };
                 },
                 else => {},
             }
         }
 
         return null;
+    }
+
+    const ParseImportedMaybeAppliedNameErrors = error{
+        OutOfMemory,
+        UnexpectedToken,
+        UnexpectedEndOfTokenStream,
+        Overflow,
+        InvalidCharacter,
+        UnknownModule,
+        UnknownReference,
+    };
+
+    fn parseImportedMaybeAppliedName(
+        self: *Self,
+        tokens: *TokenIterator,
+        source_definitions: *DefinitionIterator,
+        definition_name: DefinitionName,
+        name: []const u8,
+        open_names: []const []const u8,
+        import_name: []const u8,
+    ) ParseImportedMaybeAppliedNameErrors!?AppliedName {
+        const maybe_left_angle_token = try tokens.peek();
+        if (maybe_left_angle_token) |maybe_left_angle| {
+            switch (maybe_left_angle) {
+                // we have an applied name
+                .left_angle => {
+                    _ = try tokens.expect(Token.left_angle, self.expect_error);
+                    const applied_open_names = try source_definitions.parseAppliedOpenNames(
+                        tokens,
+                        source_definitions,
+                        definition_name,
+                        open_names,
+                    );
+
+                    const reference = try self.allocator.create(TypeReference);
+                    reference.* = try self.importTypeReference(name, import_name);
+
+                    return AppliedName{ .reference = reference, .open_names = applied_open_names };
+                },
+                else => {},
+            }
+        }
+
+        return null;
+    }
+
+    fn parseAppliedOpenNames(
+        self: *Self,
+        tokens: *TokenIterator,
+        source_definitions: *DefinitionIterator,
+        current_definition_name: DefinitionName,
+        parent_open_names: []const []const u8,
+    ) ![]AppliedOpenName {
+        var applied_open_names = ArrayList(AppliedOpenName).init(self.allocator);
+
+        var done = false;
+        while (!done) {
+            switch (try tokens.expectOneOf(&[_]TokenTag{ .name, .symbol }, self.expect_error)) {
+                .name => |n| {
+                    const applied_open_name = if (utilities.isStringEqualToOneOf(n, parent_open_names))
+                        AppliedOpenName{
+                            .open = try self.allocator.dupe(u8, n),
+                        }
+                    else
+                        AppliedOpenName{
+                            // names always search in the source definitions, this is our home context
+                            .reference = try source_definitions.getTypeReference(
+                                n,
+                                current_definition_name,
+                                parent_open_names,
+                            ),
+                        };
+
+                    try applied_open_names.append(applied_open_name);
+                },
+                .symbol => |module_name| {
+                    // We always have to search our source definitions for the module in question
+                    // since it always will be the latest one with all the modules so far
+                    if (source_definitions.getModule(module_name)) |*module| {
+                        _ = try tokens.expect(Token.period, self.expect_error);
+
+                        const definition_to_import = (try tokens.expect(
+                            Token.name,
+                            self.expect_error,
+                        )).name;
+
+                        const applied_open_name = if (try module.definition_iterator.parseImportedMaybeAppliedName(
+                            tokens,
+                            source_definitions,
+                            current_definition_name,
+                            definition_to_import,
+                            parent_open_names,
+                            module_name,
+                        )) |applied_name|
+                            AppliedOpenName{ .reference = TypeReference{ .applied_name = applied_name } }
+                        else
+                            AppliedOpenName{
+                                .reference = try module.definition_iterator.importTypeReference(
+                                    definition_to_import,
+                                    module_name,
+                                ),
+                            };
+
+                        try applied_open_names.append(applied_open_name);
+                    } else {
+                        return try self.returnUnknownModuleError([]AppliedOpenName, module_name);
+                    }
+                },
+                else => debug.panic("Unreachable.\n", .{}),
+            }
+
+            switch (try tokens.expectOneOf(&[_]TokenTag{ .comma, .right_angle }, self.expect_error)) {
+                .right_angle => done = true,
+                .comma => {
+                    _ = try tokens.expect(Token.space, self.expect_error);
+                },
+                else => debug.panic("Unreachable.\n", .{}),
+            }
+        }
+
+        return applied_open_names.toOwnedSlice();
     }
 
     fn parseFieldType(
@@ -1738,7 +2085,11 @@ pub const DefinitionIterator = struct {
         const field = switch (field_type_start_token) {
             .string => |s| Type{ .string = try self.allocator.dupe(u8, s) },
             .name => |name| field_type: {
-                if (try self.parseMaybeAppliedName(definition_name, name)) |applied_name| {
+                if (try self.parseMaybeAppliedName(
+                    definition_name,
+                    name,
+                    open_names,
+                )) |applied_name| {
                     break :field_type Type{ .reference = TypeReference{ .applied_name = applied_name } };
                 } else {
                     break :field_type Type{
@@ -1754,7 +2105,17 @@ pub const DefinitionIterator = struct {
                     (try tokens.expect(Token.name, self.expect_error)).name,
                 );
 
-                if (self.getModule(module_name)) |module| {
+                if (self.getModule(module_name)) |*module| {
+                    if (try module.definition_iterator.parseImportedMaybeAppliedName(
+                        tokens,
+                        self,
+                        definition_name,
+                        module_definition_name,
+                        open_names,
+                        module_name,
+                    )) |applied_name| {
+                        break :field_type Type{ .reference = TypeReference{ .applied_name = applied_name } };
+                    }
                     if (module.definition_iterator.getDefinition(module_definition_name)) |d| {
                         break :field_type Type{
                             .reference = TypeReference{
@@ -1831,6 +2192,7 @@ pub const DefinitionIterator = struct {
                 field_type.* = if (try self.parseMaybeAppliedName(
                     definition_name,
                     name,
+                    open_names,
                 )) |applied_name|
                     Type{ .reference = TypeReference{ .applied_name = applied_name } }
                 else
@@ -1848,6 +2210,7 @@ pub const DefinitionIterator = struct {
                 field_type.* = if (try self.parseMaybeAppliedName(
                     definition_name,
                     name,
+                    open_names,
                 )) |applied_name|
                     Type{ .reference = TypeReference{ .applied_name = applied_name } }
                 else
@@ -1908,6 +2271,17 @@ pub const DefinitionIterator = struct {
             }
         else if (utilities.isStringEqualToOneOf(name, open_names))
             TypeReference{ .open = try self.allocator.dupe(u8, name) }
+        else
+            try self.returnUnknownReferenceError(TypeReference, name);
+    }
+
+    fn importTypeReference(
+        self: Self,
+        name: []const u8,
+        import_name: []const u8,
+    ) !TypeReference {
+        return if (self.getDefinition(name)) |found_definition|
+            TypeReference{ .imported_definition = ImportedDefinition{ .import_name = import_name, .definition = found_definition } }
         else
             try self.returnUnknownReferenceError(TypeReference, name);
     }
