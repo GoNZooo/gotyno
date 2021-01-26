@@ -34,6 +34,7 @@ pub const Token = union(enum) {
     comma,
     colon,
     newline,
+    crlf,
     space,
     question_mark,
     asterisk,
@@ -59,6 +60,7 @@ pub const Token = union(enum) {
             .comma,
             .colon,
             .newline,
+            .crlf,
             .space,
             .question_mark,
             .asterisk,
@@ -91,12 +93,13 @@ pub const Token = union(enum) {
             .colon,
             .comma,
             .newline,
-            // @TODO: add CRLF/\r\n token?
             .space,
             .question_mark,
             .asterisk,
             .period,
             => 1,
+
+            .crlf => 2,
 
             .symbol => |s| s.len,
             .name => |n| n.len,
@@ -161,7 +164,7 @@ pub const ExpectError = union(enum) {
 
 pub const TokenIterator = struct {
     const Self = @This();
-    const delimiters = ";:\" \t\n{}[]<>(),.";
+    const delimiters = ";:\" \t\r\n{}[]<>(),.";
 
     buffer: []const u8,
     i: usize,
@@ -202,6 +205,14 @@ pub const TokenIterator = struct {
             '*' => Token.asterisk,
             '.' => Token.period,
             ' ' => Token.space,
+            '\r' => token: {
+                if (self.buffer[self.i + 1] == '\n') {
+                    if (!options.peek) self.line += 1;
+                    break :token Token.crlf;
+                } else {
+                    @panic("Carriage return not followed up by line feed");
+                }
+            },
             '\n' => token: {
                 if (!options.peek) self.line += 1;
                 break :token Token.newline;

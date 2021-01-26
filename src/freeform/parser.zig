@@ -1256,6 +1256,10 @@ pub const DefinitionIterator = struct {
         return options;
     }
 
+    fn expectNewline(self: *Self) !void {
+        _ = try self.token_iterator.expectOneOf(&[_]TokenTag{ .newline, .crlf }, self.expect_error);
+    }
+
     fn parseUntaggedUnionDefinition(self: *Self, open_names: []const []const u8) !UntaggedUnion {
         const tokens = &self.token_iterator;
 
@@ -1263,7 +1267,7 @@ pub const DefinitionIterator = struct {
 
         _ = try tokens.expect(Token.space, self.expect_error);
         _ = try tokens.expect(Token.left_brace, self.expect_error);
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
 
         var values = ArrayList(UntaggedUnionValue).init(self.allocator);
         defer values.deinit();
@@ -1276,7 +1280,7 @@ pub const DefinitionIterator = struct {
                 .reference = try self.getTypeReference(value_name, name, open_names),
             });
 
-            _ = try tokens.expect(Token.newline, self.expect_error);
+            try self.expectNewline();
 
             if (try tokens.peek()) |t| {
                 switch (t) {
@@ -1296,7 +1300,7 @@ pub const DefinitionIterator = struct {
 
         _ = try tokens.expect(Token.space, self.expect_error);
         _ = try tokens.expect(Token.left_brace, self.expect_error);
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
 
         var fields = ArrayList(EnumerationField).init(self.allocator);
         var done_parsing_fields = false;
@@ -1324,7 +1328,7 @@ pub const DefinitionIterator = struct {
                 else => unreachable,
             };
 
-            _ = try tokens.expect(Token.newline, self.expect_error);
+            try self.expectNewline();
             if (try tokens.peek()) |t| {
                 switch (t) {
                     .right_brace => done_parsing_fields = true,
@@ -1371,7 +1375,7 @@ pub const DefinitionIterator = struct {
         var fields = ArrayList(Field).init(self.allocator);
         const tokens = &self.token_iterator;
 
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
         var done_parsing_fields = false;
         while (!done_parsing_fields) {
             if (try tokens.peek()) |t| {
@@ -1427,7 +1431,7 @@ pub const DefinitionIterator = struct {
         const open_names = try self.parseOpenNames();
 
         _ = try tokens.expect(Token.left_brace, self.expect_error);
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
         var done_parsing_fields = false;
         while (!done_parsing_fields) {
             if (try tokens.peek()) |t| {
@@ -1496,7 +1500,7 @@ pub const DefinitionIterator = struct {
             else => unreachable,
         }
 
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
 
         var constructors = ArrayList(ConstructorWithEmbeddedTypeTag).init(self.allocator);
         var done_parsing_constructors = false;
@@ -1542,7 +1546,7 @@ pub const DefinitionIterator = struct {
                             .parameter = parameter,
                         });
 
-                        _ = try tokens.expect(Token.newline, self.expect_error);
+                        try self.expectNewline();
                     } else {
                         try self.returnUnknownReferenceError(void, parameter_name);
                     }
@@ -1576,7 +1580,7 @@ pub const DefinitionIterator = struct {
         var constructors = ArrayList(Constructor).init(self.allocator);
         const tokens = &self.token_iterator;
 
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
         var done_parsing_constructors = false;
         while (!done_parsing_constructors) {
             if (try tokens.peek()) |t| {
@@ -1610,7 +1614,7 @@ pub const DefinitionIterator = struct {
         var open_names = try self.parseOpenNames();
 
         _ = try tokens.expect(Token.left_brace, self.expect_error);
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
 
         var done_parsing_constructors = false;
         while (!done_parsing_constructors) {
@@ -1866,7 +1870,7 @@ pub const DefinitionIterator = struct {
             },
         };
         const p = try tokens.peek();
-        _ = try tokens.expect(Token.newline, self.expect_error);
+        try self.expectNewline();
 
         return field;
     }
