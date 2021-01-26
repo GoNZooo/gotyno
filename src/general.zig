@@ -17,8 +17,6 @@ pub fn openNamesFromType(
         .slice => |s| try openNamesFromType(allocator, s.@"type".*, open_names),
         .optional => |o| try openNamesFromType(allocator, o.@"type".*, open_names),
 
-        .applied_name => |applied| try commonOpenNames(allocator, open_names, applied.open_names),
-
         .reference => |r| reference: {
             var open_name_list = ArrayList([]const u8).init(allocator);
 
@@ -27,6 +25,12 @@ pub fn openNamesFromType(
                 .imported_definition => |id| try open_name_list.appendSlice(
                     try openNamesFromDefinition(allocator, id.definition),
                 ),
+                .applied_name => |applied| break :reference try commonOpenNames(
+                    allocator,
+                    open_names,
+                    applied.open_names,
+                ),
+
                 .definition => |d| try open_name_list.appendSlice(
                     try openNamesFromDefinition(allocator, d),
                 ),

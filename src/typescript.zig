@@ -1473,20 +1473,6 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
         },
 
-        .applied_name => |applied_name| output: {
-            const open_name_predicates = try openNamePredicates(allocator, applied_name.open_names);
-            defer utilities.freeStringList(open_name_predicates);
-
-            const joined_predicates = try mem.join(allocator, ", ", open_name_predicates.items);
-            defer allocator.free(joined_predicates);
-
-            break :output try fmt.allocPrint(
-                allocator,
-                "is{s}({s})",
-                .{ applied_name.reference.name(), joined_predicates },
-            );
-        },
-
         .empty => debug.panic("Empty type does not seem like it should have a type guard\n", .{}),
     };
 }
@@ -1517,20 +1503,6 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
         },
-
-        .applied_name => |applied_name| output: {
-            const open_name_validators = try openNameValidators(allocator, applied_name.open_names);
-            defer utilities.freeStringList(open_name_validators);
-            const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
-            defer allocator.free(joined_validators);
-
-            break :output try fmt.allocPrint(
-                allocator,
-                "validate{s}({s})",
-                .{ applied_name.reference.name(), joined_validators },
-            );
-        },
-
         .empty => debug.panic("Empty type does not seem like it should have a type guard\n", .{}),
     };
 }
@@ -2082,16 +2054,6 @@ fn getDataSpecificationFromType(
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested});
         },
-        .applied_name => |applied_name| output: {
-            const open_names_output = try outputOpenNames(allocator, applied_name.open_names);
-            defer allocator.free(open_names_output);
-
-            break :output try fmt.allocPrint(
-                allocator,
-                "{s}{s}",
-                .{ applied_name.reference.name(), open_names_output },
-            );
-        },
     };
 }
 
@@ -2139,19 +2101,6 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested});
         },
-        .applied_name => |applied| applied: {
-            const open_name_predicates = try openNamePredicates(allocator, applied.open_names);
-            defer utilities.freeStringList(open_name_predicates);
-
-            const joined_predicates = try mem.join(allocator, ", ", open_name_predicates.items);
-            defer allocator.free(joined_predicates);
-
-            break :applied try fmt.allocPrint(
-                allocator,
-                ", data: is{s}({s})",
-                .{ applied.reference.name(), joined_predicates },
-            );
-        },
     };
 }
 
@@ -2195,19 +2144,6 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 
             break :output try fmt.allocPrint(allocator, optional_format, .{validator});
         },
-        .applied_name => |applied| applied: {
-            const open_name_validators = try openNameValidators(allocator, applied.open_names);
-            defer utilities.freeStringList(open_name_validators);
-
-            const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
-            defer allocator.free(joined_validators);
-
-            break :applied try fmt.allocPrint(
-                allocator,
-                ", data: validate{s}({s})",
-                .{ applied.reference.name(), joined_validators },
-            );
-        },
     };
 }
 
@@ -2246,16 +2182,6 @@ fn getNestedDataSpecificationFromType(
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested});
         },
-        .applied_name => |applied_name| output: {
-            const open_names_output = try outputOpenNames(allocator, applied_name.open_names);
-            defer allocator.free(open_names_output);
-
-            break :output try fmt.allocPrint(
-                allocator,
-                "{s}{s}",
-                .{ applied_name.reference.name(), open_names_output },
-            );
-        },
     };
 }
 
@@ -2291,19 +2217,6 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
         },
-        .applied_name => |applied| applied: {
-            const open_name_predicates = try openNamePredicates(allocator, applied.open_names);
-            defer utilities.freeStringList(open_name_predicates);
-
-            const joined_predicates = try mem.join(allocator, ", ", open_name_predicates.items);
-            defer allocator.free(joined_predicates);
-
-            break :applied try fmt.allocPrint(
-                allocator,
-                "is{s}({s})",
-                .{ applied.reference.name(), joined_predicates },
-            );
-        },
     };
 }
 
@@ -2338,18 +2251,6 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
-        },
-        .applied_name => |applied| applied: {
-            const open_name_validators = try openNameValidators(allocator, applied.open_names);
-            defer utilities.freeStringList(open_name_validators);
-            const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
-            defer allocator.free(joined_validators);
-
-            break :applied try fmt.allocPrint(
-                allocator,
-                "validate{s}({s})",
-                .{ applied.reference.name(), joined_validators },
-            );
         },
     };
 }
@@ -2544,10 +2445,6 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
         .array => |a| output: {
             const embedded_type = switch (a.@"type".*) {
                 .reference => |r| try translateReference(allocator, r),
-                .applied_name => |applied_name| try outputOpenNames(
-                    allocator,
-                    applied_name.open_names,
-                ),
                 else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
             };
             defer allocator.free(embedded_type);
@@ -2558,10 +2455,6 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
         .slice => |s| output: {
             const embedded_type = switch (s.@"type".*) {
                 .reference => |r| try translateReference(allocator, r),
-                .applied_name => |applied_name| try outputOpenNames(
-                    allocator,
-                    applied_name.open_names,
-                ),
                 else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
             };
             defer allocator.free(embedded_type);
@@ -2572,19 +2465,6 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
         .pointer => |p| output: {
             const embedded_type = switch (p.@"type".*) {
                 .reference => |r| try translateReference(allocator, r),
-                .applied_name => |applied_name| embedded_type: {
-                    const open_names = try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    );
-                    defer allocator.free(open_names);
-
-                    break :embedded_type try fmt.allocPrint(
-                        allocator,
-                        "{s}{s}",
-                        .{ applied_name.reference.name(), open_names },
-                    );
-                },
                 else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
             };
             defer allocator.free(embedded_type);
@@ -2595,34 +2475,11 @@ fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
         .optional => |o| output: {
             const embedded_type = switch (o.@"type".*) {
                 .reference => |r| try translateReference(allocator, r),
-                .applied_name => |applied_name| embedded_type: {
-                    const open_names = try outputOpenNames(
-                        allocator,
-                        applied_name.open_names,
-                    );
-
-                    break :embedded_type try fmt.allocPrint(
-                        allocator,
-                        "{s}{s}",
-                        .{ applied_name.reference.name(), open_names },
-                    );
-                },
                 else => debug.panic("Invalid embedded type for optional: {}\n", .{o.@"type"}),
             };
             defer allocator.free(embedded_type);
 
             break :output try fmt.allocPrint(allocator, "{s} | null | undefined", .{embedded_type});
-        },
-
-        .applied_name => |applied_name| output: {
-            const open_names = try outputOpenNames(allocator, applied_name.open_names);
-            defer allocator.free(open_names);
-
-            break :output try fmt.allocPrint(
-                allocator,
-                "{s}{s}",
-                .{ applied_name.reference.name(), open_names },
-            );
         },
     };
 }
@@ -2692,6 +2549,16 @@ fn translateReference(allocator: *mem.Allocator, reference: TypeReference) ![]co
                 .{ id.import_name, id.definition.name().value },
             );
         },
+        .applied_name => |applied_name| output: {
+            const open_names = try outputOpenNames(allocator, applied_name.open_names);
+            defer allocator.free(open_names);
+
+            break :output try fmt.allocPrint(
+                allocator,
+                "{s}{s}",
+                .{ applied_name.reference.name(), open_names },
+            );
+        },
         .loose => |l| try allocator.dupe(u8, l.name),
         .open => |n| try allocator.dupe(u8, n),
     };
@@ -2728,12 +2595,29 @@ fn translatedTypeGuardReference(allocator: *mem.Allocator, reference: TypeRefere
             .F128,
             => try allocator.dupe(u8, "svt.isNumber"),
         },
+
         .definition => |d| try fmt.allocPrint(allocator, "is{s}", .{d.name().value}),
+
         .imported_definition => |id| try fmt.allocPrint(
             allocator,
             "{s}.is{s}",
             .{ id.import_name, id.definition.name().value },
         ),
+
+        .applied_name => |applied_name| output: {
+            const open_name_predicates = try openNamePredicates(allocator, applied_name.open_names);
+            defer utilities.freeStringList(open_name_predicates);
+
+            const joined_predicates = try mem.join(allocator, ", ", open_name_predicates.items);
+            defer allocator.free(joined_predicates);
+
+            break :output try fmt.allocPrint(
+                allocator,
+                "is{s}({s})",
+                .{ applied_name.reference.name(), joined_predicates },
+            );
+        },
+
         .loose => |l| try fmt.allocPrint(allocator, "is{s}", .{l.name}),
         .open => |n| try fmt.allocPrint(allocator, "is{s}", .{n}),
     };
@@ -2772,12 +2656,28 @@ fn translatedValidatorReference(allocator: *mem.Allocator, reference: TypeRefere
             .F128,
             => try allocator.dupe(u8, "svt.validateNumber"),
         },
+
         .definition => |d| try fmt.allocPrint(allocator, format, .{d.name().value}),
+
         .imported_definition => |id| try fmt.allocPrint(
             allocator,
             "{s}.validate{s}",
             .{ id.import_name, id.definition.name().value },
         ),
+
+        .applied_name => |applied_name| output: {
+            const open_name_validators = try openNameValidators(allocator, applied_name.open_names);
+            defer utilities.freeStringList(open_name_validators);
+            const joined_validators = try mem.join(allocator, ", ", open_name_validators.items);
+            defer allocator.free(joined_validators);
+
+            break :output try fmt.allocPrint(
+                allocator,
+                "validate{s}({s})",
+                .{ applied_name.reference.name(), joined_validators },
+            );
+        },
+
         .loose => |l| try fmt.allocPrint(allocator, format, .{l.name}),
         .open => |n| try fmt.allocPrint(allocator, format, .{n}),
     };

@@ -380,8 +380,6 @@ pub const Type = union(enum) {
     slice: Slice,
     pointer: Pointer,
     optional: Optional,
-    // @TODO: move `AppliedName` into `TypeReference` and make sure it contains reference
-    applied_name: AppliedName,
 
     pub fn free(self: Self, allocator: *mem.Allocator) void {
         switch (self) {
@@ -402,12 +400,6 @@ pub const Type = union(enum) {
                 p.*.@"type".free(allocator);
                 allocator.destroy(p.*.@"type");
             },
-            .applied_name => |*a| {
-                a.reference.free(allocator);
-                for (a.open_names) |name| allocator.free(name);
-
-                allocator.free(a.open_names);
-            },
             .reference => |*r| r.free(allocator),
             .empty => {},
         }
@@ -425,8 +417,6 @@ pub const Type = union(enum) {
                 pointer.isEqual(other.pointer),
             .optional => |optional| meta.activeTag(other) == .optional and
                 optional.isEqual(other.optional),
-            .applied_name => |applied_name| meta.activeTag(other) == .applied_name and
-                applied_name.isEqual(other.applied_name),
         };
     }
 };
@@ -439,6 +429,7 @@ pub const TypeReference = union(enum) {
     imported_definition: ImportedDefinition,
     loose: LooseReference,
     open: []const u8,
+    applied_name: AppliedName,
 
     pub fn toString(self: Self, allocator: *mem.Allocator) ![]const u8 {
         return switch (self) {
@@ -449,6 +440,7 @@ pub const TypeReference = union(enum) {
                 "{s}.{s}",
                 .{ id.import_name, id.definition.name().value },
             ),
+            .applied_name => |a| try allocator.dupe(u8, a.reference.name()),
             .loose => |l| try allocator.dupe(u8, l.name),
             .open => |o| try allocator.dupe(u8, o),
         };
@@ -458,6 +450,15 @@ pub const TypeReference = union(enum) {
         switch (self) {
             .loose => |*l| l.free(allocator),
             .open => |n| allocator.free(n),
+            .applied_name => |*a| {
+                a.reference.free(allocator);
+                allocator.destroy(a.reference);
+
+                for (a.open_names) |n| {
+                    allocator.free(n);
+                }
+                allocator.free(a.open_names);
+            },
             .builtin, .imported_definition, .definition => {},
         }
     }
@@ -473,6 +474,8 @@ pub const TypeReference = union(enum) {
                 other.imported_definition.import_name,
             ) and
                 id.definition.isEqual(other.imported_definition.definition),
+            .applied_name => |a| meta.activeTag(other) == .applied_name and
+                a.reference.isEqual(other.applied_name.reference.*),
             .open => |n| mem.eql(u8, n, other.open),
         };
     }
@@ -482,6 +485,7 @@ pub const TypeReference = union(enum) {
             .builtin => |b| b.toString(),
             .definition => |d| d.name().value,
             .imported_definition => |id| id.definition.name().value,
+            .applied_name => |a| a.reference.name(),
             .loose => |l| l.name,
             .open => |n| n,
         };
@@ -631,7 +635,7 @@ pub const Optional = struct {
 pub const AppliedName = struct {
     const Self = @This();
 
-    reference: TypeReference,
+    reference: *TypeReference,
     open_names: []const []const u8,
 
     pub fn isEqual(self: Self, other: Self) bool {
@@ -1707,10 +1711,10 @@ pub const DefinitionIterator = struct {
                     _ = try tokens.expect(Token.left_angle, self.expect_error);
                     const open_names = try self.parseOpenNames();
 
-                    return AppliedName{
-                        .reference = try self.getTypeReference(name, definition_name, open_names),
-                        .open_names = open_names,
-                    };
+                    const reference = try self.allocator.create(TypeReference);
+                    reference.* = try self.getTypeReference(name, definition_name, open_names);
+
+                    return AppliedName{ .reference = reference, .open_names = open_names };
                 },
                 else => {},
             }
@@ -1735,7 +1739,7 @@ pub const DefinitionIterator = struct {
             .string => |s| Type{ .string = try self.allocator.dupe(u8, s) },
             .name => |name| field_type: {
                 if (try self.parseMaybeAppliedName(definition_name, name)) |applied_name| {
-                    break :field_type Type{ .applied_name = applied_name };
+                    break :field_type Type{ .reference = TypeReference{ .applied_name = applied_name } };
                 } else {
                     break :field_type Type{
                         .reference = try self.getTypeReference(name, definition_name, open_names),
@@ -1828,7 +1832,7 @@ pub const DefinitionIterator = struct {
                     definition_name,
                     name,
                 )) |applied_name|
-                    Type{ .applied_name = applied_name }
+                    Type{ .reference = TypeReference{ .applied_name = applied_name } }
                 else
                     Type{
                         .reference = try self.getTypeReference(name, definition_name, open_names),
@@ -1845,7 +1849,7 @@ pub const DefinitionIterator = struct {
                     definition_name,
                     name,
                 )) |applied_name|
-                    Type{ .applied_name = applied_name }
+                    Type{ .reference = TypeReference{ .applied_name = applied_name } }
                 else
                     Type{
                         .reference = try self.getTypeReference(name, definition_name, open_names),
@@ -2318,12 +2322,16 @@ test "Parsing `Either` union" {
 test "Parsing `List` union" {
     var allocator = TestingAllocator{};
 
+    var applied_reference = TypeReference{
+        .loose = LooseReference{ .name = "List", .open_names = &[_][]const u8{} },
+    };
+
     var applied_pointer_type = Type{
-        .applied_name = AppliedName{
-            .reference = TypeReference{
-                .loose = LooseReference{ .name = "List", .open_names = &[_][]const u8{} },
+        .reference = TypeReference{
+            .applied_name = AppliedName{
+                .reference = &applied_reference,
+                .open_names = &[_][]const u8{"T"},
             },
-            .open_names = &[_][]const u8{"T"},
         },
     };
     var expected_constructors = [_]Constructor{

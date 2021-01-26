@@ -268,12 +268,11 @@ fn decoderForType(
     t: Type,
 ) error{OutOfMemory}![]const u8 {
     const array_format = "(Decode.list {s})";
-    const applied_name_format = "({s}.Decoder {s})";
     const string_format = "(GotynoCoders.decodeLiteralString \"{s}\")";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
-        .reference => |d| try decoderForTypeReference(allocator, d),
+        .reference => |d| try decoderForTypeReference(allocator, d, parent_open_names),
         .pointer => |d| try decoderForType(allocator, parent_open_names, d.@"type".*),
         .array => |d| o: {
             const nested_type_output = try decoderForType(allocator, parent_open_names, d.@"type".*);
@@ -296,27 +295,6 @@ fn decoderForType(
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, "(Decode.option {s})", .{nested_type_output});
-        },
-        .applied_name => |d| o: {
-            const open_name_decoders = try openNameDecoders(
-                allocator,
-                d.open_names,
-                parent_open_names,
-            );
-            defer utilities.freeStringList(open_name_decoders);
-
-            const joined_open_name_decoders = try mem.join(
-                allocator,
-                ", ",
-                open_name_decoders.items,
-            );
-            defer allocator.free(joined_open_name_decoders);
-
-            break :o try fmt.allocPrint(
-                allocator,
-                applied_name_format,
-                .{ d.reference.name(), joined_open_name_decoders },
-            );
         },
         .empty => debug.panic("Structure field cannot be empty\n", .{}),
     };
@@ -432,7 +410,11 @@ fn translatedEncoderName(
         try fmt.allocPrint(allocator, "{s}.Encoder", .{name});
 }
 
-fn decoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 {
+fn decoderForTypeReference(
+    allocator: *mem.Allocator,
+    r: TypeReference,
+    parent_open_names: []const []const u8,
+) ![]const u8 {
     return switch (r) {
         .builtin => |d| try decoderForBuiltin(allocator, d),
         .definition => |d| try decoderForDefinition(allocator, d),
@@ -447,6 +429,27 @@ fn decoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
                 allocator,
                 "{s}.{s}",
                 .{ module_name, definition_decoder },
+            );
+        },
+        .applied_name => |d| o: {
+            const open_name_decoders = try openNameDecoders(
+                allocator,
+                d.open_names,
+                parent_open_names,
+            );
+            defer utilities.freeStringList(open_name_decoders);
+
+            const joined_open_name_decoders = try mem.join(
+                allocator,
+                ", ",
+                open_name_decoders.items,
+            );
+            defer allocator.free(joined_open_name_decoders);
+
+            break :o try fmt.allocPrint(
+                allocator,
+                "({s}.Decoder {s})",
+                .{ d.reference.name(), joined_open_name_decoders },
             );
         },
         .loose => |d| try fmt.allocPrint(allocator, "{s}.Decoder", .{d.name}),
@@ -579,13 +582,18 @@ fn encoderForType(
     parent_open_names: []const []const u8,
 ) error{OutOfMemory}![]const u8 {
     const array_format = "GotynoCoders.encodeList {s}";
-    const applied_name_format = "({s}.Encoder {s})";
     const string_format = "Encode.string \"{s}\"";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
         .reference => |d| o: {
-            const encoder = try encoderForTypeReference(allocator, d);
+            const encoder = try encoderForTypeReference(
+                allocator,
+                d,
+                parent_open_names,
+                field_name,
+                value_name,
+            );
 
             if (value_name != null and field_name != null) {
                 defer allocator.free(encoder);
@@ -643,40 +651,17 @@ fn encoderForType(
 
             break :o try fmt.allocPrint(allocator, "(Encode.option {s})", .{nested_type_output});
         },
-        .applied_name => |d| o: {
-            const open_name_encoders = try openNameEncoders(
-                allocator,
-                d.open_names,
-                parent_open_names,
-            );
-            defer utilities.freeStringList(open_name_encoders);
-            const joined_open_name_encoders = try mem.join(allocator, " ", open_name_encoders.items);
-            defer allocator.free(joined_open_name_encoders);
-
-            const encoder = try fmt.allocPrint(
-                allocator,
-                applied_name_format,
-                .{ d.reference.name(), joined_open_name_encoders },
-            );
-
-            if (value_name != null and field_name != null) {
-                defer allocator.free(encoder);
-                const escaped_field_name = try maybeEscapeName(allocator, field_name.?);
-                defer allocator.free(escaped_field_name);
-
-                break :o try fmt.allocPrint(
-                    allocator,
-                    "{s} {s}.{s}",
-                    .{ encoder, value_name.?, escaped_field_name },
-                );
-            } else
-                break :o encoder;
-        },
         .empty => debug.panic("Structure field cannot be empty\n", .{}),
     };
 }
 
-fn encoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 {
+fn encoderForTypeReference(
+    allocator: *mem.Allocator,
+    r: TypeReference,
+    parent_open_names: []const []const u8,
+    field_name: ?[]const u8,
+    comptime value_name: ?[]const u8,
+) ![]const u8 {
     return switch (r) {
         .builtin => |d| try encoderForBuiltin(allocator, d),
         .definition => |d| try encoderForDefinition(allocator, d),
@@ -692,6 +677,35 @@ fn encoderForTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const
                 "{s}.{s}",
                 .{ module_name, definition_encoder },
             );
+        },
+        .applied_name => |d| o: {
+            const open_name_encoders = try openNameEncoders(
+                allocator,
+                d.open_names,
+                parent_open_names,
+            );
+            defer utilities.freeStringList(open_name_encoders);
+            const joined_open_name_encoders = try mem.join(allocator, " ", open_name_encoders.items);
+            defer allocator.free(joined_open_name_encoders);
+
+            const encoder = try fmt.allocPrint(
+                allocator,
+                "({s}.Encoder {s})",
+                .{ d.reference.name(), joined_open_name_encoders },
+            );
+
+            if (value_name != null and field_name != null) {
+                defer allocator.free(encoder);
+                const escaped_field_name = try maybeEscapeName(allocator, field_name.?);
+                defer allocator.free(escaped_field_name);
+
+                break :o try fmt.allocPrint(
+                    allocator,
+                    "{s} {s}.{s}",
+                    .{ encoder, value_name.?, escaped_field_name },
+                );
+            } else
+                break :o encoder;
         },
         .loose => |d| try fmt.allocPrint(allocator, "{s}.Encoder", .{d.name}),
         .open => |d| try fmt.allocPrint(allocator, "encode{s}", .{d}),
@@ -751,7 +765,7 @@ fn outputFSharpType(
 
     return switch (t) {
         .string => try allocator.dupe(u8, "string"),
-        .reference => |d| try outputTypeReference(allocator, d),
+        .reference => |d| try outputTypeReference(allocator, d, parent_open_names),
         .pointer => |d| try outputFSharpType(allocator, parent_open_names, d.@"type".*),
         .array => |d| o: {
             const nested_type_output = try outputFSharpType(allocator, parent_open_names, d.@"type".*);
@@ -771,17 +785,15 @@ fn outputFSharpType(
 
             break :o try fmt.allocPrint(allocator, optional_format, .{nested_type_output});
         },
-        .applied_name => |d| o: {
-            const open_names = try outputOpenNames(allocator, d.open_names, parent_open_names);
-            defer allocator.free(open_names);
-
-            break :o try fmt.allocPrint(allocator, "{s}{s}", .{ d.reference.name(), open_names });
-        },
         .empty => debug.panic("Structure field cannot be empty\n", .{}),
     };
 }
 
-fn outputTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 {
+fn outputTypeReference(
+    allocator: *mem.Allocator,
+    r: TypeReference,
+    parent_open_names: []const []const u8,
+) ![]const u8 {
     return switch (r) {
         .builtin => |b| try outputBuiltinReference(allocator, b),
         .definition => |d| try allocator.dupe(u8, d.name().value),
@@ -794,6 +806,12 @@ fn outputTypeReference(allocator: *mem.Allocator, r: TypeReference) ![]const u8 
                 "{s}.{s}",
                 .{ module_name, id.definition.name().value },
             );
+        },
+        .applied_name => |d| o: {
+            const open_names = try outputOpenNames(allocator, d.open_names, parent_open_names);
+            defer allocator.free(open_names);
+
+            break :o try fmt.allocPrint(allocator, "{s}{s}", .{ d.reference.name(), open_names });
         },
         .loose => |l| try outputLooseReference(allocator, l),
         .open => |o| try makeFSharpTypeVariable(allocator, o),
@@ -1821,7 +1839,11 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
 
         n.* = try fmt.allocPrint(allocator, "{s}{s}", .{ u.name.value, value_type_name });
 
-        const value_type = try outputTypeReference(allocator, u.values[i].reference);
+        const value_type = try outputTypeReference(
+            allocator,
+            u.values[i].reference,
+            &[_][]const u8{},
+        );
         defer allocator.free(value_type);
 
         constructors[i] = try fmt.allocPrint(
@@ -1830,7 +1852,11 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
             .{ n.*, value_type },
         );
 
-        const type_reference_decoder = try decoderForTypeReference(allocator, u.values[i].reference);
+        const type_reference_decoder = try decoderForTypeReference(
+            allocator,
+            u.values[i].reference,
+            &[_][]const u8{},
+        );
         defer allocator.free(type_reference_decoder);
 
         const constructor_decoder_format =
@@ -1886,7 +1912,13 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     ;
 
     for (constructor_encoders) |*e, i| {
-        const reference_encoder = try encoderForTypeReference(allocator, u.values[i].reference);
+        const reference_encoder = try encoderForTypeReference(
+            allocator,
+            u.values[i].reference,
+            &[_][]const u8{},
+            null,
+            null,
+        );
         defer allocator.free(reference_encoder);
         e.* = try fmt.allocPrint(
             allocator,
