@@ -387,14 +387,18 @@ test "Parsing `List` union" {
     var allocator = TestingAllocator{};
 
     var applied_reference = TypeReference{
-        .loose = LooseReference{ .name = "List", .open_names = &[_][]const u8{} },
+        .loose = LooseReference{ .name = "List", .open_names = &[_][]const u8{"T"} },
     };
 
     var applied_pointer_type = Type{
         .reference = TypeReference{
             .applied_name = AppliedName{
                 .reference = &applied_reference,
-                .open_names = &[_]AppliedOpenName{.{ .open = "T" }},
+                .open_names = &[_]AppliedOpenName{
+                    .{
+                        .reference = Type{ .reference = TypeReference{ .open = "T" } },
+                    },
+                },
             },
         },
     };
@@ -1050,19 +1054,21 @@ test "Parsing an imported reference works even with nested ones" {
     ;
 
     var plain_struct_applied_name = AppliedOpenName{
-        .reference = TypeReference{
-            .definition = Definition{
-                .structure = Structure{
-                    .plain = PlainStructure{
-                        .name = DefinitionName{
-                            .value = "PlainStruct",
-                            .location = Location{ .line = 5, .column = 8 },
-                        },
-                        .fields = &[_]Field{
-                            .{
-                                .name = "normalField",
-                                .@"type" = Type{
-                                    .reference = TypeReference{ .builtin = Builtin.String },
+        .reference = Type{
+            .reference = TypeReference{
+                .definition = Definition{
+                    .structure = Structure{
+                        .plain = PlainStructure{
+                            .name = DefinitionName{
+                                .value = "PlainStruct",
+                                .location = Location{ .line = 5, .column = 8 },
+                            },
+                            .fields = &[_]Field{
+                                .{
+                                    .name = "normalField",
+                                    .@"type" = Type{
+                                        .reference = TypeReference{ .builtin = Builtin.String },
+                                    },
                                 },
                             },
                         },
@@ -1073,7 +1079,9 @@ test "Parsing an imported reference works even with nested ones" {
     };
 
     var string_applied_name = AppliedOpenName{
-        .reference = TypeReference{ .builtin = Builtin.String },
+        .reference = Type{
+            .reference = TypeReference{ .builtin = Builtin.String },
+        },
     };
 
     var either_reference = TypeReference{
@@ -1109,10 +1117,12 @@ test "Parsing an imported reference works even with nested ones" {
     };
 
     var either_applied_name = AppliedOpenName{
-        .reference = TypeReference{
-            .applied_name = AppliedName{
-                .reference = &either_reference,
-                .open_names = &[_]AppliedOpenName{ string_applied_name, plain_struct_applied_name },
+        .reference = Type{
+            .reference = TypeReference{
+                .applied_name = AppliedName{
+                    .reference = &either_reference,
+                    .open_names = &[_]AppliedOpenName{ string_applied_name, plain_struct_applied_name },
+                },
             },
         },
     };
@@ -1148,10 +1158,12 @@ test "Parsing an imported reference works even with nested ones" {
     };
 
     var maybe_applied_name = AppliedOpenName{
-        .reference = TypeReference{
-            .applied_name = AppliedName{
-                .reference = &maybe_reference,
-                .open_names = &[_]AppliedOpenName{either_applied_name},
+        .reference = Type{
+            .reference = TypeReference{
+                .applied_name = AppliedName{
+                    .reference = &maybe_reference,
+                    .open_names = &[_]AppliedOpenName{either_applied_name},
+                },
             },
         },
     };

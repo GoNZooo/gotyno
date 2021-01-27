@@ -1444,3 +1444,138 @@ test "Parsing an imported reference works even with nested ones" {
     modules.deinit();
     testing_utilities.expectNoLeaks(&allocator);
 }
+
+test "Parsing a slice type as an applied name works output correctly" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\union Maybe <T>{
+        \\    Nothing
+        \\    Just: T
+        \\}
+        \\
+        \\struct Plain {
+        \\    name: String
+        \\}
+        \\
+        \\struct HasMaybe {
+        \\    field: Maybe<[]Plain>
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+    };
+
+    var parsing_error: ParsingError = undefined;
+
+    var modules = try parser.parseModulesWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+
+    const maybe_module1 = modules.get(module1_name);
+    testing.expect(maybe_module1 != null);
+    var module1 = maybe_module1.?;
+
+    const expected_output =
+        \\export type HasMaybe = {
+        \\    field: Maybe<Plain[]>;
+        \\};
+        \\
+        \\export function isHasMaybe(value: unknown): value is HasMaybe {
+        \\    return svt.isInterface<HasMaybe>(value, {field: isMaybe(svt.arrayOf(isPlain))});
+        \\}
+        \\
+        \\export function validateHasMaybe(value: unknown): svt.ValidationResult<HasMaybe> {
+        \\    return svt.validate<HasMaybe>(value, {field: validateMaybe(svt.validateArray(validatePlain))});
+        \\}
+    ;
+
+    const output = try typescript.outputPlainStructure(
+        &allocator.allocator,
+        module1.definitions[2].structure.plain,
+    );
+
+    testing.expectEqualStrings(expected_output, output);
+
+    allocator.allocator.free(output);
+    modules.deinit();
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Parsing a slice type of an imported defdinition as an applied name works output correctly" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\struct Plain {
+        \\    name: String
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\union Maybe <T>{
+        \\    Nothing
+        \\    Just: T
+        \\}
+        \\
+        \\struct HasMaybe {
+        \\    field: Maybe<[]module1.Plain>
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
+    };
+
+    var parsing_error: ParsingError = undefined;
+
+    var modules = try parser.parseModulesWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+
+    const maybe_module1 = modules.get(module1_name);
+    testing.expect(maybe_module1 != null);
+    var module1 = maybe_module1.?;
+
+    const maybe_module2 = modules.get(module2_name);
+    testing.expect(maybe_module2 != null);
+    var module2 = maybe_module2.?;
+
+    const expected_output =
+        \\export type HasMaybe = {
+        \\    field: Maybe<module1.Plain[]>;
+        \\};
+        \\
+        \\export function isHasMaybe(value: unknown): value is HasMaybe {
+        \\    return svt.isInterface<HasMaybe>(value, {field: isMaybe(svt.arrayOf(module1.isPlain))});
+        \\}
+        \\
+        \\export function validateHasMaybe(value: unknown): svt.ValidationResult<HasMaybe> {
+        \\    return svt.validate<HasMaybe>(value, {field: validateMaybe(svt.validateArray(module1.validatePlain))});
+        \\}
+    ;
+
+    const output = try typescript.outputPlainStructure(
+        &allocator.allocator,
+        module2.definitions[1].structure.plain,
+    );
+
+    testing.expectEqualStrings(expected_output, output);
+
+    allocator.allocator.free(output);
+    modules.deinit();
+    testing_utilities.expectNoLeaks(&allocator);
+}

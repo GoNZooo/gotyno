@@ -242,7 +242,7 @@ fn outputDecoderForField(
 
     return switch (f.@"type") {
         .optional => |o| output: {
-            const decoder_for_nested_type = try decoderForType(allocator, open_names, o.@"type".*);
+            const decoder_for_nested_type = try decoderForType(allocator, o.@"type".*);
             defer allocator.free(decoder_for_nested_type);
 
             break :output try fmt.allocPrint(
@@ -252,7 +252,7 @@ fn outputDecoderForField(
             );
         },
         else => output: {
-            const decoder = try decoderForType(allocator, open_names, f.@"type");
+            const decoder = try decoderForType(allocator, f.@"type");
             defer allocator.free(decoder);
 
             break :output try fmt.allocPrint(
@@ -264,36 +264,28 @@ fn outputDecoderForField(
     };
 }
 
-fn decoderForType(
-    allocator: *mem.Allocator,
-    parent_open_names: []const []const u8,
-    t: Type,
-) error{OutOfMemory}![]const u8 {
+fn decoderForType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "(Decode.list {s})";
     const string_format = "(GotynoCoders.decodeLiteralString \"{s}\")";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
         .reference => |d| try decoderForTypeReference(allocator, d),
-        .pointer => |d| try decoderForType(allocator, parent_open_names, d.@"type".*),
+        .pointer => |d| try decoderForType(allocator, d.@"type".*),
         .array => |d| o: {
-            const nested_type_output = try decoderForType(allocator, parent_open_names, d.@"type".*);
+            const nested_type_output = try decoderForType(allocator, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .slice => |d| o: {
-            const nested_type_output = try decoderForType(allocator, parent_open_names, d.@"type".*);
+            const nested_type_output = try decoderForType(allocator, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .optional => |d| o: {
-            const nested_type_output = try decoderForType(
-                allocator,
-                parent_open_names,
-                d.@"type".*,
-            );
+            const nested_type_output = try decoderForType(allocator, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, "(Decode.option {s})", .{nested_type_output});
@@ -464,10 +456,7 @@ fn appliedOpenNameDecoders(
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
     for (applied_open_names) |name, i| {
-        outputs[i] = switch (name) {
-            .open => |o| try fmt.allocPrint(allocator, "decode{s}", .{o}),
-            .reference => |r| try decoderForTypeReference(allocator, r),
-        };
+        outputs[i] = try decoderForType(allocator, name.reference);
     }
 
     return outputs;
@@ -582,7 +571,7 @@ fn outputEncoderForField(
 ) ![]const u8 {
     var indentation_buffer = [_]u8{' '} ** indentation;
 
-    const encoder = try encoderForType(allocator, f.name, f.@"type", value_name, open_names);
+    const encoder = try encoderForType(allocator, f.@"type", f.name, value_name);
     defer allocator.free(encoder);
 
     const format = "{s}\"{s}\", {s}";
@@ -592,10 +581,9 @@ fn outputEncoderForField(
 
 fn encoderForType(
     allocator: *mem.Allocator,
-    field_name: ?[]const u8,
     t: Type,
+    field_name: ?[]const u8,
     comptime value_name: ?[]const u8,
-    parent_open_names: []const []const u8,
 ) error{OutOfMemory}![]const u8 {
     const array_format = "GotynoCoders.encodeList {s}";
     const string_format = "Encode.string \"{s}\"";
@@ -620,18 +608,16 @@ fn encoderForType(
         },
         .pointer => |d| try encoderForType(
             allocator,
-            field_name,
             d.@"type".*,
+            field_name,
             value_name,
-            parent_open_names,
         ),
         .array => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
-                field_name,
                 d.@"type".*,
+                field_name,
                 value_name,
-                parent_open_names,
             );
             defer allocator.free(nested_type_output);
 
@@ -640,10 +626,9 @@ fn encoderForType(
         .slice => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
-                field_name,
                 d.@"type".*,
+                field_name,
                 value_name,
-                parent_open_names,
             );
             defer allocator.free(nested_type_output);
 
@@ -652,10 +637,9 @@ fn encoderForType(
         .optional => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
-                field_name,
                 d.@"type".*,
+                field_name,
                 value_name,
-                parent_open_names,
             );
             defer allocator.free(nested_type_output);
 
@@ -713,10 +697,7 @@ fn appliedOpenNameEncoders(
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
     for (applied_open_names) |name, i| {
-        outputs[i] = switch (name) {
-            .open => |o| try fmt.allocPrint(allocator, "encode{s}", .{o}),
-            .reference => |r| try encoderForTypeReference(allocator, r),
-        };
+        outputs[i] = try encoderForType(allocator, name.reference, null, null);
     }
 
     return outputs;
@@ -753,7 +734,7 @@ fn outputStructureField(
     structure_open_names: []const []const u8,
     field: Field,
 ) ![]const u8 {
-    const type_output = try outputFSharpType(allocator, structure_open_names, field.@"type");
+    const type_output = try outputType(allocator, field.@"type");
     defer allocator.free(type_output);
 
     const format = "        {s}: {s}";
@@ -764,11 +745,7 @@ fn outputStructureField(
     return try fmt.allocPrint(allocator, format, .{ name, type_output });
 }
 
-fn outputFSharpType(
-    allocator: *mem.Allocator,
-    parent_open_names: []const []const u8,
-    t: Type,
-) error{OutOfMemory}![]const u8 {
+fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "list<{s}>";
     const optional_format = "option<{s}>";
     const applied_name_format = "{s}<{s}>";
@@ -776,21 +753,21 @@ fn outputFSharpType(
     return switch (t) {
         .string => try allocator.dupe(u8, "string"),
         .reference => |d| try outputTypeReference(allocator, d),
-        .pointer => |d| try outputFSharpType(allocator, parent_open_names, d.@"type".*),
+        .pointer => |d| try outputType(allocator, d.@"type".*),
         .array => |d| o: {
-            const nested_type_output = try outputFSharpType(allocator, parent_open_names, d.@"type".*);
+            const nested_type_output = try outputType(allocator, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .slice => |d| o: {
-            const nested_type_output = try outputFSharpType(allocator, parent_open_names, d.@"type".*);
+            const nested_type_output = try outputType(allocator, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .optional => |d| o: {
-            const nested_type_output = try outputFSharpType(allocator, parent_open_names, d.@"type".*);
+            const nested_type_output = try outputType(allocator, d.@"type".*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, optional_format, .{nested_type_output});
@@ -861,10 +838,7 @@ fn outputAppliedOpenNames(
     defer utilities.freeStringArray(allocator, outputs);
 
     for (applied_open_names) |name, i| {
-        outputs[i] = switch (name) {
-            .open => |o| try makeFSharpTypeVariable(allocator, o),
-            .reference => |r| try outputTypeReference(allocator, r),
-        };
+        outputs[i] = try outputType(allocator, name.reference);
     }
 
     const joined_names = try mem.join(allocator, ", ", outputs);
@@ -1107,7 +1081,7 @@ fn outputConstructorParameter(
     return switch (p) {
         .empty => try allocator.dupe(u8, ""),
         else => o: {
-            const type_output = try outputFSharpType(allocator, union_open_names, p);
+            const type_output = try outputType(allocator, p);
             defer allocator.free(type_output);
 
             break :o fmt.allocPrint(allocator, " of {s}", .{type_output});
@@ -1149,7 +1123,6 @@ fn outputDecoderForUnion(
             else => o: {
                 const parameter_decoder_output = try decoderForType(
                     allocator,
-                    &[_][]const u8{},
                     c.parameter,
                 );
                 defer allocator.free(parameter_decoder_output);
@@ -1237,10 +1210,9 @@ fn outputEncoderForUnion(
             else => o: {
                 const parameter_encoder_output = try encoderForType(
                     allocator,
-                    null,
                     c.parameter,
                     null,
-                    &[_][]const u8{},
+                    null,
                 );
                 defer allocator.free(parameter_encoder_output);
 
@@ -1404,7 +1376,6 @@ fn outputDecoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
             else => o: {
                 const parameter_decoder_output = try decoderForType(
                     allocator,
-                    u.open_names,
                     c.parameter,
                 );
                 defer allocator.free(parameter_decoder_output);
@@ -1511,10 +1482,9 @@ fn outputEncoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
             else => o: {
                 const parameter_encoder_output = try encoderForType(
                     allocator,
-                    null,
                     c.parameter,
+                    null,
                     "payload",
-                    u.open_names,
                 );
                 defer allocator.free(parameter_encoder_output);
 

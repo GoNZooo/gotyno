@@ -606,7 +606,7 @@ pub const TypeReference = union(enum) {
             .definition => |d| try fmt.format(writer, "{}", .{d}),
             .imported_definition => |id| fmt.format(writer, "{}", .{id}),
             .applied_name => |a| try fmt.format(writer, "{}", .{a}),
-            .loose => |l| try fmt.format(writer, "LOOSE<{s}>", .{l}),
+            .loose => |l| try fmt.format(writer, "{}", .{l}),
             .open => |o| try fmt.format(writer, "{s}", .{o}),
         };
     }
@@ -709,6 +709,25 @@ pub const LooseReference = struct {
 
         return true;
     }
+
+    pub fn format(
+        self: Self,
+        comptime format_string: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        if (self.open_names.len > 0) {
+            try fmt.format(writer, "(LOOSE){s}(<{s}", .{ self.name, self.open_names[0] });
+
+            for (self.open_names[1..]) |n| {
+                try fmt.format(writer, ", {s}", .{n});
+            }
+
+            try fmt.format(writer, ">)", .{});
+        } else {
+            try fmt.format(writer, "(LOOSE){s}(<>)", .{self.name});
+        }
+    }
 };
 
 pub const Array = struct {
@@ -779,7 +798,7 @@ pub const AppliedName = struct {
         writer: anytype,
     ) !void {
         if (self.open_names.len > 0) {
-            try fmt.format(writer, "{}<{}", .{ self.reference, self.open_names[0] });
+            try fmt.format(writer, "{}<{}>", .{ self.reference, self.open_names[0] });
             for (self.open_names[1..]) |n| {
                 try fmt.format(writer, ", {}", .{n});
             }
@@ -789,24 +808,17 @@ pub const AppliedName = struct {
     }
 };
 
-pub const AppliedOpenName = union(enum) {
+pub const AppliedOpenName = struct {
     const Self = @This();
 
-    open: []const u8,
-    reference: TypeReference,
+    reference: Type,
 
     pub fn free(self: Self, allocator: *mem.Allocator) void {
-        switch (self) {
-            .open => |o| allocator.free(o),
-            .reference => |*r| r.free(allocator),
-        }
+        self.reference.free(allocator);
     }
 
     pub fn isEqual(self: Self, other: Self) bool {
-        return switch (self) {
-            .open => |o| meta.activeTag(other) == .open and mem.eql(u8, o, other.open),
-            .reference => |r| meta.activeTag(other) == .reference and r.isEqual(other.reference),
-        };
+        return self.reference.isEqual(other.reference);
     }
 
     pub fn format(
@@ -815,10 +827,7 @@ pub const AppliedOpenName = union(enum) {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        return switch (self) {
-            .open => |o| try fmt.format(writer, "{s}", .{o}),
-            .reference => |r| try fmt.format(writer, "{}", .{r}),
-        };
+        return try fmt.format(writer, "{}", .{self.reference});
     }
 };
 
@@ -2024,69 +2033,40 @@ pub const DefinitionIterator = struct {
         return null;
     }
 
+    const ParseAppliedOpenNamesError = error{
+        OutOfMemory,
+        UnexpectedToken,
+        UnexpectedEndOfTokenStream,
+        Overflow,
+        InvalidCharacter,
+        UnknownModule,
+        UnknownReference,
+    };
+
     fn parseAppliedOpenNames(
         self: *Self,
         tokens: *TokenIterator,
         source_definitions: *DefinitionIterator,
         current_definition_name: DefinitionName,
         parent_open_names: []const []const u8,
-    ) ![]AppliedOpenName {
+    ) ParseAppliedOpenNamesError![]AppliedOpenName {
         var applied_open_names = ArrayList(AppliedOpenName).init(self.allocator);
 
         var done = false;
         while (!done) {
-            switch (try tokens.expectOneOf(&[_]TokenTag{ .name, .symbol }, self.expect_error)) {
-                .name => |n| {
-                    const applied_open_name = if (utilities.isStringEqualToOneOf(n, parent_open_names))
-                        AppliedOpenName{
-                            .open = try self.allocator.dupe(u8, n),
-                        }
-                    else
-                        AppliedOpenName{
-                            // names always search in the source definitions, this is our home context
-                            .reference = try source_definitions.getTypeReference(
-                                n,
-                                current_definition_name,
-                                parent_open_names,
-                            ),
-                        };
+            const parsed_type = try source_definitions.parseType(
+                current_definition_name,
+                parent_open_names,
+            );
 
-                    try applied_open_names.append(applied_open_name);
+            switch (parsed_type) {
+                .empty, .string => debug.panic(
+                    "Invalid type parsed for applied open name: {}\n",
+                    .{parsed_type},
+                ),
+                .array, .slice, .pointer, .optional, .reference => {
+                    try applied_open_names.append(AppliedOpenName{ .reference = parsed_type });
                 },
-                .symbol => |module_name| {
-                    // We always have to search our source definitions for the module in question
-                    // since it always will be the latest one with all the modules so far
-                    if (source_definitions.getModule(module_name)) |*module| {
-                        _ = try tokens.expect(Token.period, self.expect_error);
-
-                        const definition_to_import = (try tokens.expect(
-                            Token.name,
-                            self.expect_error,
-                        )).name;
-
-                        const applied_open_name = if (try module.definition_iterator.parseImportedMaybeAppliedName(
-                            tokens,
-                            source_definitions,
-                            current_definition_name,
-                            definition_to_import,
-                            parent_open_names,
-                            module_name,
-                        )) |applied_name|
-                            AppliedOpenName{ .reference = TypeReference{ .applied_name = applied_name } }
-                        else
-                            AppliedOpenName{
-                                .reference = try module.definition_iterator.importTypeReference(
-                                    definition_to_import,
-                                    module_name,
-                                ),
-                            };
-
-                        try applied_open_names.append(applied_open_name);
-                    } else {
-                        return try self.returnUnknownModuleError([]AppliedOpenName, module_name);
-                    }
-                },
-                else => debug.panic("Unreachable.\n", .{}),
             }
 
             switch (try tokens.expectOneOf(&[_]TokenTag{ .comma, .right_angle }, self.expect_error)) {
@@ -2101,40 +2081,50 @@ pub const DefinitionIterator = struct {
         return applied_open_names.toOwnedSlice();
     }
 
-    fn parseFieldType(
+    const ParseTypeError = error{
+        OutOfMemory,
+        UnexpectedToken,
+        UnexpectedEndOfTokenStream,
+        InvalidCharacter,
+        Overflow,
+        UnknownModule,
+        UnknownReference,
+    };
+
+    fn parseType(
         self: *Self,
         definition_name: DefinitionName,
         open_names: []const []const u8,
-    ) !Type {
+    ) ParseTypeError!Type {
         const tokens = &self.token_iterator;
 
-        const field_type_start_token = try tokens.expectOneOf(
+        const start_token = try tokens.expectOneOf(
             &[_]TokenTag{ .string, .name, .symbol, .left_bracket, .asterisk, .question_mark },
             self.expect_error,
         );
 
-        const field = switch (field_type_start_token) {
+        return switch (start_token) {
             .string => |s| Type{ .string = try self.allocator.dupe(u8, s) },
-            .name => |name| field_type: {
+            .name => |name| result: {
                 if (try self.parseMaybeAppliedName(
                     definition_name,
                     name,
                     open_names,
                 )) |applied_name| {
-                    break :field_type Type{ .reference = TypeReference{ .applied_name = applied_name } };
+                    break :result Type{ .reference = TypeReference{ .applied_name = applied_name } };
                 } else {
-                    break :field_type Type{
-                        .reference = try self.getTypeReference(name, definition_name, open_names),
-                    };
+                    const reference = try self.getTypeReference(name, definition_name, open_names);
+
+                    break :result Type{ .reference = reference };
                 }
             },
-            .symbol => |s| field_type: {
+            .symbol => |s| result: {
                 const module_name = s;
                 _ = try tokens.expect(Token.period, self.expect_error);
-                const module_definition_name = try self.allocator.dupe(
-                    u8,
-                    (try tokens.expect(Token.name, self.expect_error)).name,
-                );
+                const module_definition_name = (try tokens.expect(
+                    Token.name,
+                    self.expect_error,
+                )).name;
 
                 if (self.getModule(module_name)) |*module| {
                     if (try module.definition_iterator.parseImportedMaybeAppliedName(
@@ -2145,10 +2135,10 @@ pub const DefinitionIterator = struct {
                         open_names,
                         module_name,
                     )) |applied_name| {
-                        break :field_type Type{ .reference = TypeReference{ .applied_name = applied_name } };
+                        break :result Type{ .reference = TypeReference{ .applied_name = applied_name } };
                     }
                     if (module.definition_iterator.getDefinition(module_definition_name)) |d| {
-                        break :field_type Type{
+                        break :result Type{
                             .reference = TypeReference{
                                 .imported_definition = ImportedDefinition{
                                     .import_name = module_name,
@@ -2157,17 +2147,17 @@ pub const DefinitionIterator = struct {
                             },
                         };
                     } else {
-                        break :field_type try self.returnUnknownReferenceError(
+                        break :result try self.returnUnknownReferenceError(
                             Type,
                             module_definition_name,
                         );
                     }
                 } else {
-                    break :field_type try self.returnUnknownModuleError(Type, module_name);
+                    break :result try self.returnUnknownModuleError(Type, module_name);
                 }
             },
 
-            .left_bracket => field_type: {
+            .left_bracket => result: {
                 const right_bracket_or_number = try tokens.expectOneOf(
                     &[_]TokenTag{ .right_bracket, .unsigned_integer },
                     self.expect_error,
@@ -2176,36 +2166,16 @@ pub const DefinitionIterator = struct {
                 switch (right_bracket_or_number) {
                     .right_bracket => {
                         var slice_type = try self.allocator.create(Type);
-                        const slice_type_name = (try tokens.expect(
-                            Token.name,
-                            self.expect_error,
-                        )).name;
-                        const type_reference = try self.getTypeReference(
-                            slice_type_name,
-                            definition_name,
-                            open_names,
-                        );
+                        slice_type.* = try self.parseType(definition_name, open_names);
 
-                        slice_type.* = Type{ .reference = type_reference };
-
-                        break :field_type Type{ .slice = Slice{ .@"type" = slice_type } };
+                        break :result Type{ .slice = Slice{ .@"type" = slice_type } };
                     },
                     .unsigned_integer => |ui| {
                         _ = try tokens.expect(Token.right_bracket, self.expect_error);
                         var array_type = try self.allocator.create(Type);
-                        const array_type_name = (try tokens.expect(
-                            Token.name,
-                            self.expect_error,
-                        )).name;
-                        const type_reference = try self.getTypeReference(
-                            array_type_name,
-                            definition_name,
-                            open_names,
-                        );
-                        array_type.* = Type{ .reference = type_reference };
-                        break :field_type Type{
-                            .array = Array{ .@"type" = array_type, .size = ui },
-                        };
+                        array_type.* = try self.parseType(definition_name, open_names);
+
+                        break :result Type{ .array = Array{ .@"type" = array_type, .size = ui } };
                     },
                     else => {
                         debug.panic(
@@ -2216,50 +2186,36 @@ pub const DefinitionIterator = struct {
                 }
             },
 
-            .asterisk => field_type: {
-                var field_type = try self.allocator.create(Type);
-                const name = (try tokens.expect(Token.name, self.expect_error)).name;
+            .asterisk => result: {
+                var pointer_type = try self.allocator.create(Type);
+                pointer_type.* = try self.parseType(definition_name, open_names);
 
-                field_type.* = if (try self.parseMaybeAppliedName(
-                    definition_name,
-                    name,
-                    open_names,
-                )) |applied_name|
-                    Type{ .reference = TypeReference{ .applied_name = applied_name } }
-                else
-                    Type{
-                        .reference = try self.getTypeReference(name, definition_name, open_names),
-                    };
-
-                break :field_type Type{ .pointer = Pointer{ .@"type" = field_type } };
+                break :result Type{ .pointer = Pointer{ .@"type" = pointer_type } };
             },
 
-            .question_mark => field_type: {
-                var field_type = try self.allocator.create(Type);
-                const name = (try tokens.expect(Token.name, self.expect_error)).name;
+            .question_mark => result: {
+                var optional_type = try self.allocator.create(Type);
+                optional_type.* = try self.parseType(definition_name, open_names);
 
-                field_type.* = if (try self.parseMaybeAppliedName(
-                    definition_name,
-                    name,
-                    open_names,
-                )) |applied_name|
-                    Type{ .reference = TypeReference{ .applied_name = applied_name } }
-                else
-                    Type{
-                        .reference = try self.getTypeReference(name, definition_name, open_names),
-                    };
-
-                break :field_type Type{ .optional = Optional{ .@"type" = field_type } };
+                break :result Type{ .optional = Optional{ .@"type" = optional_type } };
             },
 
             else => {
                 debug.panic(
                     "Unexpected token in place of field value/type: {}",
-                    .{field_type_start_token},
+                    .{start_token},
                 );
             },
         };
-        const p = try tokens.peek();
+    }
+
+    fn parseFieldType(
+        self: *Self,
+        definition_name: DefinitionName,
+        open_names: []const []const u8,
+    ) !Type {
+        const field = try self.parseType(definition_name, open_names);
+
         try self.expectNewline();
 
         return field;
@@ -2312,7 +2268,12 @@ pub const DefinitionIterator = struct {
         import_name: []const u8,
     ) !TypeReference {
         return if (self.getDefinition(name)) |found_definition|
-            TypeReference{ .imported_definition = ImportedDefinition{ .import_name = import_name, .definition = found_definition } }
+            TypeReference{
+                .imported_definition = ImportedDefinition{
+                    .import_name = import_name,
+                    .definition = found_definition,
+                },
+            }
         else
             try self.returnUnknownReferenceError(TypeReference, name);
     }

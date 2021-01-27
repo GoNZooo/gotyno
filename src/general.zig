@@ -75,11 +75,14 @@ pub fn commonOpenNames(
 
     for (as) |a| {
         for (applied_open_names) |applied_open_name| {
-            switch (applied_open_name) {
-                .open => |o| if (mem.eql(u8, a, o) and !isTranslatedName(a)) {
-                    try common_names.append(try allocator.dupe(u8, a));
+            switch (applied_open_name.reference) {
+                .reference => |r| switch (r) {
+                    .open => |o| if (mem.eql(u8, a, o) and !isTranslatedName(a)) {
+                        try common_names.append(try allocator.dupe(u8, a));
+                    },
+                    .builtin, .definition, .imported_definition, .loose, .applied_name => {},
                 },
-                .reference => {},
+                .empty, .string, .pointer, .optional, .array, .slice => {},
             }
         }
     }

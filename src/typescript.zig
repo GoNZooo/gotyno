@@ -2585,10 +2585,7 @@ fn outputAppliedOpenNames(
     defer utilities.freeStringArray(allocator, outputs);
 
     for (applied_open_names) |name, i| {
-        outputs[i] = switch (name) {
-            .open => |n| try allocator.dupe(u8, n),
-            .reference => |r| try translateReference(allocator, r),
-        };
+        outputs[i] = (try outputType(allocator, name.reference)).?;
     }
 
     const joined_outputs = try mem.join(allocator, ", ", outputs);
@@ -2672,10 +2669,7 @@ fn appliedOpenNamePredicates(
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
     for (applied_open_names) |name, i| {
-        outputs[i] = switch (name) {
-            .open => |n| try fmt.allocPrint(allocator, "is{s}", .{n}),
-            .reference => |r| try translatedTypeGuardReference(allocator, r),
-        };
+        outputs[i] = (try getTypeGuardFromType(allocator, name.reference)).?;
     }
 
     return outputs;
@@ -2758,10 +2752,7 @@ fn appliedOpenNameValidators(
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
     for (applied_open_names) |name, i| {
-        outputs[i] = switch (name) {
-            .open => |n| try fmt.allocPrint(allocator, "validate{s}", .{n}),
-            .reference => |r| try translatedValidatorReference(allocator, r),
-        };
+        outputs[i] = (try getValidatorFromType(allocator, name.reference)).?;
     }
 
     return outputs;
