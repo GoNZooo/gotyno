@@ -15,6 +15,7 @@ const utilities = @import("./freeform/utilities.zig");
 const testing_utilities = @import("./freeform/testing_utilities.zig");
 
 const Definition = parser.Definition;
+const AppliedOpenName = parser.AppliedOpenName;
 const Import = parser.Import;
 const UntaggedUnion = parser.UntaggedUnion;
 const UntaggedUnionValue = parser.UntaggedUnionValue;
@@ -34,6 +35,7 @@ const Field = parser.Field;
 const ParsingError = parser.ParsingError;
 const Builtin = parser.Builtin;
 const LooseReference = parser.LooseReference;
+const BufferData = parser.BufferData;
 
 const TestingAllocator = testing_utilities.TestingAllocator;
 
@@ -272,7 +274,7 @@ fn decoderForType(
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
-        .reference => |d| try decoderForTypeReference(allocator, d, parent_open_names),
+        .reference => |d| try decoderForTypeReference(allocator, d),
         .pointer => |d| try decoderForType(allocator, parent_open_names, d.@"type".*),
         .array => |d| o: {
             const nested_type_output = try decoderForType(allocator, parent_open_names, d.@"type".*);
@@ -413,8 +415,7 @@ fn translatedEncoderName(
 fn decoderForTypeReference(
     allocator: *mem.Allocator,
     r: TypeReference,
-    parent_open_names: []const []const u8,
-) ![]const u8 {
+) error{OutOfMemory}![]const u8 {
     return switch (r) {
         .builtin => |d| try decoderForBuiltin(allocator, d),
         .definition => |d| try decoderForDefinition(allocator, d),
@@ -432,29 +433,44 @@ fn decoderForTypeReference(
             );
         },
         .applied_name => |d| o: {
-            const open_name_decoders = try openNameDecoders(
-                allocator,
-                d.open_names,
-                parent_open_names,
-            );
-            defer utilities.freeStringList(open_name_decoders);
+            const open_name_decoders = try appliedOpenNameDecoders(allocator, d.open_names);
+            defer utilities.freeStringArray(allocator, open_name_decoders);
 
             const joined_open_name_decoders = try mem.join(
                 allocator,
-                ", ",
-                open_name_decoders.items,
+                " ",
+                open_name_decoders,
             );
             defer allocator.free(joined_open_name_decoders);
 
+            const reference_decoder = try decoderForTypeReference(allocator, d.reference.*);
+            defer allocator.free(reference_decoder);
+
             break :o try fmt.allocPrint(
                 allocator,
-                "({s}.Decoder {s})",
-                .{ d.reference.name(), joined_open_name_decoders },
+                "({s} {s})",
+                .{ reference_decoder, joined_open_name_decoders },
             );
         },
         .loose => |d| try fmt.allocPrint(allocator, "{s}.Decoder", .{d.name}),
         .open => |d| try fmt.allocPrint(allocator, "decode{s}", .{d}),
     };
+}
+
+fn appliedOpenNameDecoders(
+    allocator: *mem.Allocator,
+    applied_open_names: []const AppliedOpenName,
+) error{OutOfMemory}![]const []const u8 {
+    var outputs = try allocator.alloc([]const u8, applied_open_names.len);
+
+    for (applied_open_names) |name, i| {
+        outputs[i] = switch (name) {
+            .open => |o| try fmt.allocPrint(allocator, "decode{s}", .{o}),
+            .reference => |r| try decoderForTypeReference(allocator, r),
+        };
+    }
+
+    return outputs;
 }
 
 fn decoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
@@ -587,13 +603,7 @@ fn encoderForType(
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
         .reference => |d| o: {
-            const encoder = try encoderForTypeReference(
-                allocator,
-                d,
-                parent_open_names,
-                field_name,
-                value_name,
-            );
+            const encoder = try encoderForTypeReference(allocator, d);
 
             if (value_name != null and field_name != null) {
                 defer allocator.free(encoder);
@@ -658,15 +668,12 @@ fn encoderForType(
 fn encoderForTypeReference(
     allocator: *mem.Allocator,
     r: TypeReference,
-    parent_open_names: []const []const u8,
-    field_name: ?[]const u8,
-    comptime value_name: ?[]const u8,
-) ![]const u8 {
+) error{OutOfMemory}![]const u8 {
     return switch (r) {
         .builtin => |d| try encoderForBuiltin(allocator, d),
         .definition => |d| try encoderForDefinition(allocator, d),
         .imported_definition => |id| id: {
-            const definition_encoder = try decoderForDefinition(allocator, id.definition);
+            const definition_encoder = try encoderForDefinition(allocator, id.definition);
             defer allocator.free(definition_encoder);
 
             const module_name = try utilities.titleCaseWord(allocator, id.import_name);
@@ -679,37 +686,40 @@ fn encoderForTypeReference(
             );
         },
         .applied_name => |d| o: {
-            const open_name_encoders = try openNameEncoders(
-                allocator,
-                d.open_names,
-                parent_open_names,
-            );
-            defer utilities.freeStringList(open_name_encoders);
-            const joined_open_name_encoders = try mem.join(allocator, " ", open_name_encoders.items);
+            const open_name_encoders = try appliedOpenNameEncoders(allocator, d.open_names);
+            defer utilities.freeStringArray(allocator, open_name_encoders);
+
+            const joined_open_name_encoders = try mem.join(allocator, " ", open_name_encoders);
             defer allocator.free(joined_open_name_encoders);
 
-            const encoder = try fmt.allocPrint(
+            const reference_encoder = try encoderForTypeReference(allocator, d.reference.*);
+            defer allocator.free(reference_encoder);
+
+            break :o try fmt.allocPrint(
                 allocator,
-                "({s}.Encoder {s})",
-                .{ d.reference.name(), joined_open_name_encoders },
+                "({s} {s})",
+                .{ reference_encoder, joined_open_name_encoders },
             );
-
-            if (value_name != null and field_name != null) {
-                defer allocator.free(encoder);
-                const escaped_field_name = try maybeEscapeName(allocator, field_name.?);
-                defer allocator.free(escaped_field_name);
-
-                break :o try fmt.allocPrint(
-                    allocator,
-                    "{s} {s}.{s}",
-                    .{ encoder, value_name.?, escaped_field_name },
-                );
-            } else
-                break :o encoder;
         },
         .loose => |d| try fmt.allocPrint(allocator, "{s}.Encoder", .{d.name}),
         .open => |d| try fmt.allocPrint(allocator, "encode{s}", .{d}),
     };
+}
+
+fn appliedOpenNameEncoders(
+    allocator: *mem.Allocator,
+    applied_open_names: []const AppliedOpenName,
+) error{OutOfMemory}![]const []const u8 {
+    var outputs = try allocator.alloc([]const u8, applied_open_names.len);
+
+    for (applied_open_names) |name, i| {
+        outputs[i] = switch (name) {
+            .open => |o| try fmt.allocPrint(allocator, "encode{s}", .{o}),
+            .reference => |r| try encoderForTypeReference(allocator, r),
+        };
+    }
+
+    return outputs;
 }
 
 fn encoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
@@ -765,7 +775,7 @@ fn outputFSharpType(
 
     return switch (t) {
         .string => try allocator.dupe(u8, "string"),
-        .reference => |d| try outputTypeReference(allocator, d, parent_open_names),
+        .reference => |d| try outputTypeReference(allocator, d),
         .pointer => |d| try outputFSharpType(allocator, parent_open_names, d.@"type".*),
         .array => |d| o: {
             const nested_type_output = try outputFSharpType(allocator, parent_open_names, d.@"type".*);
@@ -792,8 +802,7 @@ fn outputFSharpType(
 fn outputTypeReference(
     allocator: *mem.Allocator,
     r: TypeReference,
-    parent_open_names: []const []const u8,
-) ![]const u8 {
+) error{OutOfMemory}![]const u8 {
     return switch (r) {
         .builtin => |b| try outputBuiltinReference(allocator, b),
         .definition => |d| try allocator.dupe(u8, d.name().value),
@@ -808,10 +817,13 @@ fn outputTypeReference(
             );
         },
         .applied_name => |d| o: {
-            const open_names = try outputOpenNames(allocator, d.open_names, parent_open_names);
+            const open_names = try outputAppliedOpenNames(allocator, d.open_names);
             defer allocator.free(open_names);
 
-            break :o try fmt.allocPrint(allocator, "{s}{s}", .{ d.reference.name(), open_names });
+            const reference_output = try outputTypeReference(allocator, d.reference.*);
+            defer allocator.free(reference_output);
+
+            break :o try fmt.allocPrint(allocator, "{s}{s}", .{ reference_output, open_names });
         },
         .loose => |l| try outputLooseReference(allocator, l),
         .open => |o| try makeFSharpTypeVariable(allocator, o),
@@ -836,6 +848,26 @@ fn outputOpenNames(
     }
 
     const joined_names = try mem.join(allocator, ", ", translated_names.items);
+    defer allocator.free(joined_names);
+
+    return try fmt.allocPrint(allocator, "<{s}>", .{joined_names});
+}
+
+fn outputAppliedOpenNames(
+    allocator: *mem.Allocator,
+    applied_open_names: []const AppliedOpenName,
+) error{OutOfMemory}![]const u8 {
+    var outputs = try allocator.alloc([]const u8, applied_open_names.len);
+    defer utilities.freeStringArray(allocator, outputs);
+
+    for (applied_open_names) |name, i| {
+        outputs[i] = switch (name) {
+            .open => |o| try makeFSharpTypeVariable(allocator, o),
+            .reference => |r| try outputTypeReference(allocator, r),
+        };
+    }
+
+    const joined_names = try mem.join(allocator, ", ", outputs);
     defer allocator.free(joined_names);
 
     return try fmt.allocPrint(allocator, "<{s}>", .{joined_names});
@@ -1839,11 +1871,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
 
         n.* = try fmt.allocPrint(allocator, "{s}{s}", .{ u.name.value, value_type_name });
 
-        const value_type = try outputTypeReference(
-            allocator,
-            u.values[i].reference,
-            &[_][]const u8{},
-        );
+        const value_type = try outputTypeReference(allocator, u.values[i].reference);
         defer allocator.free(value_type);
 
         constructors[i] = try fmt.allocPrint(
@@ -1855,7 +1883,6 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
         const type_reference_decoder = try decoderForTypeReference(
             allocator,
             u.values[i].reference,
-            &[_][]const u8{},
         );
         defer allocator.free(type_reference_decoder);
 
@@ -1912,13 +1939,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     ;
 
     for (constructor_encoders) |*e, i| {
-        const reference_encoder = try encoderForTypeReference(
-            allocator,
-            u.values[i].reference,
-            &[_][]const u8{},
-            null,
-            null,
-        );
+        const reference_encoder = try encoderForTypeReference(allocator, u.values[i].reference);
         defer allocator.free(reference_encoder);
         e.* = try fmt.allocPrint(
             allocator,
@@ -2018,7 +2039,7 @@ test "outputs plain structure correctly" {
         (definitions).definitions[0].structure.plain,
     );
 
-    testing.expectEqualStrings(output, expected_output);
+    testing.expectEqualStrings(expected_output, output);
 
     definitions.deinit();
     allocator.allocator.free(output);
@@ -2813,5 +2834,92 @@ test "Basic untagged union is output correctly" {
 
     definitions.deinit();
     allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Parsing an imported reference works even with nested ones" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\union Maybe <T>{
+        \\    Nothing
+        \\    Just: T
+        \\}
+        \\
+        \\union Either <L, R>{
+        \\    Left: L
+        \\    Right: R
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\struct HoldsSomething <T>{
+        \\    holdingField: T
+        \\}
+        \\
+        \\struct PlainStruct {
+        \\    normalField: String
+        \\}
+        \\
+        \\struct Two {
+        \\    fieldHolding: HoldsSomething<module1.Maybe<module1.Either<String, PlainStruct>>>
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
+    };
+
+    var parsing_error: ParsingError = undefined;
+
+    var modules = try parser.parseModulesWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+
+    const maybe_module1 = modules.get(module1_name);
+    testing.expect(maybe_module1 != null);
+    var module1 = maybe_module1.?;
+
+    const maybe_module2 = modules.get(module2_name);
+    testing.expect(maybe_module2 != null);
+    var module2 = maybe_module2.?;
+
+    const expected_two_output =
+        \\type Two =
+        \\    {
+        \\        fieldHolding: HoldsSomething<Module1.Maybe<Module1.Either<string, PlainStruct>>>
+        \\    }
+        \\
+        \\    static member Decoder: Decoder<Two> =
+        \\        Decode.object (fun get ->
+        \\            {
+        \\                fieldHolding = get.Required.Field "fieldHolding" (HoldsSomething.Decoder (Module1.Maybe.Decoder (Module1.Either.Decoder Decode.string PlainStruct.Decoder)))
+        \\            }
+        \\        )
+        \\
+        \\    static member Encoder value =
+        \\        Encode.object
+        \\            [
+        \\                "fieldHolding", (HoldsSomething.Encoder (Module1.Maybe.Encoder (Module1.Either.Encoder Encode.string PlainStruct.Encoder))) value.fieldHolding
+        \\            ]
+    ;
+
+    const two_output = try outputPlainStructure(
+        &allocator.allocator,
+        module2.definitions[2].structure.plain,
+    );
+
+    testing.expectEqualStrings(expected_two_output, two_output);
+
+    allocator.allocator.free(two_output);
+    modules.deinit();
     testing_utilities.expectNoLeaks(&allocator);
 }
