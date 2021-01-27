@@ -516,10 +516,10 @@ pub const Type = union(enum) {
             .empty => try fmt.format(writer, ".empty", .{}),
             .reference => |r| fmt.format(writer, "{}", .{r}),
             .string => |s| fmt.format(writer, "{s}", .{s}),
-            .array => |array| fmt.format(writer, "[{}]", .{array.size}),
-            .slice => |slice| fmt.format(writer, "[]", .{}),
-            .pointer => |pointer| fmt.format(writer, "*", .{}),
-            .optional => |optional| fmt.format(writer, "?", .{}),
+            .array => |array| fmt.format(writer, "[{}]{}", .{ array.size, array.@"type" }),
+            .slice => |slice| fmt.format(writer, "[]{}", .{slice.@"type"}),
+            .pointer => |pointer| fmt.format(writer, "*{}", .{pointer.@"type"}),
+            .optional => |optional| fmt.format(writer, "?{}", .{optional.@"type"}),
         };
     }
 };
