@@ -1376,6 +1376,11 @@ pub const DefinitionIterator = struct {
                         const definition = Definition{ .import = import };
 
                         return definition;
+                    } else {
+                        debug.panic(
+                            "Expected one of `struct`, `union`, `enum`, `untagged` or `import`, got: `{s}`",
+                            .{s},
+                        );
                     }
                 },
                 else => {},

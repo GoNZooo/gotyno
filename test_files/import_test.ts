@@ -2,6 +2,22 @@ import * as svt from "simple-validation-tools";
 
 import * as basic from "./basic";
 
+export type HoldsSomething<T> = {
+    holdingField: T;
+};
+
+export function isHoldsSomething<T>(isT: svt.TypePredicate<T>): svt.TypePredicate<HoldsSomething<T>> {
+    return function isHoldsSomethingT(value: unknown): value is HoldsSomething<T> {
+        return svt.isInterface<HoldsSomething<T>>(value, {holdingField: isT});
+    };
+}
+
+export function validateHoldsSomething<T>(validateT: svt.Validator<T>): svt.Validator<HoldsSomething<T>> {
+    return function validateHoldsSomethingT(value: unknown): svt.ValidationResult<HoldsSomething<T>> {
+        return svt.validate<HoldsSomething<T>>(value, {holdingField: validateT});
+    };
+}
+
 export type StructureUsingImport = {
     event: basic.Event;
 };
@@ -61,4 +77,16 @@ export function validateCoolEvent(value: unknown): svt.ValidationResult<CoolEven
 
 export function validateOther(value: unknown): svt.ValidationResult<Other> {
     return svt.validate<Other>(value, {type: UnionUsingImportTag.Other, data: basic.validatePerson});
+}
+
+export type AllConcrete = {
+    field: HoldsSomething<basic.Either<basic.Maybe<StructureUsingImport>, UnionUsingImport>>;
+};
+
+export function isAllConcrete(value: unknown): value is AllConcrete {
+    return svt.isInterface<AllConcrete>(value, {field: isHoldsSomething(basic.isEither(basic.isMaybe(isStructureUsingImport), isUnionUsingImport))});
+}
+
+export function validateAllConcrete(value: unknown): svt.ValidationResult<AllConcrete> {
+    return svt.validate<AllConcrete>(value, {field: validateHoldsSomething(basic.validateEither(basic.validateMaybe(validateStructureUsingImport), validateUnionUsingImport))});
 }

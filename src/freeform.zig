@@ -91,7 +91,7 @@ pub fn compileModules(
 
     var parsing_error: ParsingError = undefined;
     const modules = try parser.parseModulesWithDescribedError(allocator, allocator, buffers, &parsing_error);
-    var module_iterator = modules.iterator();
+    var module_iterator = modules.modules.iterator();
     while (module_iterator.next()) |e| {
         try compileModule(allocator, e.value, output_languages, verbose);
     }
@@ -136,33 +136,33 @@ pub fn compileModule(
         compilation_times.typescript = compilation_time_difference;
     }
 
-    if (output_languages.fsharp) |path| {
-        const fsharp_start_time = time.nanoTimestamp();
+    // if (output_languages.fsharp) |path| {
+    //     const fsharp_start_time = time.nanoTimestamp();
 
-        const output_path = switch (path) {
-            .input => directoryOfInput(module.filename),
-            .path => |p| p,
-        };
+    //     const output_path = switch (path) {
+    //         .input => directoryOfInput(module.filename),
+    //         .path => |p| p,
+    //     };
 
-        var output_directory = try fs.cwd().openDir(output_path, .{});
-        defer output_directory.close();
+    //     var output_directory = try fs.cwd().openDir(output_path, .{});
+    //     defer output_directory.close();
 
-        const fsharp_filename = try fsharp.outputFilename(
-            compilation_allocator,
-            module.filename,
-        );
+    //     const fsharp_filename = try fsharp.outputFilename(
+    //         compilation_allocator,
+    //         module.filename,
+    //     );
 
-        const fsharp_output = try fsharp.compileDefinitions(
-            compilation_allocator,
-            module.definitions,
-            fsharp_filename,
-        );
+    //     const fsharp_output = try fsharp.compileDefinitions(
+    //         compilation_allocator,
+    //         module.definitions,
+    //         fsharp_filename,
+    //     );
 
-        try output_directory.writeFile(fsharp_filename, fsharp_output);
-        const fsharp_end_time = time.nanoTimestamp();
-        const compilation_time_difference = fsharp_end_time - fsharp_start_time;
-        compilation_times.fsharp = compilation_time_difference;
-    }
+    //     try output_directory.writeFile(fsharp_filename, fsharp_output);
+    //     const fsharp_end_time = time.nanoTimestamp();
+    //     const compilation_time_difference = fsharp_end_time - fsharp_start_time;
+    //     compilation_times.fsharp = compilation_time_difference;
+    // }
 
     const compilation_end_time = time.nanoTimestamp();
     const compilation_time_difference = @intToFloat(
