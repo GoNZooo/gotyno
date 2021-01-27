@@ -1179,7 +1179,7 @@ pub fn parseWithDescribedError(
 pub fn parseModulesWithDescribedError(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
-    buffers: []BufferData,
+    buffers: []const BufferData,
     parsing_error: *ParsingError,
 ) !ModuleMap {
     var modules = ModuleMap.init(allocator);
@@ -1192,18 +1192,44 @@ pub fn parseModulesWithDescribedError(
             modules,
             parsing_error,
         );
-        const get_or_put_result = try modules.getOrPut(module.name);
-        if (get_or_put_result.found_existing) {
+
+        if (modules.get(module.name)) |_| {
             debug.panic("Multiple definitions of module with name '{s}'\n", .{b.filename});
         } else {
-            get_or_put_result.entry.value = module;
+            try modules.add(module);
         }
     }
 
     return modules;
 }
 
-const ModuleMap = std.StringHashMap(Module);
+const ModuleMap = struct {
+    const Self = @This();
+
+    modules: std.StringHashMap(Module),
+
+    pub fn init(allocator: *mem.Allocator) Self {
+        return Self{ .modules = std.StringHashMap(Module).init(allocator) };
+    }
+
+    pub fn get(self: Self, name: []const u8) ?Module {
+        return if (self.modules.get(name)) |module| module else null;
+    }
+
+    pub fn add(self: *Self, module: Module) !void {
+        try self.modules.put(module.name, module);
+    }
+
+    pub fn deinit(self: *Self) void {
+        var it = self.modules.iterator();
+
+        while (it.next()) |entry| {
+            entry.value.deinit();
+        }
+
+        self.modules.deinit();
+    }
+};
 const DefinitionMap = std.StringHashMap(Definition);
 
 /// `DefinitionIterator` is iterator that attempts to return the next definition in a source, based
@@ -2287,10 +2313,7 @@ pub const DefinitionIterator = struct {
     }
 
     fn getModule(self: Self, name: []const u8) ?Module {
-        return if (self.modules.getEntry(name)) |module|
-            module.value
-        else
-            null;
+        return if (self.modules.get(name)) |module| module else null;
     }
 
     fn returnUnknownReferenceError(self: Self, comptime T: type, name: []const u8) !T {

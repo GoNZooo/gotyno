@@ -1232,8 +1232,6 @@ test "Parsing an imported reference works even with nested ones" {
     expectEqualDefinitions(&[_]Definition{parsed_two_struct}, &[_]Definition{expected_two_struct});
 
     compiled_modules.deinit();
-    module1.deinit();
-    module2.deinit();
     testing_utilities.expectNoLeaks(&allocator);
 }
 
