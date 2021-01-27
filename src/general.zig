@@ -1,8 +1,10 @@
 const std = @import("std");
 const mem = std.mem;
 const parser = @import("./freeform/parser.zig");
+
 const Type = parser.Type;
 const Definition = parser.Definition;
+const AppliedOpenName = parser.AppliedOpenName;
 
 const ArrayList = std.ArrayList;
 
@@ -67,14 +69,17 @@ fn openNamesFromDefinition(
 pub fn commonOpenNames(
     allocator: *mem.Allocator,
     as: []const []const u8,
-    bs: []const []const u8,
+    applied_open_names: []const AppliedOpenName,
 ) !ArrayList([]const u8) {
     var common_names = ArrayList([]const u8).init(allocator);
 
     for (as) |a| {
-        for (bs) |b| {
-            if (mem.eql(u8, a, b) and !isTranslatedName(a)) {
-                try common_names.append(try allocator.dupe(u8, a));
+        for (applied_open_names) |applied_open_name| {
+            switch (applied_open_name) {
+                .open => |o| if (mem.eql(u8, a, o) and !isTranslatedName(a)) {
+                    try common_names.append(try allocator.dupe(u8, a));
+                },
+                .reference => {},
             }
         }
     }
