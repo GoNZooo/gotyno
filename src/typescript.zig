@@ -2766,3 +2766,9 @@ fn appliedOpenNameValidators(
 
     return outputs;
 }
+
+test "" {
+    const typescript_tests = @import("./typescript_tests.zig");
+
+    std.testing.refAllDecls(typescript_tests);
+}
