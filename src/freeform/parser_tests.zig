@@ -1212,7 +1212,7 @@ test "Parsing an imported reference works even with nested ones" {
         .{ .filename = module2_filename, .buffer = module2_buffer },
     };
 
-    const compiled_modules = try parser.parseModulesWithDescribedError(
+    var compiled_modules = try parser.parseModulesWithDescribedError(
         &allocator.allocator,
         &allocator.allocator,
         &buffers,
@@ -1221,17 +1221,20 @@ test "Parsing an imported reference works even with nested ones" {
 
     const maybe_module1 = compiled_modules.get(module1_name);
     testing.expect(maybe_module1 != null);
-    const module1 = maybe_module1.?;
+    var module1 = maybe_module1.?;
 
     const maybe_module2 = compiled_modules.get(module2_name);
     testing.expect(maybe_module2 != null);
-    const module2 = maybe_module2.?;
+    var module2 = maybe_module2.?;
 
-    // const module1_definition = module1.definitions[0];
-    // const module2_field_reference = module2.definitions[0].structure.plain.fields[0].@"type".reference.imported_definition.definition;
     const parsed_two_struct = module2.definitions[2];
 
     expectEqualDefinitions(&[_]Definition{parsed_two_struct}, &[_]Definition{expected_two_struct});
+
+    compiled_modules.deinit();
+    module1.deinit();
+    module2.deinit();
+    testing_utilities.expectNoLeaks(&allocator);
 }
 
 pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
