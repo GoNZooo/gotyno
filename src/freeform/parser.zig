@@ -23,6 +23,15 @@ pub const ParsingError = union(enum) {
     unknown_reference: UnknownReference,
     unknown_module: UnknownModule,
     duplicate_definition: DuplicateDefinition,
+    applied_name_count: AppliedNameCount,
+};
+
+/// Indicates that we've passed the wrong number of type parameters to an applied name.
+pub const AppliedNameCount = struct {
+    name: []const u8,
+    expected: u32,
+    actual: u32,
+    location: Location,
 };
 
 /// Indicates that we are defining a name twice, which is invalid.
@@ -108,6 +117,20 @@ pub const Definition = union(enum) {
             .untagged_union => |*u| u.free(allocator),
             .import => |*i| i.free(allocator),
         }
+    }
+
+    pub fn openNames(self: Self) []const []const u8 {
+        return switch (self) {
+            .structure => |s| switch (s) {
+                .generic => |g| g.open_names,
+                .plain => &[_][]const u8{},
+            },
+            .@"union" => |u| switch (u) {
+                .generic => |g| g.open_names,
+                .plain, .embedded => &[_][]const u8{},
+            },
+            .enumeration, .untagged_union, .import => &[_][]const u8{},
+        };
     }
 
     pub fn isEqual(self: Self, other: Self) bool {
@@ -522,6 +545,18 @@ pub const Type = union(enum) {
             .optional => |optional| fmt.format(writer, "?{}", .{optional.@"type"}),
         };
     }
+
+    pub fn openNames(self: Self) []const []const u8 {
+        return switch (self) {
+            .empty => &[_][]const u8{},
+            .string => &[_][]const u8{},
+            .reference => |r| r.openNames(),
+            .array => |array| array.@"type".openNames(),
+            .slice => |slice| slice.@"type".openNames(),
+            .pointer => |pointer| pointer.@"type".openNames(),
+            .optional => |optional| optional.@"type".openNames(),
+        };
+    }
 };
 
 pub const TypeReference = union(enum) {
@@ -546,6 +581,17 @@ pub const TypeReference = union(enum) {
             .applied_name => |a| try allocator.dupe(u8, a.reference.name()),
             .loose => |l| try allocator.dupe(u8, l.name),
             .open => |o| try allocator.dupe(u8, o),
+        };
+    }
+
+    pub fn openNames(self: Self) []const []const u8 {
+        return switch (self) {
+            .builtin => &[_][]const u8{},
+            .loose => |l| l.open_names,
+            .definition => |d| d.openNames(),
+            .imported_definition => |id| id.definition.openNames(),
+            .applied_name => |a| a.reference.openNames(),
+            .open => |n| &[_][]const u8{n},
         };
     }
 
@@ -1116,6 +1162,7 @@ pub fn parseWithDescribedError(
             error.InvalidPayload,
             error.UnexpectedEndOfTokenStream,
             error.DuplicateDefinition,
+            error.AppliedNameCount,
             => {
                 switch (parsing_error.*) {
                     .expect => |expect| switch (expect) {
@@ -1175,6 +1222,19 @@ pub fn parseWithDescribedError(
                                 d.definition.name().value,
                                 d.previous_location.line,
                                 d.previous_location.column,
+                            },
+                        );
+                    },
+
+                    .applied_name_count => |d| {
+                        debug.panic(
+                            "Wrong number of type parameters for type {s} at {}:{}, expected: {}, got: {}\n",
+                            .{
+                                d.name,
+                                d.location.line,
+                                d.location.column,
+                                d.expected,
+                                d.actual,
                             },
                         );
                     },
@@ -1992,6 +2052,10 @@ pub const DefinitionIterator = struct {
             switch (maybe_left_angle) {
                 // we have an applied name
                 .left_angle => {
+                    const start_location = Location{
+                        .line = self.token_iterator.line,
+                        .column = self.token_iterator.column - name.len,
+                    };
                     _ = try tokens.expect(Token.left_angle, self.expect_error);
                     const applied_open_names = try self.parseAppliedOpenNames(
                         tokens,
@@ -2007,6 +2071,18 @@ pub const DefinitionIterator = struct {
                         open_names,
                     );
 
+                    const expected_applied_name_count = reference.openNames().len;
+                    const applied_name_count = applied_open_names.len;
+                    if (applied_name_count != expected_applied_name_count) {
+                        return try self.returnAppliedNameCountError(
+                            ?AppliedName,
+                            name,
+                            @intCast(u32, expected_applied_name_count),
+                            @intCast(u32, applied_name_count),
+                            start_location,
+                        );
+                    }
+
                     return AppliedName{ .reference = reference, .open_names = applied_open_names };
                 },
                 else => {},
@@ -2014,6 +2090,26 @@ pub const DefinitionIterator = struct {
         }
 
         return null;
+    }
+
+    fn returnAppliedNameCountError(
+        self: Self,
+        comptime T: type,
+        name: []const u8,
+        expected_count: u32,
+        actual_count: u32,
+        location: Location,
+    ) !T {
+        self.parsing_error.* = ParsingError{
+            .applied_name_count = AppliedNameCount{
+                .name = name,
+                .expected = expected_count,
+                .actual = actual_count,
+                .location = location,
+            },
+        };
+
+        return error.AppliedNameCount;
     }
 
     const ParseImportedMaybeAppliedNameErrors = error{
@@ -2024,6 +2120,7 @@ pub const DefinitionIterator = struct {
         InvalidCharacter,
         UnknownModule,
         UnknownReference,
+        AppliedNameCount,
     };
 
     fn parseImportedMaybeAppliedName(
@@ -2072,6 +2169,7 @@ pub const DefinitionIterator = struct {
         InvalidCharacter,
         UnknownModule,
         UnknownReference,
+        AppliedNameCount,
     };
 
     fn parseAppliedOpenNames(
@@ -2120,6 +2218,7 @@ pub const DefinitionIterator = struct {
         Overflow,
         UnknownModule,
         UnknownReference,
+        AppliedNameCount,
     };
 
     fn parseType(

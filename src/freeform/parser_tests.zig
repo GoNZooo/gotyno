@@ -675,7 +675,12 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
             testing.expectEqualStrings(unknown_reference.name, "One");
         },
 
-        .unknown_module, .invalid_payload, .expect, .duplicate_definition => unreachable,
+        .unknown_module,
+        .invalid_payload,
+        .expect,
+        .duplicate_definition,
+        .applied_name_count,
+        => unreachable,
     }
 }
 
@@ -1325,4 +1330,35 @@ test "Parsing a slice type of an imported definition without importing it errors
         &parsing_error,
     );
     testing.expectError(error.UnknownModule, modules);
+}
+
+test "Using an applied name with less open names than it requires errors out" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\union Either <L, R>{
+        \\    Left: L
+        \\    Right: R
+        \\}
+        \\
+        \\struct Plain {
+        \\    either: Either<String>
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+    };
+
+    var parsing_error: ParsingError = undefined;
+
+    var modules = parser.parseModules(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+    testing.expectError(error.AppliedNameCount, modules);
 }
