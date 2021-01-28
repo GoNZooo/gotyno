@@ -2827,6 +2827,8 @@ test "Parsing an imported reference works even with nested ones" {
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
     const module2_buffer =
+        \\import module1
+        \\
         \\struct HoldsSomething <T>{
         \\    holdingField: T
         \\}
@@ -2884,7 +2886,7 @@ test "Parsing an imported reference works even with nested ones" {
 
     const two_output = try outputPlainStructure(
         &allocator.allocator,
-        module2.definitions[2].structure.plain,
+        module2.definitions[3].structure.plain,
     );
 
     testing.expectEqualStrings(expected_two_output, two_output);

@@ -1384,6 +1384,8 @@ test "Parsing an imported reference works even with nested ones" {
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
     const module2_buffer =
+        \\import module1
+        \\
         \\struct HoldsSomething <T>{
         \\    holdingField: T
         \\}
@@ -1435,7 +1437,7 @@ test "Parsing an imported reference works even with nested ones" {
 
     const two_output = try typescript.outputPlainStructure(
         &allocator.allocator,
-        module2.definitions[2].structure.plain,
+        module2.definitions[3].structure.plain,
     );
 
     testing.expectEqualStrings(expected_two_output, two_output);
@@ -1508,7 +1510,7 @@ test "Parsing a slice type as an applied name works output correctly" {
     testing_utilities.expectNoLeaks(&allocator);
 }
 
-test "Parsing a slice type of an imported defdinition as an applied name works output correctly" {
+test "Parsing a slice type of an imported definition as an applied name works output correctly" {
     var allocator = TestingAllocator{};
 
     const module1_filename = "module1.gotyno";
@@ -1522,6 +1524,8 @@ test "Parsing a slice type of an imported defdinition as an applied name works o
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
     const module2_buffer =
+        \\import module1
+        \\
         \\union Maybe <T>{
         \\    Nothing
         \\    Just: T
@@ -1570,7 +1574,7 @@ test "Parsing a slice type of an imported defdinition as an applied name works o
 
     const output = try typescript.outputPlainStructure(
         &allocator.allocator,
-        module2.definitions[1].structure.plain,
+        module2.definitions[2].structure.plain,
     );
 
     testing.expectEqualStrings(expected_output, output);

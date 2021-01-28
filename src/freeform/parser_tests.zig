@@ -6,6 +6,7 @@ const debug = std.debug;
 const parser = @import("./parser.zig");
 const tokenizer = @import("./tokenizer.zig");
 const testing_utilities = @import("./testing_utilities.zig");
+const parser_testing_utilities = @import("./parser_testing_utilities.zig");
 const type_examples = @import("./type_examples.zig");
 
 const Definition = parser.Definition;
@@ -114,7 +115,7 @@ test "Parsing `Person` structure" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -153,7 +154,7 @@ test "Parsing basic generic structure" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -292,7 +293,7 @@ test "Parsing basic plain union" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -333,7 +334,7 @@ test "Parsing `Maybe` union" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -377,7 +378,7 @@ test "Parsing `Either` union" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -434,7 +435,7 @@ test "Parsing `List` union" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -477,7 +478,7 @@ test "Parsing basic string-based enumeration" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -562,7 +563,7 @@ test "Parsing untagged union" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -634,7 +635,7 @@ test "Parsing unions with options" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -781,11 +782,11 @@ test "Parsing same definition twice results in error" {
         .duplicate_definition => |d| {
             testing.expectEqual(d.location.line, 5);
             testing.expectEqual(d.location.column, 8);
-            expectEqualDefinitions(
+            parser_testing_utilities.expectEqualDefinitions(
                 &[_]Definition{recruiter_definition},
                 &[_]Definition{d.existing_definition},
             );
-            expectEqualDefinitions(
+            parser_testing_utilities.expectEqualDefinitions(
                 &[_]Definition{new_recruiter_definition},
                 &[_]Definition{d.definition},
             );
@@ -879,7 +880,7 @@ test "Parsing union with embedded type tag" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -964,7 +965,7 @@ test "Parsing union with embedded type tag and lowercase tags" {
         &parsing_error,
     );
 
-    expectEqualDefinitions(&expected_definitions, definitions.definitions);
+    parser_testing_utilities.expectEqualDefinitions(&expected_definitions, definitions.definitions);
 
     definitions.deinit();
     testing_utilities.expectNoLeaks(&allocator);
@@ -973,9 +974,6 @@ test "Parsing union with embedded type tag and lowercase tags" {
 test "Parsing an import reference leads to two identical definitions in definition & reference" {
     var allocator = TestingAllocator{};
     var parsing_error: ParsingError = undefined;
-
-    // @TODO: add testing for parsing applied names with imported references in them with nested
-    // references: `fieldHolding: HoldsSomething<basic.Maybe<basic.Either<String, Plainstruct>>`
 
     const module1_filename = "module1.gotyno";
     const module1_name = "module1";
@@ -988,6 +986,8 @@ test "Parsing an import reference leads to two identical definitions in definiti
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
     const module2_buffer =
+        \\import module1
+        \\
         \\struct Two {
         \\    field1: module1.One
         \\}
@@ -1014,9 +1014,12 @@ test "Parsing an import reference leads to two identical definitions in definiti
     const module2 = maybe_module2.?;
 
     const module1_definition = module1.definitions[0];
-    const module2_field_reference = module2.definitions[0].structure.plain.fields[0].@"type".reference.imported_definition.definition;
+    const module2_field_reference = module2.definitions[1].structure.plain.fields[0].@"type".reference.imported_definition.definition;
 
-    expectEqualDefinitions(&[_]Definition{module1_definition}, &[_]Definition{module2_field_reference});
+    parser_testing_utilities.expectEqualDefinitions(
+        &[_]Definition{module1_definition},
+        &[_]Definition{module2_field_reference},
+    );
 }
 
 test "Parsing an imported reference works even with nested ones" {
@@ -1040,6 +1043,8 @@ test "Parsing an imported reference works even with nested ones" {
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
     const module2_buffer =
+        \\import module1
+        \\
         \\struct HoldsSomething <T>{
         \\    holdingField: T
         \\}
@@ -1061,7 +1066,7 @@ test "Parsing an imported reference works even with nested ones" {
                         .plain = PlainStructure{
                             .name = DefinitionName{
                                 .value = "PlainStruct",
-                                .location = Location{ .line = 5, .column = 8 },
+                                .location = Location{ .line = 7, .column = 8 },
                             },
                             .fields = &[_]Field{
                                 .{
@@ -1174,7 +1179,7 @@ test "Parsing an imported reference works even with nested ones" {
                 .generic = GenericStructure{
                     .name = DefinitionName{
                         .value = "HoldsSomething",
-                        .location = Location{ .line = 1, .column = 8 },
+                        .location = Location{ .line = 3, .column = 8 },
                     },
                     .open_names = &[_][]const u8{"T"},
                     .fields = &[_]Field{
@@ -1201,7 +1206,7 @@ test "Parsing an imported reference works even with nested ones" {
                 .name = DefinitionName{
                     .value = "Two",
                     .location = Location{
-                        .line = 9,
+                        .line = 11,
                         .column = 8,
                     },
                 },
@@ -1239,305 +1244,85 @@ test "Parsing an imported reference works even with nested ones" {
     testing.expect(maybe_module2 != null);
     var module2 = maybe_module2.?;
 
-    const parsed_two_struct = module2.definitions[2];
+    const parsed_two_struct = module2.definitions[3];
 
-    expectEqualDefinitions(&[_]Definition{parsed_two_struct}, &[_]Definition{expected_two_struct});
+    parser_testing_utilities.expectEqualDefinitions(&[_]Definition{parsed_two_struct}, &[_]Definition{expected_two_struct});
 
     compiled_modules.deinit();
     testing_utilities.expectNoLeaks(&allocator);
 }
 
-pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) void {
-    const Names = struct {
-        a: DefinitionName,
-        b: DefinitionName,
+test "Parsing an imported definition without importing it errors out" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\struct Plain {
+        \\    name: String
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\struct HasMaybe {
+        \\    field: module1.Plain
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
     };
 
-    const Fields = struct {
-        a: []const Field,
-        b: []const Field,
+    var parsing_error: ParsingError = undefined;
+
+    var modules = parser.parseModules(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+    testing.expectError(error.UnknownModule, modules);
+}
+
+test "Parsing a slice type of an imported definition without importing it errors out" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\struct Plain {
+        \\    name: String
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\union Maybe <T>{
+        \\    Nothing
+        \\    Just: T
+        \\}
+        \\
+        \\struct HasMaybe {
+        \\    field: Maybe<[]module1.Plain>
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
     };
 
-    const FieldsAndNames = struct {
-        names: Names,
-        fields: Fields,
-    };
+    var parsing_error: ParsingError = undefined;
 
-    if (as.len == 0) {
-        testing_utilities.testPanic("Definition slice `as` is zero length; invalid test\n", .{});
-    }
-
-    if (bs.len == 0) {
-        testing_utilities.testPanic("Definition slice `bs` is zero length; invalid test\n", .{});
-    }
-
-    if (as.len != bs.len) {
-        testing_utilities.testPanic(
-            "Definition slices are different length: {} != {}\n",
-            .{ as.len, bs.len },
-        );
-    }
-
-    for (as) |a, i| {
-        const b = bs[i];
-
-        if (!a.isEqual(b)) {
-            switch (a) {
-                .structure => |structure| {
-                    const fields_and_names = switch (structure) {
-                        .plain => |plain| FieldsAndNames{
-                            .names = Names{ .a = plain.name, .b = b.structure.plain.name },
-                            .fields = Fields{ .a = plain.fields, .b = b.structure.plain.fields },
-                        },
-                        .generic => |generic| FieldsAndNames{
-                            .names = Names{ .a = generic.name, .b = b.structure.generic.name },
-                            .fields = Fields{ .a = generic.fields, .b = b.structure.generic.fields },
-                        },
-                    };
-
-                    debug.print("Definition at index {} different\n", .{i});
-                    if (!fields_and_names.names.a.isEqual(fields_and_names.names.b)) {
-                        debug.panic(
-                            "\tNames: {} != {}\n",
-                            .{ fields_and_names.names.a, fields_and_names.names.b },
-                        );
-                    }
-
-                    expectEqualFields(fields_and_names.fields.a, fields_and_names.fields.b);
-
-                    switch (structure) {
-                        .generic => |generic| {
-                            expectEqualOpenNames(
-                                generic.open_names,
-                                b.structure.generic.open_names,
-                            );
-                        },
-                        .plain => {},
-                    }
-                },
-
-                .@"union" => |u| {
-                    switch (u) {
-                        .plain => |plain| {
-                            if (!plain.name.isEqual(b.@"union".plain.name)) {
-                                debug.panic(
-                                    "\tNames: {} != {}\n",
-                                    .{ plain.name, b.@"union".plain.name },
-                                );
-                            }
-
-                            expectEqualConstructors(
-                                plain.constructors,
-                                b.@"union".plain.constructors,
-                            );
-                        },
-                        .generic => |generic| {
-                            if (!generic.name.isEqual(b.@"union".generic.name)) {
-                                debug.print(
-                                    "\tNames: {} != {}\n",
-                                    .{ generic.name, b.@"union".generic.name },
-                                );
-                            }
-
-                            expectEqualConstructors(
-                                generic.constructors,
-                                b.@"union".generic.constructors,
-                            );
-
-                            expectEqualOpenNames(generic.open_names, b.@"union".generic.open_names);
-                        },
-                        .embedded => |embedded| {
-                            if (!embedded.name.isEqual(b.@"union".embedded.name)) {
-                                debug.panic(
-                                    "\tNames: {} != {}\n",
-                                    .{ embedded.name, b.@"union".embedded.name },
-                                );
-                            }
-
-                            expectEqualEmbeddedConstructors(
-                                embedded.constructors,
-                                b.@"union".embedded.constructors,
-                            );
-
-                            expectEqualOpenNames(
-                                embedded.open_names,
-                                b.@"union".embedded.open_names,
-                            );
-                        },
-                    }
-                },
-
-                .enumeration => |e| {
-                    expectEqualEnumerations(e, b.enumeration);
-                },
-
-                .untagged_union => |u| {
-                    expectEqualUntaggedUnions(u, b.untagged_union);
-                },
-
-                .import => |import| {
-                    expectEqualImports(import, b.import);
-                },
-            }
-        }
-    }
-}
-
-fn expectEqualFields(as: []const Field, bs: []const Field) void {
-    if (as.len != bs.len) {
-        testing_utilities.testPanic(
-            "Different number of fields found: {} != {}\n",
-            .{ as.len, bs.len },
-        );
-    }
-
-    for (as) |a, i| {
-        if (!a.isEqual(bs[i])) {
-            testing_utilities.testPanic(
-                "Different field at index {}:\nExpected:\n\t{}\nGot:\n\t{}\n",
-                .{ i, a, bs[i] },
-            );
-        }
-    }
-}
-
-fn expectEqualOpenNames(as: []const []const u8, bs: []const []const u8) void {
-    if (as.len != bs.len) {
-        testing_utilities.testPanic(
-            "Different number of open names found: {} != {}\n",
-            .{ as.len, bs.len },
-        );
-    }
-
-    for (as) |a, i| {
-        if (!mem.eql(u8, a, bs[i])) {
-            testing_utilities.testPanic(
-                "Different open name at index {}:\n\tExpected: {}\n\tGot: {}\n",
-                .{ i, a, bs[i] },
-            );
-        }
-    }
-}
-
-fn expectEqualConstructors(as: []const Constructor, bs: []const Constructor) void {
-    if (as.len != bs.len) {
-        testing_utilities.testPanic(
-            "Different number of constructors found: {} != {}\n",
-            .{ as.len, bs.len },
-        );
-    }
-
-    for (as) |a, i| {
-        const b = bs[i];
-        if (!a.isEqual(b)) {
-            testing_utilities.testPanic(
-                "Different constructor at index {}:\n\tExpected: {}\n\tGot: {}\n",
-                .{ i, a, b },
-            );
-        }
-    }
-}
-
-fn expectEqualEmbeddedConstructors(
-    as: []const ConstructorWithEmbeddedTypeTag,
-    bs: []const ConstructorWithEmbeddedTypeTag,
-) void {
-    for (as) |a, i| {
-        const b = bs[i];
-        if (!a.isEqual(b)) {
-            if (!mem.eql(u8, a.tag, b.tag)) {
-                testing_utilities.testPanic(
-                    "Embedded constructor tags do not match: {} != {}\n",
-                    .{ a.tag, b.tag },
-                );
-            }
-
-            if (a.parameter) |a_parameter| {
-                if (b.parameter) |b_parameter| {
-                    expectEqualFields(a_parameter.plain.fields, b_parameter.plain.fields);
-                } else {
-                    testing_utilities.testPanic(
-                        "Embedded constructor {} ({}) has parameter whereas {} does not\n",
-                        .{ i, a.tag, b.tag },
-                    );
-                }
-            } else {
-                if (b.parameter) |b_parameter| {
-                    testing_utilities.testPanic(
-                        "Embedded constructor {} ({}) has parameter whereas {} does not\n",
-                        .{ i, b.tag, a.tag },
-                    );
-                }
-            }
-
-            testing_utilities.testPanic(
-                "Different constructor at index {}:\n\tExpected: {}\n\tGot: {}\n",
-                .{ i, a, b },
-            );
-        }
-    }
-}
-
-fn expectEqualEnumerations(a: Enumeration, b: Enumeration) void {
-    if (!a.name.isEqual(b.name)) {
-        testing_utilities.testPanic(
-            "Enumeration names do not match: {} != {}\n",
-            .{ a.name, b.name },
-        );
-    }
-
-    if (a.fields.len != b.fields.len) {
-        testing_utilities.testPanic(
-            "Different amount of fields for enumerations: {} != {}\n",
-            .{ a.fields.len, b.fields.len },
-        );
-    }
-
-    for (a.fields) |field, i| {
-        if (!field.isEqual(b.fields[i])) {
-            debug.print("Field at index {} is different:\n", .{i});
-            debug.print("\tExpected: {}\n", .{field});
-            testing_utilities.testPanic("\tGot: {}\n", .{b.fields[i]});
-        }
-    }
-}
-
-fn expectEqualUntaggedUnions(a: UntaggedUnion, b: UntaggedUnion) void {
-    if (!a.name.isEqual(b.name)) {
-        testing_utilities.testPanic(
-            "Untagged union names do not match: {} != {}\n",
-            .{ a.name, b.name },
-        );
-    }
-
-    if (a.values.len != b.values.len) {
-        testing_utilities.testPanic(
-            "Different amount of values for untagged unions: {} != {}\n",
-            .{ a.values.len, b.values.len },
-        );
-    }
-
-    for (a.values) |field, i| {
-        if (!field.isEqual(b.values[i])) {
-            debug.print("Value at index {} is different:\n", .{i});
-            debug.print("\tExpected: {}\n", .{field});
-            testing_utilities.testPanic("\tGot: {}\n", .{b.values[i]});
-        }
-    }
-}
-
-fn expectEqualImports(a: Import, b: Import) void {
-    if (!a.name.isEqual(b.name)) {
-        testing_utilities.testPanic(
-            "Import names do not match: {} != {}\n",
-            .{ a.name, b.name },
-        );
-    }
-
-    if (!mem.eql(u8, a.alias, b.alias)) {
-        testing_utilities.testPanic(
-            "Import aliases do not match: {} != {}\n",
-            .{ a.alias, b.alias },
-        );
-    }
+    var modules = parser.parseModules(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+    testing.expectError(error.UnknownModule, modules);
 }

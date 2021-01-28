@@ -1185,6 +1185,33 @@ pub fn parseWithDescribedError(
     };
 }
 
+pub fn parseModules(
+    allocator: *mem.Allocator,
+    error_allocator: *mem.Allocator,
+    buffers: []const BufferData,
+    parsing_error: *ParsingError,
+) !ModuleMap {
+    var modules = ModuleMap.init(allocator);
+    for (buffers) |b| {
+        const module = try parse(
+            allocator,
+            error_allocator,
+            b.filename,
+            b.buffer,
+            modules,
+            parsing_error,
+        );
+
+        if (modules.get(module.name)) |_| {
+            debug.panic("Multiple definitions of module with name '{s}'\n", .{b.filename});
+        } else {
+            try modules.add(module);
+        }
+    }
+
+    return modules;
+}
+
 pub fn parseModulesWithDescribedError(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
@@ -2022,7 +2049,11 @@ pub const DefinitionIterator = struct {
                     );
 
                     const reference = try self.allocator.create(TypeReference);
-                    reference.* = try self.importTypeReference(name, import_name);
+                    reference.* = try self.importTypeReference(
+                        source_definitions,
+                        name,
+                        import_name,
+                    );
 
                     return AppliedName{ .reference = reference, .open_names = applied_open_names };
                 },
@@ -2120,6 +2151,11 @@ pub const DefinitionIterator = struct {
             },
             .symbol => |s| result: {
                 const module_name = s;
+                if (!self.hasImport(module_name))
+                    return try self.returnUnknownModuleError(
+                        Type,
+                        module_name,
+                    );
                 _ = try tokens.expect(Token.period, self.expect_error);
                 const module_definition_name = (try tokens.expect(
                     Token.name,
@@ -2136,8 +2172,9 @@ pub const DefinitionIterator = struct {
                         module_name,
                     )) |applied_name| {
                         break :result Type{ .reference = TypeReference{ .applied_name = applied_name } };
-                    }
-                    if (module.definition_iterator.getDefinition(module_definition_name)) |d| {
+                    } else if (module.definition_iterator.getDefinition(
+                        module_definition_name,
+                    )) |d| {
                         break :result Type{
                             .reference = TypeReference{
                                 .imported_definition = ImportedDefinition{
@@ -2209,6 +2246,21 @@ pub const DefinitionIterator = struct {
         };
     }
 
+    fn hasImport(self: Self, import_name: []const u8) bool {
+        // This matters mostly because otherwise we might output code that,
+        // while it outputs the correct validators and knows that the imported module has been
+        // parsed, it doesn't have a reference to the other module in the output.
+        // Ideally this would be automatic from imported modules, but that's more work than I care
+        // to put into that particular part right now.
+        for (self.imports.items) |import, i| {
+            if (mem.eql(u8, import.name.value, import_name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     fn parseFieldType(
         self: *Self,
         definition_name: DefinitionName,
@@ -2264,6 +2316,7 @@ pub const DefinitionIterator = struct {
 
     fn importTypeReference(
         self: Self,
+        source_definitions: *DefinitionIterator,
         name: []const u8,
         import_name: []const u8,
     ) !TypeReference {
