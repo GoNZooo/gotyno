@@ -2092,26 +2092,6 @@ pub const DefinitionIterator = struct {
         return null;
     }
 
-    fn returnAppliedNameCountError(
-        self: Self,
-        comptime T: type,
-        name: []const u8,
-        expected_count: u32,
-        actual_count: u32,
-        location: Location,
-    ) !T {
-        self.parsing_error.* = ParsingError{
-            .applied_name_count = AppliedNameCount{
-                .name = name,
-                .expected = expected_count,
-                .actual = actual_count,
-                .location = location,
-            },
-        };
-
-        return error.AppliedNameCount;
-    }
-
     const ParseImportedMaybeAppliedNameErrors = error{
         OutOfMemory,
         UnexpectedToken,
@@ -2475,6 +2455,26 @@ pub const DefinitionIterator = struct {
         };
 
         return error.DuplicateDefinition;
+    }
+
+    fn returnAppliedNameCountError(
+        self: Self,
+        comptime T: type,
+        name: []const u8,
+        expected_count: u32,
+        actual_count: u32,
+        location: Location,
+    ) !T {
+        self.parsing_error.* = ParsingError{
+            .applied_name_count = AppliedNameCount{
+                .name = name,
+                .expected = expected_count,
+                .actual = actual_count,
+                .location = location,
+            },
+        };
+
+        return error.AppliedNameCount;
     }
 };
 
