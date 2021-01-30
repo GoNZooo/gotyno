@@ -1614,9 +1614,13 @@ pub const DefinitionIterator = struct {
         while (!done_parsing_values) {
             try tokens.skipMany(Token.space, 4, self.expect_error);
             const value_name = (try tokens.expect(Token.name, self.expect_error)).name;
+            const value_location = Location{
+                .line = tokens.line,
+                .column = tokens.column - value_name.len,
+            };
 
             try values.append(UntaggedUnionValue{
-                .reference = try self.getTypeReference(value_name, name, open_names),
+                .reference = try self.getTypeReference(value_name, value_location, name, open_names),
             });
 
             try self.expectNewline();
@@ -1863,6 +1867,10 @@ pub const DefinitionIterator = struct {
                     _ = try tokens.expect(Token.space, self.expect_error);
 
                     const parameter_name = (try tokens.expect(Token.name, self.expect_error)).name;
+                    const parameter_location = Location{
+                        .line = tokens.line,
+                        .column = tokens.column - parameter_name.len,
+                    };
                     const definition_for_name = self.getDefinition(parameter_name);
                     if (definition_for_name) |definition| {
                         const parameter = switch (definition) {
@@ -1887,7 +1895,11 @@ pub const DefinitionIterator = struct {
 
                         try self.expectNewline();
                     } else {
-                        try self.returnUnknownReferenceError(void, parameter_name);
+                        try self.returnUnknownReferenceError(
+                            void,
+                            parameter_name,
+                            parameter_location,
+                        );
                     }
                 },
                 else => unreachable,
@@ -2067,6 +2079,7 @@ pub const DefinitionIterator = struct {
                     const reference = try self.allocator.create(TypeReference);
                     reference.* = try self.getTypeReference(
                         name,
+                        start_location,
                         definition_name,
                         open_names,
                     );
@@ -2112,6 +2125,7 @@ pub const DefinitionIterator = struct {
         open_names: []const []const u8,
         import_name: []const u8,
     ) ParseImportedMaybeAppliedNameErrors!?AppliedName {
+        const name_location = Location{ .line = tokens.line, .column = tokens.column - name.len };
         const maybe_left_angle_token = try tokens.peek();
         if (maybe_left_angle_token) |maybe_left_angle| {
             switch (maybe_left_angle) {
@@ -2129,6 +2143,7 @@ pub const DefinitionIterator = struct {
                     reference.* = try self.importTypeReference(
                         source_definitions,
                         name,
+                        name_location,
                         import_name,
                     );
 
@@ -2223,7 +2238,16 @@ pub const DefinitionIterator = struct {
                 )) |applied_name| {
                     break :result Type{ .reference = TypeReference{ .applied_name = applied_name } };
                 } else {
-                    const reference = try self.getTypeReference(name, definition_name, open_names);
+                    const name_location = Location{
+                        .line = tokens.line,
+                        .column = tokens.column - name.len,
+                    };
+                    const reference = try self.getTypeReference(
+                        name,
+                        name_location,
+                        definition_name,
+                        open_names,
+                    );
 
                     break :result Type{ .reference = reference };
                 }
@@ -2240,6 +2264,10 @@ pub const DefinitionIterator = struct {
                     Token.name,
                     self.expect_error,
                 )).name;
+                const name_location = Location{
+                    .line = tokens.line,
+                    .column = tokens.column - module_definition_name.len,
+                };
 
                 if (self.getModule(module_name)) |*module| {
                     if (try module.definition_iterator.parseImportedMaybeAppliedName(
@@ -2266,6 +2294,7 @@ pub const DefinitionIterator = struct {
                         break :result try self.returnUnknownReferenceError(
                             Type,
                             module_definition_name,
+                            name_location,
                         );
                     }
                 } else {
@@ -2373,6 +2402,7 @@ pub const DefinitionIterator = struct {
     fn getTypeReference(
         self: Self,
         name: []const u8,
+        location: Location,
         current_definition_name: DefinitionName,
         open_names: []const []const u8,
     ) !TypeReference {
@@ -2390,13 +2420,14 @@ pub const DefinitionIterator = struct {
         else if (utilities.isStringEqualToOneOf(name, open_names))
             TypeReference{ .open = try self.allocator.dupe(u8, name) }
         else
-            try self.returnUnknownReferenceError(TypeReference, name);
+            try self.returnUnknownReferenceError(TypeReference, name, location);
     }
 
     fn importTypeReference(
         self: Self,
         source_definitions: *DefinitionIterator,
         name: []const u8,
+        name_location: Location,
         import_name: []const u8,
     ) !TypeReference {
         return if (self.getDefinition(name)) |found_definition|
@@ -2407,18 +2438,23 @@ pub const DefinitionIterator = struct {
                 },
             }
         else
-            try self.returnUnknownReferenceError(TypeReference, name);
+            try self.returnUnknownReferenceError(TypeReference, name, name_location);
     }
 
     fn getModule(self: Self, name: []const u8) ?Module {
         return if (self.modules.get(name)) |module| module else null;
     }
 
-    fn returnUnknownReferenceError(self: Self, comptime T: type, name: []const u8) !T {
+    fn returnUnknownReferenceError(
+        self: Self,
+        comptime T: type,
+        name: []const u8,
+        location: Location,
+    ) !T {
         self.parsing_error.* = ParsingError{
             .unknown_reference = UnknownReference{
-                .line = self.token_iterator.line,
-                .column = self.token_iterator.column - name.len,
+                .line = location.line,
+                .column = location.column,
                 .name = name,
             },
         };

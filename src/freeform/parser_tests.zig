@@ -14,6 +14,7 @@ const ImportedDefinition = parser.ImportedDefinition;
 const AppliedName = parser.AppliedName;
 const AppliedOpenName = parser.AppliedOpenName;
 const ParsingError = parser.ParsingError;
+const UnknownModule = parser.UnknownModule;
 const TokenTag = tokenizer.TokenTag;
 const Token = tokenizer.Token;
 const EnumerationField = parser.EnumerationField;
@@ -1290,6 +1291,15 @@ test "Parsing an imported definition without importing it errors out" {
         &parsing_error,
     );
     testing.expectError(error.UnknownModule, modules);
+
+    switch (parsing_error) {
+        .unknown_module => |d| {
+            testing.expectEqualStrings("module1", d.name);
+            testing.expectEqual(d.line, 2);
+            testing.expectEqual(d.column, 12);
+        },
+        else => unreachable,
+    }
 }
 
 test "Parsing a slice type of an imported definition without importing it errors out" {
@@ -1330,6 +1340,75 @@ test "Parsing a slice type of an imported definition without importing it errors
         &parsing_error,
     );
     testing.expectError(error.UnknownModule, modules);
+
+    switch (parsing_error) {
+        .unknown_module => |d| {
+            testing.expectEqualStrings("module1", d.name);
+            testing.expectEqual(d.line, 7);
+            testing.expectEqual(d.column, 20);
+        },
+        else => unreachable,
+    }
+}
+
+test "Parsing a slice type of an imported definition in an already imported applied name without importing it errors out" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\union Maybe <T>{
+        \\    Nothing
+        \\    Just: T
+        \\}
+        \\
+        \\union Either <L, R>{
+        \\    Left: L
+        \\    Right: R
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\import module1
+        \\
+        \\struct HoldsSomething <T>{
+        \\    holdingField: T
+        \\}
+        \\
+        \\struct PlainStruct {
+        \\    normalField: String
+        \\}
+        \\
+        \\struct Two {
+        \\    fieldHolding: HoldsSomething<module1.Maybe<module3.Either<String, PlainStruct>>>
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
+    };
+
+    var parsing_error: ParsingError = undefined;
+
+    var modules = parser.parseModules(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+    testing.expectError(error.UnknownModule, modules);
+
+    switch (parsing_error) {
+        .unknown_module => |d| {
+            testing.expectEqualStrings("module3", d.name);
+            testing.expectEqual(d.line, 12);
+            testing.expectEqual(d.column, 48);
+        },
+        else => unreachable,
+    }
 }
 
 test "Using an applied name with less open names than it requires errors out" {
@@ -1361,4 +1440,92 @@ test "Using an applied name with less open names than it requires errors out" {
         &parsing_error,
     );
     testing.expectError(error.AppliedNameCount, modules);
+
+    switch (parsing_error) {
+        .applied_name_count => |d| {
+            testing.expectEqual(d.expected, 2);
+            testing.expectEqual(d.actual, 1);
+        },
+        else => unreachable,
+    }
+}
+
+test "Parsing an applied name that doesn't exist gives correct error" {
+    var allocator = TestingAllocator{};
+    var parsing_error: ParsingError = undefined;
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\struct One {
+        \\    field1: Either<String, F32>
+        \\}
+    ;
+
+    var buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+    };
+
+    const compiled_modules = parser.parseModules(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+    testing.expectError(error.UnknownReference, compiled_modules);
+
+    switch (parsing_error) {
+        .unknown_reference => |d| {
+            testing.expectEqualStrings("Either", d.name);
+            testing.expectEqual(d.line, 2);
+            testing.expectEqual(d.column, 13);
+        },
+        else => unreachable,
+    }
+}
+
+test "Parsing an imported applied name that doesn't exist gives correct error" {
+    var allocator = TestingAllocator{};
+    var parsing_error: ParsingError = undefined;
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\union Either <L, R>{
+        \\    Left: L
+        \\    Right: R
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\import module1
+        \\
+        \\struct One {
+        \\    field1: module1.Eithe<String, F32>
+        \\}
+    ;
+
+    var buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
+    };
+
+    const compiled_modules = parser.parseModules(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+    testing.expectError(error.UnknownReference, compiled_modules);
+
+    switch (parsing_error) {
+        .unknown_reference => |d| {
+            testing.expectEqualStrings("Eithe", d.name);
+            testing.expectEqual(d.line, 4);
+            testing.expectEqual(d.column, 21);
+        },
+        else => unreachable,
+    }
 }
