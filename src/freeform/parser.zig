@@ -64,6 +64,7 @@ pub const UnknownModule = struct {
     column: usize,
 };
 
+// @TODO: add module names to locations
 pub const Location = struct {
     line: usize,
     column: usize,
