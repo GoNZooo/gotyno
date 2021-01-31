@@ -1149,7 +1149,7 @@ pub fn parse(
     return Module{
         .name = module_name,
         .filename = copied_filename,
-        .definitions = definitions.items,
+        .definitions = definitions.toOwnedSlice(),
         .definition_iterator = definition_iterator,
         .allocator = allocator,
     };
