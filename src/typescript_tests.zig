@@ -5,6 +5,7 @@ const debug = std.debug;
 
 const parser = @import("./freeform/parser.zig");
 const tokenizer = @import("./freeform/tokenizer.zig");
+const utilities = @import("./freeform/utilities.zig");
 const testing_utilities = @import("./freeform/testing_utilities.zig");
 const type_examples = @import("./freeform/type_examples.zig");
 const typescript = @import("./typescript.zig");
@@ -21,7 +22,7 @@ const EnumerationValue = parser.EnumerationValue;
 const DefinitionName = parser.DefinitionName;
 const BufferData = parser.BufferData;
 const Import = parser.Import;
-const Location = parser.Location;
+const Location = utilities.Location;
 const Slice = parser.Slice;
 const Array = parser.Array;
 const Pointer = parser.Pointer;

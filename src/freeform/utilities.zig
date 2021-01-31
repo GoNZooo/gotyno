@@ -10,6 +10,19 @@ const fs = std.fs;
 
 const ArrayList = std.ArrayList;
 
+pub const Location = struct {
+    const Self = @This();
+
+    filename: []const u8,
+    line: usize,
+    column: usize,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return self.line == other.line and self.column == other.column and
+            mem.eql(u8, self.filename, other.filename);
+    }
+};
+
 pub fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const u8) bool {
     for (compared_values) |compared_value| {
         if (mem.eql(u8, value, compared_value)) return true;

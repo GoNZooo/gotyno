@@ -14,6 +14,7 @@ const TokenTag = tokenizer.TokenTag;
 const ExpectError = tokenizer.ExpectError;
 const TokenIterator = tokenizer.TokenIterator;
 const ArrayList = std.ArrayList;
+const Location = utilities.Location;
 
 pub const ParsingError = union(enum) {
     /// Represents errors from the tokenizer, which involve expectations on what upcoming tokens
@@ -46,35 +47,19 @@ pub const DuplicateDefinition = struct {
 /// it's not a type we can embed the type tag in.
 pub const InvalidPayload = struct {
     payload: Definition,
-    line: usize,
-    column: usize,
+    location: Location,
 };
 
 /// Indicates that we've referenced an unknown name, meaning one that hasn't been defined yet.
 pub const UnknownReference = struct {
     name: []const u8,
-    line: usize,
-    column: usize,
+    location: Location,
 };
 
 /// Indicates that we've referenced an unknown module, meaning one that hasn't been defined yet.
 pub const UnknownModule = struct {
     name: []const u8,
-    line: usize,
-    column: usize,
-};
-
-pub const Location = struct {
-    const Self = @This();
-
-    filename: []const u8,
-    line: usize,
-    column: usize,
-
-    pub fn isEqual(self: Self, other: Self) bool {
-        return self.line == other.line and self.column == other.column and
-            mem.eql(u8, self.filename, other.filename);
-    }
+    location: Location,
 };
 
 pub const BufferData = struct {
@@ -1177,14 +1162,25 @@ pub fn parseWithDescribedError(
                     .expect => |expect| switch (expect) {
                         .token => |token| {
                             debug.panic(
-                                "Unexpected token at {}:{}:\n\tExpected: {}\n\tGot: {}",
-                                .{ token.line, token.column, token.expectation, token.got },
+                                "Unexpected token at {s}:{}:{}:\n\tExpected: {}\n\tGot: {}",
+                                .{
+                                    token.location.filename,
+                                    token.location.line,
+                                    token.location.column,
+                                    token.expectation,
+                                    token.got,
+                                },
                             );
                         },
                         .one_of => |one_of| {
                             debug.print(
-                                "Unexpected token at {}:{}:\n\tExpected one of: {}",
-                                .{ one_of.line, one_of.column, one_of.expectations[0] },
+                                "Unexpected token at {s}:{}:{}:\n\tExpected one of: {}",
+                                .{
+                                    one_of.location.filename,
+                                    one_of.location.line,
+                                    one_of.location.column,
+                                    one_of.expectations[0],
+                                },
                             );
                             for (one_of.expectations[1..]) |expectation| {
                                 debug.print(", {}", .{expectation});
@@ -1195,10 +1191,11 @@ pub fn parseWithDescribedError(
 
                     .invalid_payload => |invalid_payload| {
                         debug.panic(
-                            "Invalid payload found at {}:{}, payload: {}\n",
+                            "Invalid payload found at {s}:{}:{}, payload: {}\n",
                             .{
-                                invalid_payload.line,
-                                invalid_payload.column,
+                                invalid_payload.location.filename,
+                                invalid_payload.location.line,
+                                invalid_payload.location.column,
                                 invalid_payload.payload,
                             },
                         );
@@ -1206,10 +1203,11 @@ pub fn parseWithDescribedError(
 
                     .unknown_reference => |unknown_reference| {
                         debug.panic(
-                            "Unknown reference found at {}:{}, name: {s}\n",
+                            "Unknown reference found at {s}:{}:{}, name: {s}\n",
                             .{
-                                unknown_reference.line,
-                                unknown_reference.column,
+                                unknown_reference.location.filename,
+                                unknown_reference.location.line,
+                                unknown_reference.location.column,
                                 unknown_reference.name,
                             },
                         );
@@ -1217,18 +1215,25 @@ pub fn parseWithDescribedError(
 
                     .unknown_module => |unknown_module| {
                         debug.panic(
-                            "Unknown module found at {}:{}, name: {s}\n",
-                            .{ unknown_module.line, unknown_module.column, unknown_module.name },
+                            "Unknown module found at {s}:{}:{}, name: {s}\n",
+                            .{
+                                unknown_module.location.filename,
+                                unknown_module.location.line,
+                                unknown_module.location.column,
+                                unknown_module.name,
+                            },
                         );
                     },
 
                     .duplicate_definition => |d| {
                         debug.panic(
-                            "Duplicate definition found at {}:{}, name: {s}, previously defined at {}:{}\n",
+                            "Duplicate definition found at {s}:{}:{}, name: {s}, previously defined at {s}:{}:{}\n",
                             .{
+                                d.location.filename,
                                 d.location.line,
                                 d.location.column,
                                 d.definition.name().value,
+                                d.previous_location.filename,
                                 d.previous_location.line,
                                 d.previous_location.column,
                             },
@@ -1237,9 +1242,10 @@ pub fn parseWithDescribedError(
 
                     .applied_name_count => |d| {
                         debug.panic(
-                            "Wrong number of type parameters for type {s} at {}:{}, expected: {}, got: {}\n",
+                            "Wrong number of type parameters for type {s} at {s}:{}:{}, expected: {}, got: {}\n",
                             .{
                                 d.name,
+                                d.location.filename,
                                 d.location.line,
                                 d.location.column,
                                 d.expected,
@@ -1892,8 +1898,7 @@ pub const DefinitionIterator = struct {
                             else => {
                                 self.parsing_error.* = ParsingError{
                                     .invalid_payload = InvalidPayload{
-                                        .line = self.token_iterator.line,
-                                        .column = self.token_iterator.column,
+                                        .location = self.token_iterator.location(),
                                         .payload = definition,
                                     },
                                 };
@@ -2278,6 +2283,7 @@ pub const DefinitionIterator = struct {
                     return try self.returnUnknownModuleError(
                         Type,
                         module_name,
+                        tokens.filename,
                     );
                 _ = try tokens.expect(Token.period, self.expect_error);
                 const module_definition_name = (try tokens.expect(
@@ -2319,7 +2325,11 @@ pub const DefinitionIterator = struct {
                         );
                     }
                 } else {
-                    break :result try self.returnUnknownModuleError(Type, module_name);
+                    break :result try self.returnUnknownModuleError(
+                        Type,
+                        module_name,
+                        tokens.filename,
+                    );
                 }
             },
 
@@ -2474,8 +2484,7 @@ pub const DefinitionIterator = struct {
     ) !T {
         self.parsing_error.* = ParsingError{
             .unknown_reference = UnknownReference{
-                .line = location.line,
-                .column = location.column,
+                .location = location,
                 .name = name,
             },
         };
@@ -2483,11 +2492,19 @@ pub const DefinitionIterator = struct {
         return error.UnknownReference;
     }
 
-    fn returnUnknownModuleError(self: Self, comptime T: type, name: []const u8) !T {
+    fn returnUnknownModuleError(
+        self: Self,
+        comptime T: type,
+        name: []const u8,
+        filename: []const u8,
+    ) !T {
         self.parsing_error.* = ParsingError{
             .unknown_module = UnknownModule{
-                .line = self.token_iterator.line,
-                .column = self.token_iterator.column - name.len,
+                .location = Location{
+                    .filename = filename,
+                    .line = self.token_iterator.line,
+                    .column = self.token_iterator.column - name.len,
+                },
                 .name = name,
             },
         };

@@ -11,6 +11,7 @@ const meta = std.meta;
 
 const type_examples = @import("./type_examples.zig");
 const testing_utilities = @import("./testing_utilities.zig");
+const utilities = @import("./utilities.zig");
 
 const ArrayList = std.ArrayList;
 
@@ -147,15 +148,13 @@ pub fn tokenize(
 pub const ExpectTokenError = struct {
     expectation: TokenTag,
     got: Token,
-    line: usize,
-    column: usize,
+    location: utilities.Location,
 };
 
 pub const ExpectOneOfError = struct {
     expectations: []const TokenTag,
     got: Token,
-    line: usize,
-    column: usize,
+    location: utilities.Location,
 };
 
 pub const ExpectError = union(enum) {
@@ -184,6 +183,14 @@ pub const TokenIterator = struct {
             .i = 0,
             .line = 1,
             .column = 1,
+        };
+    }
+
+    pub fn location(self: Self) utilities.Location {
+        return utilities.Location{
+            .filename = self.filename,
+            .line = self.line,
+            .column = self.column,
         };
     }
 
@@ -283,8 +290,7 @@ pub const TokenIterator = struct {
                 .token = .{
                     .expectation = expected_token,
                     .got = t,
-                    .line = self.line,
-                    .column = self.column,
+                    .location = self.location(),
                 },
             };
 
@@ -310,8 +316,7 @@ pub const TokenIterator = struct {
                 .one_of = .{
                     .expectations = token_tags,
                     .got = token,
-                    .line = self.line,
-                    .column = self.column,
+                    .location = self.location(),
                 },
             };
             return error.UnexpectedToken;

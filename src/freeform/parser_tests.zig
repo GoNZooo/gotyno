@@ -5,6 +5,7 @@ const debug = std.debug;
 
 const parser = @import("./parser.zig");
 const tokenizer = @import("./tokenizer.zig");
+const utilities = @import("./utilities.zig");
 const testing_utilities = @import("./testing_utilities.zig");
 const parser_testing_utilities = @import("./parser_testing_utilities.zig");
 const type_examples = @import("./type_examples.zig");
@@ -22,7 +23,7 @@ const EnumerationValue = parser.EnumerationValue;
 const DefinitionName = parser.DefinitionName;
 const BufferData = parser.BufferData;
 const Import = parser.Import;
-const Location = parser.Location;
+const Location = utilities.Location;
 const Slice = parser.Slice;
 const Array = parser.Array;
 const Pointer = parser.Pointer;
@@ -671,8 +672,9 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
     testing.expectError(error.UnknownReference, definitions);
     switch (parsing_error) {
         .unknown_reference => |unknown_reference| {
-            testing.expectEqual(unknown_reference.line, 7);
-            testing.expectEqual(unknown_reference.column, 12);
+            testing.expectEqual(unknown_reference.location.line, 7);
+            testing.expectEqual(unknown_reference.location.column, 12);
+            testing.expectEqualStrings(unknown_reference.location.filename, "test.gotyno");
             testing.expectEqualStrings(unknown_reference.name, "One");
         },
 
@@ -1326,8 +1328,9 @@ test "Parsing an imported definition without importing it errors out" {
     switch (parsing_error) {
         .unknown_module => |d| {
             testing.expectEqualStrings("module1", d.name);
-            testing.expectEqual(d.line, 2);
-            testing.expectEqual(d.column, 12);
+            testing.expectEqualStrings("module2.gotyno", d.location.filename);
+            testing.expectEqual(d.location.line, 2);
+            testing.expectEqual(d.location.column, 12);
         },
         else => unreachable,
     }
@@ -1375,8 +1378,9 @@ test "Parsing a slice type of an imported definition without importing it errors
     switch (parsing_error) {
         .unknown_module => |d| {
             testing.expectEqualStrings("module1", d.name);
-            testing.expectEqual(d.line, 7);
-            testing.expectEqual(d.column, 20);
+            testing.expectEqualStrings("module2.gotyno", d.location.filename);
+            testing.expectEqual(d.location.line, 7);
+            testing.expectEqual(d.location.column, 20);
         },
         else => unreachable,
     }
@@ -1435,8 +1439,9 @@ test "Parsing a slice type of an imported definition in an already imported appl
     switch (parsing_error) {
         .unknown_module => |d| {
             testing.expectEqualStrings("module3", d.name);
-            testing.expectEqual(d.line, 12);
-            testing.expectEqual(d.column, 48);
+            testing.expectEqualStrings("module2.gotyno", d.location.filename);
+            testing.expectEqual(d.location.line, 12);
+            testing.expectEqual(d.location.column, 48);
         },
         else => unreachable,
     }
@@ -1508,8 +1513,9 @@ test "Parsing an applied name that doesn't exist gives correct error" {
     switch (parsing_error) {
         .unknown_reference => |d| {
             testing.expectEqualStrings("Either", d.name);
-            testing.expectEqual(d.line, 2);
-            testing.expectEqual(d.column, 13);
+            testing.expectEqualStrings("module1.gotyno", d.location.filename);
+            testing.expectEqual(d.location.line, 2);
+            testing.expectEqual(d.location.column, 13);
         },
         else => unreachable,
     }
@@ -1554,8 +1560,9 @@ test "Parsing an imported applied name that doesn't exist gives correct error" {
     switch (parsing_error) {
         .unknown_reference => |d| {
             testing.expectEqualStrings("Eithe", d.name);
-            testing.expectEqual(d.line, 4);
-            testing.expectEqual(d.column, 21);
+            testing.expectEqualStrings("module2.gotyno", d.location.filename);
+            testing.expectEqual(d.location.line, 4);
+            testing.expectEqual(d.location.column, 21);
         },
         else => unreachable,
     }
