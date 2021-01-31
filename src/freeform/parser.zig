@@ -64,10 +64,17 @@ pub const UnknownModule = struct {
     column: usize,
 };
 
-// @TODO: add module names to locations
 pub const Location = struct {
+    const Self = @This();
+
+    filename: []const u8,
     line: usize,
     column: usize,
+
+    pub fn isEqual(self: Self, other: Self) bool {
+        return self.line == other.line and self.column == other.column and
+            mem.eql(u8, self.filename, other.filename);
+    }
 };
 
 pub const BufferData = struct {
@@ -82,9 +89,7 @@ pub const DefinitionName = struct {
     location: Location,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        return mem.eql(u8, self.value, other.value) and
-            self.location.column == other.location.column and
-            self.location.line == other.location.line;
+        return mem.eql(u8, self.value, other.value) and self.location.isEqual(other.location);
     }
 
     pub fn format(
@@ -1092,6 +1097,7 @@ pub const Module = struct {
     allocator: *mem.Allocator,
 
     pub fn deinit(self: *Self) void {
+        self.allocator.free(self.filename);
         self.allocator.free(self.definitions);
         self.definition_iterator.deinit();
     }
@@ -1117,10 +1123,12 @@ pub fn parse(
 
     const module_name = only_filename;
 
+    const copied_filename = try allocator.dupe(u8, filename);
     var definitions = ArrayList(Definition).init(allocator);
     var expect_error: ExpectError = undefined;
     var definition_iterator = DefinitionIterator.init(
         allocator,
+        copied_filename,
         buffer,
         if (modules) |m| m else ModuleMap.init(allocator),
         parsing_error,
@@ -1140,7 +1148,7 @@ pub fn parse(
 
     return Module{
         .name = module_name,
-        .filename = filename,
+        .filename = copied_filename,
         .definitions = definitions.items,
         .definition_iterator = definition_iterator,
         .allocator = allocator,
@@ -1354,12 +1362,13 @@ pub const DefinitionIterator = struct {
 
     pub fn init(
         allocator: *mem.Allocator,
+        filename: []const u8,
         buffer: []const u8,
         modules: ModuleMap,
         parsing_error: *ParsingError,
         expect_error: *ExpectError,
     ) Self {
-        var token_iterator = tokenizer.TokenIterator.init(buffer);
+        var token_iterator = tokenizer.TokenIterator.init(filename, buffer);
 
         return DefinitionIterator{
             .token_iterator = token_iterator,
@@ -1500,6 +1509,7 @@ pub const DefinitionIterator = struct {
         return DefinitionName{
             .value = name,
             .location = Location{
+                .filename = self.token_iterator.filename,
                 .line = self.token_iterator.line,
                 .column = self.token_iterator.column - name.len,
             },
@@ -1515,6 +1525,7 @@ pub const DefinitionIterator = struct {
         return DefinitionName{
             .value = name,
             .location = Location{
+                .filename = self.token_iterator.filename,
                 .line = self.token_iterator.line,
                 .column = self.token_iterator.column - name.len,
             },
@@ -1616,6 +1627,7 @@ pub const DefinitionIterator = struct {
             try tokens.skipMany(Token.space, 4, self.expect_error);
             const value_name = (try tokens.expect(Token.name, self.expect_error)).name;
             const value_location = Location{
+                .filename = tokens.filename,
                 .line = tokens.line,
                 .column = tokens.column - value_name.len,
             };
@@ -1869,6 +1881,7 @@ pub const DefinitionIterator = struct {
 
                     const parameter_name = (try tokens.expect(Token.name, self.expect_error)).name;
                     const parameter_location = Location{
+                        .filename = tokens.filename,
                         .line = tokens.line,
                         .column = tokens.column - parameter_name.len,
                     };
@@ -2066,6 +2079,7 @@ pub const DefinitionIterator = struct {
                 // we have an applied name
                 .left_angle => {
                     const start_location = Location{
+                        .filename = self.token_iterator.filename,
                         .line = self.token_iterator.line,
                         .column = self.token_iterator.column - name.len,
                     };
@@ -2126,7 +2140,11 @@ pub const DefinitionIterator = struct {
         open_names: []const []const u8,
         import_name: []const u8,
     ) ParseImportedMaybeAppliedNameErrors!?AppliedName {
-        const name_location = Location{ .line = tokens.line, .column = tokens.column - name.len };
+        const name_location = Location{
+            .filename = tokens.filename,
+            .line = tokens.line,
+            .column = tokens.column - name.len,
+        };
         const maybe_left_angle_token = try tokens.peek();
         if (maybe_left_angle_token) |maybe_left_angle| {
             switch (maybe_left_angle) {
@@ -2240,6 +2258,7 @@ pub const DefinitionIterator = struct {
                     break :result Type{ .reference = TypeReference{ .applied_name = applied_name } };
                 } else {
                     const name_location = Location{
+                        .filename = tokens.filename,
                         .line = tokens.line,
                         .column = tokens.column - name.len,
                     };
@@ -2266,6 +2285,7 @@ pub const DefinitionIterator = struct {
                     self.expect_error,
                 )).name;
                 const name_location = Location{
+                    .filename = tokens.filename,
                     .line = tokens.line,
                     .column = tokens.column - module_definition_name.len,
                 };

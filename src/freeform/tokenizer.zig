@@ -125,11 +125,12 @@ pub const TokenizeOptions = struct {
 pub fn tokenize(
     allocator: *mem.Allocator,
     error_allocator: *mem.Allocator,
+    filename: []const u8,
     buffer: []const u8,
     options: TokenizeOptions,
 ) !ArrayList(Token) {
     var tokens = ArrayList(Token).init(allocator);
-    var token_iterator = TokenIterator.init(buffer);
+    var token_iterator = TokenIterator.init(filename, buffer);
     var token_index: usize = 0;
     var last_token: Token = Token.space;
 
@@ -166,6 +167,7 @@ pub const TokenIterator = struct {
     const Self = @This();
     const delimiters = ";:\" \t\r\n{}[]<>(),.";
 
+    filename: []const u8,
     buffer: []const u8,
     i: usize,
     line: usize,
@@ -175,8 +177,9 @@ pub const TokenIterator = struct {
         peek: bool = false,
     };
 
-    pub fn init(buffer: []const u8) Self {
+    pub fn init(filename: []const u8, buffer: []const u8) Self {
         return Self{
+            .filename = filename,
             .buffer = buffer,
             .i = 0,
             .line = 1,
@@ -347,6 +350,7 @@ test "Tokenize `Person` struct" {
     const tokens = try tokenize(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.person_structure,
         .{},
     );
@@ -367,6 +371,7 @@ test "Tokenize `Maybe` union" {
     const tokens = try tokenize(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.maybe_union,
         .{},
     );
@@ -387,6 +392,7 @@ test "Tokenize `Either` union" {
     const tokens = try tokenize(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.either_union,
         .{},
     );
@@ -407,6 +413,7 @@ test "Tokenize `List` union" {
     const tokens = try tokenize(
         &allocator.allocator,
         &allocator.allocator,
+        "test.gotyno",
         type_examples.list_union,
         .{},
     );
@@ -623,7 +630,7 @@ fn testTokenIteratorExpect(
     buffer: []const u8,
     expected_tokens: []const Token,
 ) !void {
-    var token_iterator = TokenIterator.init(buffer);
+    var token_iterator = TokenIterator.init("test.gotyno", buffer);
     var expect_error: ExpectError = undefined;
     for (expected_tokens) |expected_token| {
         _ = try token_iterator.expect(expected_token, &expect_error);

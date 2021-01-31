@@ -64,7 +64,7 @@ test "Parsing `Person` structure" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "Person",
-                    .location = Location{ .line = 1, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
                 },
                 .fields = &[_]Field{
                     .{ .name = "type", .@"type" = Type{ .string = "Person" } },
@@ -137,7 +137,7 @@ test "Parsing basic generic structure" {
             .generic = GenericStructure{
                 .name = DefinitionName{
                     .value = "Node",
-                    .location = Location{ .line = 1, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
                 },
                 .fields = &fields,
                 .open_names = &[_][]const u8{"T"},
@@ -179,7 +179,7 @@ test "Parsing basic plain union" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "LogInData",
-                    .location = Location{ .line = 1, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
                 },
                 .fields = &login_data_fields,
             },
@@ -197,7 +197,7 @@ test "Parsing basic plain union" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "UserId",
-                    .location = Location{ .line = 6, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 6, .column = 8 },
                 },
                 .fields = &userid_fields,
             },
@@ -219,7 +219,7 @@ test "Parsing basic plain union" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "Channel",
-                    .location = Location{ .line = 10, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 10, .column = 8 },
                 },
                 .fields = &channel_fields,
             },
@@ -237,7 +237,7 @@ test "Parsing basic plain union" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "Email",
-                    .location = Location{ .line = 15, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 15, .column = 8 },
                 },
                 .fields = &email_fields,
             },
@@ -275,7 +275,7 @@ test "Parsing basic plain union" {
                 .plain = PlainUnion{
                     .name = DefinitionName{
                         .value = "Event",
-                        .location = Location{ .line = 19, .column = 7 },
+                        .location = Location{ .filename = "test.gotyno", .line = 19, .column = 7 },
                     },
                     .constructors = &expected_constructors,
                     .tag_field = "type",
@@ -316,7 +316,7 @@ test "Parsing `Maybe` union" {
             .generic = GenericUnion{
                 .name = DefinitionName{
                     .value = "Maybe",
-                    .location = Location{ .line = 1, .column = 7 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 7 },
                 },
                 .constructors = &expected_constructors,
                 .open_names = &[_][]const u8{"T"},
@@ -360,7 +360,7 @@ test "Parsing `Either` union" {
             .generic = GenericUnion{
                 .name = DefinitionName{
                     .value = "Either",
-                    .location = Location{ .line = 1, .column = 7 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 7 },
                 },
                 .constructors = &expected_constructors,
                 .open_names = &[_][]const u8{ "E", "T" },
@@ -417,7 +417,7 @@ test "Parsing `List` union" {
             .generic = GenericUnion{
                 .name = DefinitionName{
                     .value = "List",
-                    .location = Location{ .line = 1, .column = 7 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 7 },
                 },
                 .constructors = &expected_constructors,
                 .open_names = &[_][]const u8{"T"},
@@ -455,7 +455,7 @@ test "Parsing basic string-based enumeration" {
         .enumeration = Enumeration{
             .name = DefinitionName{
                 .value = "BackdropSize",
-                .location = Location{ .line = 1, .column = 6 },
+                .location = Location{ .filename = "test.gotyno", .line = 1, .column = 6 },
             },
             .fields = &expected_fields,
         },
@@ -497,7 +497,7 @@ test "Parsing untagged union" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "KnownForShow",
-                    .location = Location{ .line = 1, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
                 },
                 .fields = &known_for_show_fields,
             },
@@ -513,7 +513,7 @@ test "Parsing untagged union" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "KnownForMovie",
-                    .location = Location{ .line = 5, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 5, .column = 8 },
                 },
                 .fields = &known_for_movie_fields,
             },
@@ -532,7 +532,7 @@ test "Parsing untagged union" {
             .untagged_union = UntaggedUnion{
                 .name = DefinitionName{
                     .value = "KnownFor",
-                    .location = Location{ .line = 9, .column = 16 },
+                    .location = Location{ .filename = "test.gotyno", .line = 9, .column = 16 },
                 },
                 .values = &expected_values,
             },
@@ -596,7 +596,7 @@ test "Parsing unions with options" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "Value",
-                    .location = Location{ .line = 1, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
                 },
                 .fields = &value_fields,
             },
@@ -617,7 +617,7 @@ test "Parsing unions with options" {
                 .plain = PlainUnion{
                     .name = DefinitionName{
                         .value = "WithModifiedTag",
-                        .location = Location{ .line = 5, .column = 19 },
+                        .location = Location{ .filename = "test.gotyno", .line = 5, .column = 19 },
                     },
                     .constructors = &expected_constructors,
                     .tag_field = "kind",
@@ -746,7 +746,7 @@ test "Parsing same definition twice results in error" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "Recruiter",
-                    .location = Location{ .line = 1, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
                 },
                 .fields = &recruiter_fields,
             },
@@ -767,7 +767,7 @@ test "Parsing same definition twice results in error" {
             .plain = PlainStructure{
                 .name = DefinitionName{
                     .value = "Recruiter",
-                    .location = Location{ .line = 5, .column = 8 },
+                    .location = Location{ .filename = "test.gotyno", .line = 5, .column = 8 },
                 },
                 .fields = &new_recruiter_fields,
             },
@@ -838,7 +838,7 @@ test "Parsing union with embedded type tag" {
         .plain = PlainStructure{
             .name = DefinitionName{
                 .value = "One",
-                .location = Location{ .line = 1, .column = 8 },
+                .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
             },
             .fields = &expected_struct_one_fields,
         },
@@ -847,7 +847,7 @@ test "Parsing union with embedded type tag" {
         .plain = PlainStructure{
             .name = DefinitionName{
                 .value = "Two",
-                .location = Location{ .line = 5, .column = 8 },
+                .location = Location{ .filename = "test.gotyno", .line = 5, .column = 8 },
             },
             .fields = &expected_struct_two_fields,
         },
@@ -867,7 +867,7 @@ test "Parsing union with embedded type tag" {
                 .embedded = EmbeddedUnion{
                     .name = DefinitionName{
                         .value = "Embedded",
-                        .location = Location{ .line = 9, .column = 34 },
+                        .location = Location{ .filename = "test.gotyno", .line = 9, .column = 34 },
                     },
                     .constructors = &expected_constructors,
                     .tag_field = "media_type",
@@ -927,13 +927,27 @@ test "Parsing union with embedded type tag and lowercase tags" {
 
     const expected_struct_one = Structure{
         .plain = PlainStructure{
-            .name = DefinitionName{ .value = "One", .location = Location{ .line = 1, .column = 8 } },
+            .name = DefinitionName{
+                .value = "One",
+                .location = Location{
+                    .filename = "test.gotyno",
+                    .line = 1,
+                    .column = 8,
+                },
+            },
             .fields = &expected_struct_one_fields,
         },
     };
     const expected_struct_two = Structure{
         .plain = PlainStructure{
-            .name = DefinitionName{ .value = "Two", .location = Location{ .line = 5, .column = 8 } },
+            .name = DefinitionName{
+                .value = "Two",
+                .location = Location{
+                    .filename = "test.gotyno",
+                    .line = 5,
+                    .column = 8,
+                },
+            },
             .fields = &expected_struct_two_fields,
         },
     };
@@ -952,7 +966,7 @@ test "Parsing union with embedded type tag and lowercase tags" {
                 .embedded = EmbeddedUnion{
                     .name = DefinitionName{
                         .value = "Embedded",
-                        .location = Location{ .line = 1, .column = 34 },
+                        .location = Location{ .filename = "test.gotyno", .line = 1, .column = 34 },
                     },
                     .constructors = &expected_constructors,
                     .tag_field = "media_type",
@@ -1072,7 +1086,11 @@ test "Parsing an imported reference works even with nested ones" {
                         .plain = PlainStructure{
                             .name = DefinitionName{
                                 .value = "PlainStruct",
-                                .location = Location{ .line = 7, .column = 8 },
+                                .location = Location{
+                                    .filename = "module2.gotyno",
+                                    .line = 7,
+                                    .column = 8,
+                                },
                             },
                             .fields = &[_]Field{
                                 .{
@@ -1105,7 +1123,11 @@ test "Parsing an imported reference works even with nested ones" {
                         .open_names = &[_][]const u8{ "L", "R" },
                         .name = DefinitionName{
                             .value = "Either",
-                            .location = Location{ .line = 6, .column = 7 },
+                            .location = Location{
+                                .filename = "module1.gotyno",
+                                .line = 6,
+                                .column = 7,
+                            },
                         },
                         .constructors = &[_]Constructor{
                             .{
@@ -1148,7 +1170,11 @@ test "Parsing an imported reference works even with nested ones" {
                         .open_names = &[_][]const u8{"T"},
                         .name = DefinitionName{
                             .value = "Maybe",
-                            .location = Location{ .line = 1, .column = 7 },
+                            .location = Location{
+                                .filename = "module1.gotyno",
+                                .line = 1,
+                                .column = 7,
+                            },
                         },
                         .constructors = &[_]Constructor{
                             .{
@@ -1185,7 +1211,11 @@ test "Parsing an imported reference works even with nested ones" {
                 .generic = GenericStructure{
                     .name = DefinitionName{
                         .value = "HoldsSomething",
-                        .location = Location{ .line = 3, .column = 8 },
+                        .location = Location{
+                            .filename = "module2.gotyno",
+                            .line = 3,
+                            .column = 8,
+                        },
                     },
                     .open_names = &[_][]const u8{"T"},
                     .fields = &[_]Field{
@@ -1212,6 +1242,7 @@ test "Parsing an imported reference works even with nested ones" {
                 .name = DefinitionName{
                     .value = "Two",
                     .location = Location{
+                        .filename = "module2.gotyno",
                         .line = 11,
                         .column = 8,
                     },
