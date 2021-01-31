@@ -1486,6 +1486,55 @@ test "Using an applied name with less open names than it requires errors out" {
     }
 }
 
+test "Using an imported applied name with less open names than it requires errors out" {
+    var allocator = TestingAllocator{};
+
+    const module1_filename = "module1.gotyno";
+    const module1_name = "module1";
+    const module1_buffer =
+        \\union Either <L, R>{
+        \\    Left: L
+        \\    Right: R
+        \\}
+    ;
+
+    const module2_filename = "module2.gotyno";
+    const module2_name = "module2";
+    const module2_buffer =
+        \\import module1
+        \\
+        \\struct Plain {
+        \\    either: module1.Either<String>
+        \\}
+    ;
+
+    const buffers = [_]BufferData{
+        .{ .filename = module1_filename, .buffer = module1_buffer },
+        .{ .filename = module2_filename, .buffer = module2_buffer },
+    };
+
+    var parsing_error: ParsingError = undefined;
+
+    var modules = parser.parseModules(
+        &allocator.allocator,
+        &allocator.allocator,
+        &buffers,
+        &parsing_error,
+    );
+    testing.expectError(error.AppliedNameCount, modules);
+
+    switch (parsing_error) {
+        .applied_name_count => |d| {
+            testing.expectEqualStrings("module2.gotyno", d.location.filename);
+            testing.expectEqual(d.location.line, 4);
+            testing.expectEqual(d.location.column, 21);
+            testing.expectEqual(d.expected, 2);
+            testing.expectEqual(d.actual, 1);
+        },
+        else => unreachable,
+    }
+}
+
 test "Parsing an applied name that doesn't exist gives correct error" {
     var allocator = TestingAllocator{};
     var parsing_error: ParsingError = undefined;

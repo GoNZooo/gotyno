@@ -2155,6 +2155,11 @@ pub const DefinitionIterator = struct {
             switch (maybe_left_angle) {
                 // we have an applied name
                 .left_angle => {
+                    const start_location = Location{
+                        .filename = tokens.filename,
+                        .line = tokens.line,
+                        .column = tokens.column - name.len,
+                    };
                     _ = try tokens.expect(Token.left_angle, self.expect_error);
                     const applied_open_names = try source_definitions.parseAppliedOpenNames(
                         tokens,
@@ -2170,6 +2175,18 @@ pub const DefinitionIterator = struct {
                         name_location,
                         import_name,
                     );
+
+                    const expected_applied_name_count = reference.openNames().len;
+                    const applied_name_count = applied_open_names.len;
+                    if (applied_name_count != expected_applied_name_count) {
+                        return try source_definitions.returnAppliedNameCountError(
+                            ?AppliedName,
+                            name,
+                            @intCast(u32, expected_applied_name_count),
+                            @intCast(u32, applied_name_count),
+                            start_location,
+                        );
+                    }
 
                     return AppliedName{ .reference = reference, .open_names = applied_open_names };
                 },
