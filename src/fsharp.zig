@@ -242,27 +242,43 @@ fn outputDecoderForField(
     const format = "{s}{s} = get.Required.Field \"{s}\" {s}";
     const format_for_optional = "{s}{s} = get.Optional.Field \"{s}\" {s}";
 
-    return switch (f.@"type") {
-        .optional => |o| output: {
-            const decoder_for_nested_type = try decoderForType(allocator, o.@"type".*);
-            defer allocator.free(decoder_for_nested_type);
+    if (isOptionalType(f.@"type")) {
+        const decoder_for_nested_type = try decoderForType(
+            allocator,
+            seeThroughOptional(f.@"type").?,
+        );
+        defer allocator.free(decoder_for_nested_type);
 
-            break :output try fmt.allocPrint(
-                allocator,
-                format_for_optional,
-                .{ indentation, name, f.name, decoder_for_nested_type },
-            );
-        },
-        else => output: {
-            const decoder = try decoderForType(allocator, f.@"type");
-            defer allocator.free(decoder);
+        return try fmt.allocPrint(
+            allocator,
+            format_for_optional,
+            .{ indentation, name, f.name, decoder_for_nested_type },
+        );
+    } else {
+        const decoder = try decoderForType(allocator, f.@"type");
+        defer allocator.free(decoder);
 
-            break :output try fmt.allocPrint(
-                allocator,
-                format,
-                .{ indentation, name, f.name, decoder },
-            );
-        },
+        return try fmt.allocPrint(
+            allocator,
+            format,
+            .{ indentation, name, f.name, decoder },
+        );
+    }
+}
+
+fn isOptionalType(t: Type) bool {
+    return switch (t) {
+        .optional => true,
+        .pointer => |p| isOptionalType(p.@"type".*),
+        else => false,
+    };
+}
+
+fn seeThroughOptional(t: Type) ?Type {
+    return switch (t) {
+        .optional => |d| seeThroughOptional(d.@"type".*),
+        .pointer => |d| seeThroughOptional(d.@"type".*),
+        else => t,
     };
 }
 
@@ -587,66 +603,92 @@ fn encoderForType(
     field_name: ?[]const u8,
     comptime value_name: ?[]const u8,
 ) error{OutOfMemory}![]const u8 {
-    const array_format = "GotynoCoders.encodeList {s}";
+    const array_format = "(GotynoCoders.encodeList {s}{s})";
     const string_format = "Encode.string \"{s}\"";
+    // @TODO: Add a proper tagged union for whether or not to output `value.field`.
+    // Will be easier to understand in the future.
+    const value_field_output = if (value_name != null and field_name != null) value_field: {
+        const escaped_field_name = try maybeEscapeName(allocator, field_name.?);
+        defer allocator.free(escaped_field_name);
+
+        break :value_field try fmt.allocPrint(
+            allocator,
+            " {s}.{s}",
+            .{ value_name.?, escaped_field_name },
+        );
+    } else
+        try allocator.dupe(u8, "");
+    defer allocator.free(value_field_output);
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
+
         .reference => |d| o: {
             const encoder = try encoderForTypeReference(allocator, d);
+            defer allocator.free(encoder);
 
-            if (value_name != null and field_name != null) {
-                defer allocator.free(encoder);
-                const escaped_field_name = try maybeEscapeName(allocator, field_name.?);
-                defer allocator.free(escaped_field_name);
-
-                break :o try fmt.allocPrint(
-                    allocator,
-                    "{s} {s}.{s}",
-                    .{ encoder, value_name.?, escaped_field_name },
-                );
-            } else
-                break :o encoder;
+            break :o try fmt.allocPrint(
+                allocator,
+                "{s}{s}",
+                .{ encoder, value_field_output },
+            );
         },
+
         .pointer => |d| try encoderForType(
             allocator,
             d.@"type".*,
             field_name,
             value_name,
         ),
+
         .array => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
                 d.@"type".*,
-                field_name,
-                value_name,
+                null,
+                null,
             );
             defer allocator.free(nested_type_output);
 
-            break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
+            break :o try fmt.allocPrint(
+                allocator,
+                array_format,
+                .{ nested_type_output, value_field_output },
+            );
         },
+
         .slice => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
                 d.@"type".*,
-                field_name,
-                value_name,
+                null,
+                null,
             );
             defer allocator.free(nested_type_output);
 
-            break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
+            break :o try fmt.allocPrint(
+                allocator,
+                array_format,
+                .{ nested_type_output, value_field_output },
+            );
         },
+
         .optional => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
                 d.@"type".*,
-                field_name,
-                value_name,
+                null,
+                null,
             );
             defer allocator.free(nested_type_output);
 
-            break :o try fmt.allocPrint(allocator, "(Encode.option {s})", .{nested_type_output});
+            break :o try fmt.allocPrint(
+                allocator,
+                "(Encode.option {s}{s})",
+                .{ nested_type_output, value_field_output },
+            );
         },
+
         .empty => debug.panic("Structure field cannot be empty\n", .{}),
     };
 }
@@ -1991,8 +2033,8 @@ test "outputs plain structure correctly" {
         \\                "age", Encode.byte value.age
         \\                "efficiency", Encode.float32 value.efficiency
         \\                "on_vacation", Encode.bool value.on_vacation
-        \\                "hobbies", GotynoCoders.encodeList Encode.string value.hobbies
-        \\                "last_fifteen_comments", GotynoCoders.encodeList Encode.string value.last_fifteen_comments
+        \\                "hobbies", (GotynoCoders.encodeList Encode.string value.hobbies)
+        \\                "last_fifteen_comments", (GotynoCoders.encodeList Encode.string value.last_fifteen_comments)
         \\                "recruiter", Person.Encoder value.recruiter
         \\            ]
     ;
@@ -2118,11 +2160,11 @@ test "outputs plain union correctly" {
         \\
         \\        | JoinChannels payload ->
         \\            Encode.object [ "type", Encode.string "JoinChannels"
-        \\                            "data", GotynoCoders.encodeList Channel.Encoder payload ]
+        \\                            "data", (GotynoCoders.encodeList Channel.Encoder) payload ]
         \\
         \\        | SetEmails payload ->
         \\            Encode.object [ "type", Encode.string "SetEmails"
-        \\                            "data", GotynoCoders.encodeList Email.Encoder payload ]
+        \\                            "data", (GotynoCoders.encodeList Email.Encoder) payload ]
         \\
         \\        | Close ->
         \\            Encode.object [ "type", Encode.string "Close" ]
@@ -2228,11 +2270,11 @@ test "outputs plain union with lowercased constructors correctly" {
         \\
         \\        | JoinChannels payload ->
         \\            Encode.object [ "type", Encode.string "joinChannels"
-        \\                            "data", GotynoCoders.encodeList Channel.Encoder payload ]
+        \\                            "data", (GotynoCoders.encodeList Channel.Encoder) payload ]
         \\
         \\        | SetEmails payload ->
         \\            Encode.object [ "type", Encode.string "setEmails"
-        \\                            "data", GotynoCoders.encodeList Email.Encoder payload ]
+        \\                            "data", (GotynoCoders.encodeList Email.Encoder) payload ]
         \\
         \\        | Close ->
         \\            Encode.object [ "type", Encode.string "close" ]
@@ -2897,5 +2939,69 @@ test "Parsing an imported reference works even with nested ones" {
 
     allocator.allocator.free(two_output);
     modules.deinit();
+    testing_utilities.expectNoLeaks(&allocator);
+}
+
+test "Optional slice fields are valid and are output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct Structure {
+        \\    field1: ?[]String
+        \\    field2: [5][]String
+        \\    field3: *?String
+        \\    field4: []?String
+        \\}
+    ;
+
+    const expected_output =
+        \\type Structure =
+        \\    {
+        \\        field1: option<list<string>>
+        \\        field2: list<list<string>>
+        \\        field3: option<string>
+        \\        field4: list<option<string>>
+        \\    }
+        \\
+        \\    static member Decoder: Decoder<Structure> =
+        \\        Decode.object (fun get ->
+        \\            {
+        \\                field1 = get.Optional.Field "field1" (Decode.list Decode.string)
+        \\                field2 = get.Required.Field "field2" (Decode.list (Decode.list Decode.string))
+        \\                field3 = get.Optional.Field "field3" Decode.string
+        \\                field4 = get.Required.Field "field4" (Decode.list (Decode.option Decode.string))
+        \\            }
+        \\        )
+        \\
+        \\    static member Encoder value =
+        \\        Encode.object
+        \\            [
+        \\                "field1", (Encode.option (GotynoCoders.encodeList Encode.string) value.field1)
+        \\                "field2", (GotynoCoders.encodeList (GotynoCoders.encodeList Encode.string) value.field2)
+        \\                "field3", (Encode.option Encode.string value.field3)
+        \\                "field4", (GotynoCoders.encodeList (Encode.option Encode.string) value.field4)
+        \\            ]
+    ;
+
+    var parsing_error: ParsingError = undefined;
+
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        "test.gotyno",
+        definition_buffer,
+        null,
+        &parsing_error,
+    );
+
+    const output = try outputPlainStructure(
+        &allocator.allocator,
+        definitions.definitions[0].structure.plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
     testing_utilities.expectNoLeaks(&allocator);
 }
