@@ -1584,3 +1584,55 @@ test "Parsing a slice type of an imported definition as an applied name works ou
     modules.deinit();
     testing_utilities.expectNoLeaks(&allocator);
 }
+
+test "Optional slice fields are valid and are output correctly" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\struct Structure {
+        \\    field1: ?[]String
+        \\    field2: [5][]String
+        \\    field3: *?String
+        \\    field4: []?String
+        \\}
+    ;
+
+    const expected_output =
+        \\export type Structure = {
+        \\    field1: string[] | null | undefined;
+        \\    field2: string[][];
+        \\    field3: string | null | undefined;
+        \\    field4: (string | null | undefined)[];
+        \\};
+        \\
+        \\export function isStructure(value: unknown): value is Structure {
+        \\    return svt.isInterface<Structure>(value, {field1: svt.optional(svt.arrayOf(svt.isString)), field2: svt.arrayOf(svt.arrayOf(svt.isString)), field3: svt.optional(svt.isString), field4: svt.arrayOf(svt.optional(svt.isString))});
+        \\}
+        \\
+        \\export function validateStructure(value: unknown): svt.ValidationResult<Structure> {
+        \\    return svt.validate<Structure>(value, {field1: svt.validateOptional(svt.validateArray(svt.validateString)), field2: svt.validateArray(svt.validateArray(svt.validateString)), field3: svt.validateOptional(svt.validateString), field4: svt.validateArray(svt.validateOptional(svt.validateString))});
+        \\}
+    ;
+
+    var parsing_error: ParsingError = undefined;
+
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        "test.gotyno",
+        definition_buffer,
+        null,
+        &parsing_error,
+    );
+
+    const output = try typescript.outputPlainStructure(
+        &allocator.allocator,
+        definitions.definitions[0].structure.plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}

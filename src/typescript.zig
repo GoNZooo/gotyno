@@ -2410,50 +2410,66 @@ fn outputOpenNamesFromType(
         try fmt.allocPrint(allocator, "<{s}>", .{joined_open_names});
 }
 
-fn outputType(allocator: *mem.Allocator, t: Type) !?[]const u8 {
+fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}!?[]const u8 {
     return switch (t) {
         .empty => null,
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translateReference(allocator, r),
 
-        .array => |a| output: {
-            const embedded_type = switch (a.@"type".*) {
-                .reference => |r| try translateReference(allocator, r),
-                else => debug.panic("Invalid embedded type for array: {}\n", .{a.@"type"}),
-            };
-            defer allocator.free(embedded_type);
+        .array => |d| output: {
+            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+                defer allocator.free(embedded_type);
 
-            break :output try fmt.allocPrint(allocator, "{s}[]", .{embedded_type});
+                switch (d.@"type".*) {
+                    .optional => break :output try fmt.allocPrint(
+                        allocator,
+                        "({s})[]",
+                        .{embedded_type},
+                    ),
+                    else => break :output try fmt.allocPrint(allocator, "{s}[]", .{embedded_type}),
+                }
+            } else {
+                debug.panic("Invalid empty type in optional type\n", .{});
+            }
         },
 
-        .slice => |s| output: {
-            const embedded_type = switch (s.@"type".*) {
-                .reference => |r| try translateReference(allocator, r),
-                else => debug.panic("Invalid embedded type for slice: {}\n", .{s.@"type"}),
-            };
-            defer allocator.free(embedded_type);
+        .slice => |d| output: {
+            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+                defer allocator.free(embedded_type);
 
-            break :output try fmt.allocPrint(allocator, "{s}[]", .{embedded_type});
+                switch (d.@"type".*) {
+                    .optional => |o| break :output try fmt.allocPrint(
+                        allocator,
+                        "({s})[]",
+                        .{embedded_type},
+                    ),
+                    else => break :output try fmt.allocPrint(allocator, "{s}[]", .{embedded_type}),
+                }
+            } else {
+                debug.panic("Invalid empty type in optional type\n", .{});
+            }
         },
 
-        .pointer => |p| output: {
-            const embedded_type = switch (p.@"type".*) {
-                .reference => |r| try translateReference(allocator, r),
-                else => debug.panic("Invalid embedded type for pointer: {}\n", .{p.@"type"}),
-            };
-            defer allocator.free(embedded_type);
-
-            break :output try fmt.allocPrint(allocator, "{s}", .{embedded_type});
+        .pointer => |d| output: {
+            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+                break :output embedded_type;
+            } else {
+                debug.panic("Invalid empty type in optional type\n", .{});
+            }
         },
 
-        .optional => |o| output: {
-            const embedded_type = switch (o.@"type".*) {
-                .reference => |r| try translateReference(allocator, r),
-                else => debug.panic("Invalid embedded type for optional: {}\n", .{o.@"type"}),
-            };
-            defer allocator.free(embedded_type);
+        .optional => |d| output: {
+            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+                defer allocator.free(embedded_type);
 
-            break :output try fmt.allocPrint(allocator, "{s} | null | undefined", .{embedded_type});
+                break :output try fmt.allocPrint(
+                    allocator,
+                    "{s} | null | undefined",
+                    .{embedded_type},
+                );
+            } else {
+                debug.panic("Invalid empty type in optional type\n", .{});
+            }
         },
     };
 }
