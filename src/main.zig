@@ -62,18 +62,6 @@ const CompilationOptions = struct {
 
 const InputMap = StringMap([]const u8);
 
-fn loadInputs(allocator: *mem.Allocator, files: []const []const u8) !InputMap {
-    var input_map = InputMap.init(allocator);
-    const current_directory = fs.cwd();
-
-    for (files) |file| {
-        const file_contents = try current_directory.readFileAlloc(allocator, file, 4_000_000);
-        try input_map.put(file, file_contents);
-    }
-
-    return input_map;
-}
-
 fn compileInputs(
     allocator: *mem.Allocator,
     files: []const []const u8,
