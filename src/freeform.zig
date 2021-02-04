@@ -74,9 +74,6 @@ pub fn compileModules(
 
     var buffers = try allocator.alloc(parser.BufferData, files.len);
 
-    const should_output_typescript = output_languages.typescript != null;
-    const should_output_fsharp = output_languages.fsharp != null;
-
     for (files) |file, i| {
         const sanitized_filename = try sanitizeFilename(allocator, file);
 
@@ -90,7 +87,12 @@ pub fn compileModules(
     }
 
     var parsing_error: ParsingError = undefined;
-    const modules = try parser.parseModulesWithDescribedError(allocator, allocator, buffers, &parsing_error);
+    const modules = try parser.parseModulesWithDescribedError(
+        allocator,
+        allocator,
+        buffers,
+        &parsing_error,
+    );
     var module_iterator = modules.modules.iterator();
     while (module_iterator.next()) |e| {
         try compileModule(allocator, e.value, output_languages, verbose);
