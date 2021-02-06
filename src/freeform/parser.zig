@@ -1544,10 +1544,10 @@ pub const DefinitionIterator = struct {
         const import_name = try self.parseDefinitionName();
 
         return switch (try tokens.expectOneOf(
-            &[_]TokenTag{ .newline, .space },
+            &[_]TokenTag{ .newline, .crlf, .space },
             self.expect_error,
         )) {
-            .newline => Import{ .name = import_name, .alias = import_name.value },
+            .newline, .crlf => Import{ .name = import_name, .alias = import_name.value },
             .space => with_alias: {
                 _ = try tokens.expect(Token.equals, self.expect_error);
                 _ = try tokens.expect(Token.space, self.expect_error);
@@ -1877,8 +1877,8 @@ pub const DefinitionIterator = struct {
                 else => unreachable,
             };
 
-            switch (try tokens.expectOneOf(&[_]TokenTag{ .colon, .newline }, self.expect_error)) {
-                .newline => try constructors.append(ConstructorWithEmbeddedTypeTag{
+            switch (try tokens.expectOneOf(&[_]TokenTag{ .colon, .newline, .crlf }, self.expect_error)) {
+                .newline, .crlf => try constructors.append(ConstructorWithEmbeddedTypeTag{
                     .tag = tag,
                     .parameter = null,
                 }),
@@ -2028,11 +2028,11 @@ pub const DefinitionIterator = struct {
         };
 
         const colon_or_newline = try tokens.expectOneOf(
-            &[_]TokenTag{ .colon, .newline },
+            &[_]TokenTag{ .colon, .newline, .crlf },
             self.expect_error,
         );
 
-        if (colon_or_newline == Token.newline) {
+        if (colon_or_newline == Token.newline or colon_or_newline == Token.crlf) {
             return Constructor{ .tag = tag, .parameter = Type.empty };
         }
 
