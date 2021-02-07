@@ -1636,3 +1636,87 @@ test "Optional slice fields are valid and are output correctly" {
     allocator.allocator.free(output);
     testing_utilities.expectNoLeaks(&allocator);
 }
+
+test "Optional constructor parameters have correct translation" {
+    var allocator = TestingAllocator{};
+
+    const definition_buffer =
+        \\union HasOptionalParameters {
+        \\    One: ?String
+        \\    Two: String
+        \\}
+    ;
+
+    const expected_output =
+        \\export type HasOptionalParameters = One | Two;
+        \\
+        \\export enum HasOptionalParametersTag {
+        \\    One = "One",
+        \\    Two = "Two",
+        \\}
+        \\
+        \\export type One = {
+        \\    type: HasOptionalParametersTag.One;
+        \\    data: string | null | undefined;
+        \\};
+        \\
+        \\export type Two = {
+        \\    type: HasOptionalParametersTag.Two;
+        \\    data: string;
+        \\};
+        \\
+        \\export function One(data: string | null | undefined): One {
+        \\    return {type: HasOptionalParametersTag.One, data};
+        \\}
+        \\
+        \\export function Two(data: string): Two {
+        \\    return {type: HasOptionalParametersTag.Two, data};
+        \\}
+        \\
+        \\export function isHasOptionalParameters(value: unknown): value is HasOptionalParameters {
+        \\    return [isOne, isTwo].some((typePredicate) => typePredicate(value));
+        \\}
+        \\
+        \\export function isOne(value: unknown): value is One {
+        \\    return svt.isInterface<One>(value, {type: HasOptionalParametersTag.One, data: svt.optional(svt.isString)});
+        \\}
+        \\
+        \\export function isTwo(value: unknown): value is Two {
+        \\    return svt.isInterface<Two>(value, {type: HasOptionalParametersTag.Two, data: svt.isString});
+        \\}
+        \\
+        \\export function validateHasOptionalParameters(value: unknown): svt.ValidationResult<HasOptionalParameters> {
+        \\    return svt.validateWithTypeTag<HasOptionalParameters>(value, {[HasOptionalParametersTag.One]: validateOne, [HasOptionalParametersTag.Two]: validateTwo}, "type");
+        \\}
+        \\
+        \\export function validateOne(value: unknown): svt.ValidationResult<One> {
+        \\    return svt.validate<One>(value, {type: HasOptionalParametersTag.One, data: svt.validateOptional(svt.validateString)});
+        \\}
+        \\
+        \\export function validateTwo(value: unknown): svt.ValidationResult<Two> {
+        \\    return svt.validate<Two>(value, {type: HasOptionalParametersTag.Two, data: svt.validateString});
+        \\}
+    ;
+
+    var parsing_error: ParsingError = undefined;
+
+    var definitions = try parser.parseWithDescribedError(
+        &allocator.allocator,
+        &allocator.allocator,
+        "test.gotyno",
+        definition_buffer,
+        null,
+        &parsing_error,
+    );
+
+    const output = try typescript.outputPlainUnion(
+        &allocator.allocator,
+        definitions.definitions[0].@"union".plain,
+    );
+
+    testing.expectEqualStrings(output, expected_output);
+
+    definitions.deinit();
+    allocator.allocator.free(output);
+    testing_utilities.expectNoLeaks(&allocator);
+}

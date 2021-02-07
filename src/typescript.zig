@@ -1999,7 +1999,7 @@ fn getDataSpecificationFromType(
 ) !?[]const u8 {
     const bare_format = "{s}";
     const array_format = "{s}[]";
-    const optional_format = "{s} | null";
+    const optional_format = "{s} | null | undefined";
 
     return switch (t) {
         .empty => null,
@@ -2127,7 +2127,7 @@ fn getNestedDataSpecificationFromType(
     t: Type,
 ) error{OutOfMemory}![]const u8 {
     const array_format = "{s}[]";
-    const optional_format = "{s} | null";
+    const optional_format = "{s} | null | undefined";
 
     return switch (t) {
         .empty => debug.panic("Empty nested type invalid for data specification\n", .{}),
