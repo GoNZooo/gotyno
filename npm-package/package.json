@@ -9,6 +9,6 @@
     "gotyno": "./scripts/cli.js"
   },
   "dependencies": {
-    "simple-validation-tools": "1.3.0"
+    "simple-validation-tools": "1.3.1"
   }
 }
