@@ -520,6 +520,7 @@ const expected_person_struct_tokens = [_]Token{
     .{ .symbol = "recruiter" },
     Token.colon,
     Token.space,
+    Token.question_mark,
     Token.asterisk,
     .{ .name = "Person" },
     Token.newline,

@@ -100,7 +100,13 @@ test "Parsing `Person` structure" {
                     },
                     .{
                         .name = "recruiter",
-                        .@"type" = Type{ .pointer = Pointer{ .@"type" = &recruiter_pointer_type } },
+                        .@"type" = Type{
+                            .optional = Optional{
+                                .@"type" = &Type{
+                                    .pointer = Pointer{ .@"type" = &recruiter_pointer_type },
+                                },
+                            },
+                        },
                     },
                 },
             },

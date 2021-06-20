@@ -2182,9 +2182,8 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
         },
         .pointer => |p| output: {
             const nested_validator = try getNestedTypeGuardFromType(allocator, p.@"type".*);
-            defer allocator.free(nested_validator);
 
-            break :output try fmt.allocPrint(allocator, "is{s}", .{nested_validator});
+            break :output nested_validator;
         },
         .optional => |o| output: {
             const nested_validator = try getNestedTypeGuardFromType(allocator, o.@"type".*);
@@ -2217,9 +2216,8 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
         },
         .pointer => |p| output: {
             const nested_validator = try getNestedValidatorFromType(allocator, p.@"type".*);
-            defer allocator.free(nested_validator);
 
-            break :output try fmt.allocPrint(allocator, "is{s}", .{nested_validator});
+            break :output nested_validator;
         },
         .optional => |o| output: {
             const nested_validator = try getNestedValidatorFromType(allocator, o.@"type".*);

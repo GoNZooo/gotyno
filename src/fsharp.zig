@@ -2008,7 +2008,7 @@ test "outputs plain structure correctly" {
         \\        on_vacation: bool
         \\        hobbies: list<string>
         \\        last_fifteen_comments: list<string>
-        \\        recruiter: Person
+        \\        recruiter: option<Person>
         \\    }
         \\
         \\    static member Decoder: Decoder<Person> =
@@ -2021,7 +2021,7 @@ test "outputs plain structure correctly" {
         \\                on_vacation = get.Required.Field "on_vacation" Decode.bool
         \\                hobbies = get.Required.Field "hobbies" (Decode.list Decode.string)
         \\                last_fifteen_comments = get.Required.Field "last_fifteen_comments" (Decode.list Decode.string)
-        \\                recruiter = get.Required.Field "recruiter" Person.Decoder
+        \\                recruiter = get.Optional.Field "recruiter" Person.Decoder
         \\            }
         \\        )
         \\
@@ -2035,7 +2035,7 @@ test "outputs plain structure correctly" {
         \\                "on_vacation", Encode.bool value.on_vacation
         \\                "hobbies", (GotynoCoders.encodeList Encode.string value.hobbies)
         \\                "last_fifteen_comments", (GotynoCoders.encodeList Encode.string value.last_fifteen_comments)
-        \\                "recruiter", Person.Encoder value.recruiter
+        \\                "recruiter", (Encode.option Person.Encoder value.recruiter)
         \\            ]
     ;
 

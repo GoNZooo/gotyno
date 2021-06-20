@@ -58,15 +58,15 @@ test "Outputs `Person` struct correctly" {
         \\    on_vacation: boolean;
         \\    hobbies: string[];
         \\    last_fifteen_comments: string[];
-        \\    recruiter: Person;
+        \\    recruiter: Person | null | undefined;
         \\};
         \\
         \\export function isPerson(value: unknown): value is Person {
-        \\    return svt.isInterface<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: isPerson});
+        \\    return svt.isInterface<Person>(value, {type: "Person", name: svt.isString, age: svt.isNumber, efficiency: svt.isNumber, on_vacation: svt.isBoolean, hobbies: svt.arrayOf(svt.isString), last_fifteen_comments: svt.arrayOf(svt.isString), recruiter: svt.optional(isPerson)});
         \\}
         \\
         \\export function validatePerson(value: unknown): svt.ValidationResult<Person> {
-        \\    return svt.validate<Person>(value, {type: "Person", name: svt.validateString, age: svt.validateNumber, efficiency: svt.validateNumber, on_vacation: svt.validateBoolean, hobbies: svt.validateArray(svt.validateString), last_fifteen_comments: svt.validateArray(svt.validateString), recruiter: validatePerson});
+        \\    return svt.validate<Person>(value, {type: "Person", name: svt.validateString, age: svt.validateNumber, efficiency: svt.validateNumber, on_vacation: svt.validateBoolean, hobbies: svt.validateArray(svt.validateString), last_fifteen_comments: svt.validateArray(svt.validateString), recruiter: svt.validateOptional(validatePerson)});
         \\}
     ;
 
