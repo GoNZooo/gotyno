@@ -590,6 +590,11 @@ fn outputEncodersForFields(
     return try mem.join(allocator, "\n", encoder_outputs);
 }
 
+const SurroundPair = struct {
+    left: u8,
+    right: u8,
+};
+
 fn outputEncoderForField(
     allocator: *mem.Allocator,
     f: Field,
@@ -599,7 +604,7 @@ fn outputEncoderForField(
 ) ![]const u8 {
     var indentation_buffer = [_]u8{' '} ** indentation;
 
-    const encoder = try encoderForType(allocator, f.@"type", f.name, value_name);
+    const encoder = try encoderForType(allocator, f.@"type", f.name, value_name, false);
     defer allocator.free(encoder);
 
     const format = "{s}\"{s}\", {s}";
@@ -612,8 +617,12 @@ fn encoderForType(
     t: Type,
     field_name: ?[]const u8,
     comptime value_name: ?[]const u8,
+    comptime nested: bool,
 ) error{OutOfMemory}![]const u8 {
-    const array_format = "(GotynoCoders.encodeList {s}{s})";
+    const array_format = if (nested)
+        "(GotynoCoders.encodeList {s}{s})"
+    else
+        "GotynoCoders.encodeList {s}{s}";
     const string_format = "Encode.string \"{s}\"";
     // @TODO: Add a proper tagged union for whether or not to output `value.field`.
     // Will be easier to understand in the future.
@@ -649,6 +658,8 @@ fn encoderForType(
             d.@"type".*,
             field_name,
             value_name,
+            // technically this is "nested", but we see through pointers so it doesn't matter(?)
+            false,
         ),
 
         .array => |d| o: {
@@ -657,6 +668,7 @@ fn encoderForType(
                 d.@"type".*,
                 null,
                 null,
+                true,
             );
             defer allocator.free(nested_type_output);
 
@@ -673,6 +685,7 @@ fn encoderForType(
                 d.@"type".*,
                 null,
                 null,
+                true,
             );
             defer allocator.free(nested_type_output);
 
@@ -689,12 +702,15 @@ fn encoderForType(
                 d.@"type".*,
                 null,
                 null,
+                true,
             );
+            const optional_format =
+                if (nested) "(Encode.option {s}{s})" else "Encode.option {s}{s}";
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(
                 allocator,
-                "(Encode.option {s}{s})",
+                optional_format,
                 .{ nested_type_output, value_field_output },
             );
         },
@@ -751,7 +767,7 @@ fn appliedOpenNameEncoders(
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
     for (applied_open_names) |name, i| {
-        outputs[i] = try encoderForType(allocator, name.reference, null, null);
+        outputs[i] = try encoderForType(allocator, name.reference, null, null, false);
     }
 
     return outputs;
@@ -1269,6 +1285,7 @@ fn outputEncoderForUnion(
                     c.parameter,
                     null,
                     null,
+                    false,
                 );
                 defer allocator.free(parameter_encoder_output);
 
@@ -1541,6 +1558,7 @@ fn outputEncoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
                     c.parameter,
                     null,
                     "payload",
+                    false,
                 );
                 defer allocator.free(parameter_encoder_output);
 
@@ -2043,9 +2061,9 @@ test "outputs plain structure correctly" {
         \\                "age", Encode.byte value.age
         \\                "efficiency", Encode.float32 value.efficiency
         \\                "on_vacation", Encode.bool value.on_vacation
-        \\                "hobbies", (GotynoCoders.encodeList Encode.string value.hobbies)
-        \\                "last_fifteen_comments", (GotynoCoders.encodeList Encode.string value.last_fifteen_comments)
-        \\                "recruiter", (Encode.option Person.Encoder value.recruiter)
+        \\                "hobbies", GotynoCoders.encodeList Encode.string value.hobbies
+        \\                "last_fifteen_comments", GotynoCoders.encodeList Encode.string value.last_fifteen_comments
+        \\                "recruiter", Encode.option Person.Encoder value.recruiter
         \\            ]
     ;
 
@@ -2170,11 +2188,11 @@ test "outputs plain union correctly" {
         \\
         \\        | JoinChannels payload ->
         \\            Encode.object [ "type", Encode.string "JoinChannels"
-        \\                            "data", (GotynoCoders.encodeList Channel.Encoder) payload ]
+        \\                            "data", GotynoCoders.encodeList Channel.Encoder payload ]
         \\
         \\        | SetEmails payload ->
         \\            Encode.object [ "type", Encode.string "SetEmails"
-        \\                            "data", (GotynoCoders.encodeList Email.Encoder) payload ]
+        \\                            "data", GotynoCoders.encodeList Email.Encoder payload ]
         \\
         \\        | Close ->
         \\            Encode.object [ "type", Encode.string "Close" ]
@@ -2280,11 +2298,11 @@ test "outputs plain union with lowercased constructors correctly" {
         \\
         \\        | JoinChannels payload ->
         \\            Encode.object [ "type", Encode.string "joinChannels"
-        \\                            "data", (GotynoCoders.encodeList Channel.Encoder) payload ]
+        \\                            "data", GotynoCoders.encodeList Channel.Encoder payload ]
         \\
         \\        | SetEmails payload ->
         \\            Encode.object [ "type", Encode.string "setEmails"
-        \\                            "data", (GotynoCoders.encodeList Email.Encoder) payload ]
+        \\                            "data", GotynoCoders.encodeList Email.Encoder payload ]
         \\
         \\        | Close ->
         \\            Encode.object [ "type", Encode.string "close" ]
@@ -2986,10 +3004,10 @@ test "Optional slice fields are valid and are output correctly" {
         \\    static member Encoder value =
         \\        Encode.object
         \\            [
-        \\                "field1", (Encode.option (GotynoCoders.encodeList Encode.string) value.field1)
-        \\                "field2", (GotynoCoders.encodeList (GotynoCoders.encodeList Encode.string) value.field2)
-        \\                "field3", (Encode.option Encode.string value.field3)
-        \\                "field4", (GotynoCoders.encodeList (Encode.option Encode.string) value.field4)
+        \\                "field1", Encode.option (GotynoCoders.encodeList Encode.string) value.field1
+        \\                "field2", GotynoCoders.encodeList (GotynoCoders.encodeList Encode.string) value.field2
+        \\                "field3", Encode.option Encode.string value.field3
+        \\                "field4", GotynoCoders.encodeList (Encode.option Encode.string) value.field4
         \\            ]
     ;
 
