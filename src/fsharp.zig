@@ -12,6 +12,8 @@ const type_examples = @import("./freeform/type_examples.zig");
 const utilities = @import("./freeform/utilities.zig");
 const testing_utilities = @import("./freeform/testing_utilities.zig");
 
+const ArrayList = std.ArrayList;
+
 const Definition = parser.Definition;
 const AppliedOpenName = parser.AppliedOpenName;
 const Import = parser.Import;
@@ -68,7 +70,15 @@ pub fn compileDefinitions(
 
     const module_name = try utilities.titleCaseWord(allocator, only_filename);
 
-    var outputs = try allocator.alloc([]const u8, definitions.len + 2);
+    var definitions_without_imports = ArrayList(Definition).init(allocator);
+    for (definitions) |d| {
+        switch (d) {
+            .import => {},
+            else => try definitions_without_imports.append(d),
+        }
+    }
+
+    var outputs = try allocator.alloc([]const u8, definitions_without_imports.items.len + 2);
     defer utilities.freeStringArray(allocator, outputs);
 
     outputs[0] = try fmt.allocPrint(allocator, "module {s}", .{module_name});
@@ -77,7 +87,7 @@ pub fn compileDefinitions(
 
     const prelude_definitions = 2;
 
-    for (definitions) |definition, i| {
+    for (definitions_without_imports.items) |definition, i| {
         outputs[i + prelude_definitions] = try outputDefinition(allocator, definition);
     }
 
