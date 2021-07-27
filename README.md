@@ -3,6 +3,29 @@
 A type definition language that outputs definitions and validation functions in
 different languages (eventually).
 
+## Other version
+
+Active development of this project has continued in a different implementation:
+
+[gotyno-hs](https://github.com/GoNZooo/gotyno-hs)
+
+The reason for this, initially, was that I wanted to re-implement this in
+Haskell and see how it'd turn out. The result was that adding things like
+"compile on modification" was a lot easier, so the primary repository for the
+compiler is now switched over.
+
+### Features/fixes currently missing from this implementation
+
+- Compile on modification / Watch mode
+- "Declarations" (references to external data definitions)
+- {U,I}{64,128} typed as bigints & encoded/decoded as strings
+- Python output
+
+If you don't need any of the above, this repo should be as good to use as it
+was before. I do still recommend switching to `gotyno-hs`, since it's a lot more
+active. I may backport some/all of the above features, but I can't promise that
+it'll be done soon or at all.
+
 ## Supported languages
 
 - [x] TypeScript
@@ -58,7 +81,7 @@ enforced as such as well.
 
 ### Structs
 
-```
+```gotyno
 struct Recruiter {
     name: String
 }
@@ -82,7 +105,7 @@ struct Generic <T>{
 
 ### Enums
 
-```
+```gotyno
 enum Colors {
     red = "FF0000"
     green = "00FF00"
@@ -94,7 +117,7 @@ enum Colors {
 
 #### Tagged
 
-```
+```gotyno
 union InteractionEvent {
     Click: Coordinates
     KeyPress: KeyCode
@@ -118,7 +141,7 @@ Sometimes a union that carries no extra tags is required, though usually these
 will have to be identified less automatically, perhaps via custom tags in their
 respective payload:
 
-```
+```gotyno
 struct SomeType {
     type: "SomeType"
     some_field: F32
@@ -147,7 +170,7 @@ used for identifying which type one has.
 The above can also be accomplished by setting the tag key to be embedded in
 options passed to the `union` keyword (we can also set which key is used):
 
-```
+```gotyno
 struct SomeType {
     some_field: F32
     some_other_field: ?String
@@ -180,22 +203,22 @@ are structures are done during compilation.
 Cross-compilation from Linux/Windows doesn't yet work for MacOS so sadly I have
 to recommend just downloading a current release of Zig and compiling via:
 
-```
-$ zig build -Drelease-fast
+```bash
+zig build -Drelease-fast
 ```
 
 And running:
 
-```
-$ ./zig-cache/bin/gotyno --verbose --typescript = --fsharp = inputFile.gotyno
+```bash
+./zig-cache/bin/gotyno --verbose --typescript = --fsharp = inputFile.gotyno
 # or
-$ ./zig-cache/bin/gotyno -v -ts = -fs = inputFile.gotyno
+./zig-cache/bin/gotyno -v -ts = -fs = inputFile.gotyno
 ```
 
 Optionally you can also specify a different output directory after
 `-ts`/`--typescript`:
 
-```
+```bash
 $ ./zig-cache/bin/gotyno --verbose --typescript other/directory/ts --fsharp other/directory/fs inputFile.gotyno
 # or
 $ ./zig-cache/bin/gotyno -v -ts other/directory/ts -fs other/directory/fs inputFile.gotyno
