@@ -5,7 +5,7 @@ different languages (eventually).
 
 ## Other version
 
-Active development of this project has continued in a different implementation:
+**Active development of this project has continued in a different implementation:**
 
 [gotyno-hs](https://github.com/GoNZooo/gotyno-hs)
 
