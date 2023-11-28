@@ -9,15 +9,15 @@ const io = std.io;
 const fs = std.fs;
 const meta = std.meta;
 
-const type_examples = @import("./type_examples.zig");
-const testing_utilities = @import("./testing_utilities.zig");
-const utilities = @import("./utilities.zig");
+const type_examples = @import("type_examples.zig");
+const testing_utilities = @import("testing_utilities.zig");
+const utilities = @import("utilities.zig");
 
 const ArrayList = std.ArrayList;
 
 const TestingAllocator = testing_utilities.TestingAllocator;
 
-pub const TokenTag = @TagType(Token);
+pub const TokenTag = meta.Tag(Token);
 
 pub const Token = union(enum) {
     const Self = @This();
@@ -124,12 +124,13 @@ pub const TokenizeOptions = struct {
 };
 
 pub fn tokenize(
-    allocator: *mem.Allocator,
-    error_allocator: *mem.Allocator,
+    allocator: mem.Allocator,
+    error_allocator: mem.Allocator,
     filename: []const u8,
     buffer: []const u8,
     options: TokenizeOptions,
 ) !ArrayList(Token) {
+    _ = error_allocator;
     var tokens = ArrayList(Token).init(allocator);
     var token_iterator = TokenIterator.init(filename, buffer);
     var token_index: usize = 0;
@@ -198,7 +199,7 @@ pub const TokenIterator = struct {
         if (self.i >= self.buffer.len) return null;
 
         const c = self.buffer[self.i];
-        const token = switch (c) {
+        const token: Token = switch (c) {
             '{' => Token.left_brace,
             '}' => Token.right_brace,
             '[' => Token.left_bracket,
@@ -367,9 +368,7 @@ test "Tokenize `Person` struct" {
 }
 
 test "`expect` for `Person` struct" {
-    var allocator = TestingAllocator{};
     try testTokenIteratorExpect(
-        &allocator.allocator,
         type_examples.person_structure,
         &expected_person_struct_tokens,
     );
@@ -388,9 +387,7 @@ test "Tokenize `Maybe` union" {
 }
 
 test "`expect` for `Maybe` union" {
-    var allocator = TestingAllocator{};
     try testTokenIteratorExpect(
-        &allocator.allocator,
         type_examples.maybe_union,
         &expected_maybe_union_tokens,
     );
@@ -409,9 +406,7 @@ test "Tokenize `Either` union" {
 }
 
 test "`expect` for `Either` union" {
-    var allocator = TestingAllocator{};
     try testTokenIteratorExpect(
-        &allocator.allocator,
         type_examples.either_union,
         &expected_either_union_tokens,
     );
@@ -430,9 +425,7 @@ test "Tokenize `List` union" {
 }
 
 test "`expect` for `List` union" {
-    var allocator = TestingAllocator{};
     try testTokenIteratorExpect(
-        &allocator.allocator,
         type_examples.list_union,
         &expected_list_union_tokens,
     );
@@ -636,7 +629,6 @@ fn expectEqualTokenSlices(a: []const Token, b: []const Token) void {
 }
 
 fn testTokenIteratorExpect(
-    allocator: *mem.Allocator,
     buffer: []const u8,
     expected_tokens: []const Token,
 ) !void {
@@ -648,7 +640,7 @@ fn testTokenIteratorExpect(
 }
 
 fn indexOfDifferentToken(a: []const Token, b: []const Token) ?usize {
-    for (a) |t, i| {
+    for (a, 0..) |t, i| {
         if (!t.isEqual(b[i])) return i;
     }
 

@@ -33,12 +33,12 @@ pub fn isStringEqualToOneOf(value: []const u8, compared_values: []const []const 
 
 pub fn deepCopySlice(
     comptime T: type,
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     slice: []const []const T,
 ) ![]const []const T {
-    var ts = try allocator.alloc([]T, slice.len);
+    const ts = try allocator.alloc([]T, slice.len);
 
-    for (ts) |*t, i| t.* = try allocator.dupe(T, slice[i]);
+    for (ts, 0..) |*t, i| t.* = try allocator.dupe(T, slice[i]);
 
     return ts;
 }
@@ -48,20 +48,20 @@ pub fn freeStringList(strings: ArrayList([]const u8)) void {
     strings.deinit();
 }
 
-pub fn freeStringArray(allocator: *mem.Allocator, strings: []const []const u8) void {
+pub fn freeStringArray(allocator: mem.Allocator, strings: []const []const u8) void {
     for (strings) |s| allocator.free(s);
     allocator.free(strings);
 }
 
-pub fn titleCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
+pub fn titleCaseWord(allocator: mem.Allocator, word: []const u8) ![]const u8 {
     return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toUpper(word[0]), word[1..] });
 }
 
-pub fn camelCaseWord(allocator: *mem.Allocator, word: []const u8) ![]const u8 {
+pub fn camelCaseWord(allocator: mem.Allocator, word: []const u8) ![]const u8 {
     return fmt.allocPrint(allocator, "{c}{s}", .{ std.ascii.toLower(word[0]), word[1..] });
 }
 
-pub fn withoutExtension(allocator: *mem.Allocator, path: []const u8) ![]const u8 {
+pub fn withoutExtension(allocator: mem.Allocator, path: []const u8) ![]const u8 {
     return if (mem.lastIndexOf(u8, path, ".")) |index|
         try allocator.dupe(u8, path[0..index])
     else

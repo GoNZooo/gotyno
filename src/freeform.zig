@@ -7,12 +7,12 @@ const time = std.time;
 const io = std.io;
 const builtin = @import("builtin");
 
-pub const tokenizer = @import("./freeform/tokenizer.zig");
-pub const parser = @import("./freeform/parser.zig");
-pub const typescript = @import("./typescript.zig");
-pub const fsharp = @import("./fsharp.zig");
-pub const testing_utilities = @import("./freeform/testing_utilities.zig");
-pub const utilities = @import("./freeform/utilities.zig");
+pub const tokenizer = @import("freeform/tokenizer.zig");
+pub const parser = @import("freeform/parser.zig");
+pub const typescript = @import("typescript.zig");
+pub const fsharp = @import("fsharp.zig");
+pub const testing_utilities = @import("freeform/testing_utilities.zig");
+pub const utilities = @import("freeform/utilities.zig");
 
 const DefinitionIterator = parser.DefinitionIterator;
 const ExpectError = tokenizer.ExpectError;
@@ -26,7 +26,7 @@ pub const OutputLanguages = struct {
     typescript: ?OutputPath = null,
     fsharp: ?OutputPath = null,
 
-    pub fn print(self: Self, allocator: *mem.Allocator) ![]const u8 {
+    pub fn print(self: Self, allocator: mem.Allocator) ![]const u8 {
         var outputs = std.ArrayList([]const u8).init(allocator);
         defer utilities.freeStringList(outputs);
 
@@ -44,14 +44,14 @@ pub const OutputPath = union(enum) {
     input,
     path: []const u8,
 
-    pub fn fromString(allocator: *mem.Allocator, path: []const u8) !Self {
+    pub fn fromString(allocator: mem.Allocator, path: []const u8) !Self {
         return if (mem.eql(u8, path, "="))
             OutputPath.input
         else
             OutputPath{ .path = try sanitizeFilename(allocator, path) };
     }
 
-    pub fn print(self: Self, allocator: *mem.Allocator, prefix: []const u8) ![]const u8 {
+    pub fn print(self: Self, allocator: mem.Allocator, prefix: []const u8) ![]const u8 {
         return switch (self) {
             .input => try std.fmt.allocPrint(allocator, "{s}: Same as input", .{prefix}),
             .path => |p| try std.fmt.allocPrint(allocator, "{s}: {s}", .{ prefix, p }),
@@ -65,7 +65,7 @@ pub const CompilationTimes = struct {
 };
 
 pub fn compileModules(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     files: []const []const u8,
     output_languages: OutputLanguages,
     verbose: bool,
@@ -74,7 +74,7 @@ pub fn compileModules(
 
     var buffers = try allocator.alloc(parser.BufferData, files.len);
 
-    for (files) |file, i| {
+    for (files, 0..) |file, i| {
         const sanitized_filename = try sanitizeFilename(allocator, file);
 
         const file_contents = try current_directory.readFileAlloc(
@@ -95,12 +95,12 @@ pub fn compileModules(
     );
     var module_iterator = modules.modules.iterator();
     while (module_iterator.next()) |e| {
-        try compileModule(allocator, e.value, output_languages, verbose);
+        try compileModule(allocator, e.value_ptr.*, output_languages, verbose);
     }
 }
 
 pub fn compileModule(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     module: parser.Module,
     output_languages: OutputLanguages,
     verbose: bool,
@@ -108,7 +108,7 @@ pub fn compileModule(
     var compilation_times = CompilationTimes{};
     const compilation_start_time = time.nanoTimestamp();
     var compilation_arena = heap.ArenaAllocator.init(allocator);
-    var compilation_allocator = &compilation_arena.allocator;
+    const compilation_allocator = compilation_arena.allocator();
     defer compilation_arena.deinit();
 
     if (output_languages.typescript) |path| {
@@ -167,9 +167,9 @@ pub fn compileModule(
     }
 
     const compilation_end_time = time.nanoTimestamp();
-    const compilation_time_difference = @intToFloat(
+    const compilation_time_difference = @as(
         f32,
-        compilation_end_time - compilation_start_time,
+        @floatFromInt(compilation_end_time - compilation_start_time),
     );
 
     if (verbose) {
@@ -178,14 +178,14 @@ pub fn compileModule(
         if (compilation_times.typescript) |t| {
             try out.print(
                 "TypeScript compilation time: {d:.5} ms\n",
-                .{@intToFloat(f32, t) / 1000000.0},
+                .{@as(f32, @floatFromInt(t)) / 1000000.0},
             );
         }
 
         if (compilation_times.fsharp) |t| {
             try out.print(
                 "FSharp compilation time: {d:.5} ms\n",
-                .{@intToFloat(f32, t) / 1000000.0},
+                .{@as(f32, @floatFromInt(t)) / 1000000.0},
             );
         }
 
@@ -196,16 +196,16 @@ pub fn compileModule(
                 module.definition_iterator.token_iterator.line,
                 module.definitions.len,
                 (compilation_time_difference / 1000000.0) /
-                    @intToFloat(f32, module.definition_iterator.token_iterator.line),
+                    @as(f32, @floatFromInt(module.definition_iterator.token_iterator.line)),
                 (compilation_time_difference / 1000000.0) /
-                    @intToFloat(f32, module.definitions.len),
+                    @as(f32, @floatFromInt(module.definitions.len)),
             },
         );
     }
 }
 
 pub fn compile(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     filename: []const u8,
     file_contents: []const u8,
     output_languages: OutputLanguages,
@@ -214,7 +214,7 @@ pub fn compile(
     var compilation_times = CompilationTimes{};
     const compilation_start_time = time.nanoTimestamp();
     var compilation_arena = heap.ArenaAllocator.init(allocator);
-    var compilation_allocator = &compilation_arena.allocator;
+    const compilation_allocator = &compilation_arena.allocator;
     defer compilation_arena.deinit();
 
     var parsing_error: ParsingError = undefined;
@@ -284,9 +284,9 @@ pub fn compile(
     }
 
     const compilation_end_time = time.nanoTimestamp();
-    const compilation_time_difference = @intToFloat(
+    const compilation_time_difference = @as(
         f32,
-        compilation_end_time - compilation_start_time,
+        @floatFromInt(compilation_end_time - compilation_start_time),
     );
 
     if (verbose) {
@@ -295,14 +295,14 @@ pub fn compile(
         if (compilation_times.typescript) |t| {
             try out.print(
                 "TypeScript compilation time: {d:.5} ms\n",
-                .{@intToFloat(f32, t) / 1000000.0},
+                .{@as(f32, @floatFromInt(t)) / 1000000.0},
             );
         }
 
         if (compilation_times.fsharp) |t| {
             try out.print(
                 "FSharp compilation time: {d:.5} ms\n",
-                .{@intToFloat(f32, t) / 1000000.0},
+                .{@as(f32, @floatFromInt(t)) / 1000000.0},
             );
         }
 
@@ -313,17 +313,17 @@ pub fn compile(
                 definitions.definition_iterator.token_iterator.line,
                 definitions.definitions.len,
                 (compilation_time_difference / 1000000.0) /
-                    @intToFloat(f32, definitions.definition_iterator.token_iterator.line),
+                    @as(f32, @floatFromInt(definitions.definition_iterator.token_iterator.line)),
                 (compilation_time_difference / 1000000.0) /
-                    @intToFloat(f32, definitions.definitions.len),
+                    @as(f32, @floatFromInt(definitions.definitions.len)),
             },
         );
     }
 }
 
-pub fn sanitizeFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
+pub fn sanitizeFilename(allocator: mem.Allocator, filename: []const u8) ![]const u8 {
     return if (builtin.os.tag == .windows) filename: {
-        var new_filename = try allocator.dupe(u8, mem.trimLeft(u8, filename, ".\\"));
+        const new_filename = try allocator.dupe(u8, mem.trimLeft(u8, filename, ".\\"));
         for (new_filename) |*character| {
             if (character.* == '\\') character.* = '/';
         }

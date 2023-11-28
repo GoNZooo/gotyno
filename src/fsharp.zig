@@ -5,12 +5,12 @@ const heap = std.heap;
 const mem = std.mem;
 const testing = std.testing;
 
-const parser = @import("./freeform/parser.zig");
-const general = @import("./general.zig");
-const tokenizer = @import("./freeform/tokenizer.zig");
-const type_examples = @import("./freeform/type_examples.zig");
-const utilities = @import("./freeform/utilities.zig");
-const testing_utilities = @import("./freeform/testing_utilities.zig");
+const parser = @import("freeform/parser.zig");
+const general = @import("general.zig");
+const tokenizer = @import("freeform/tokenizer.zig");
+const type_examples = @import("freeform/type_examples.zig");
+const utilities = @import("freeform/utilities.zig");
+const testing_utilities = @import("freeform/testing_utilities.zig");
 
 const ArrayList = std.ArrayList;
 
@@ -39,10 +39,10 @@ const BufferData = parser.BufferData;
 
 const TestingAllocator = testing_utilities.TestingAllocator;
 
-pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
+pub fn outputFilename(allocator: mem.Allocator, filename: []const u8) ![]const u8 {
     debug.assert(mem.endsWith(u8, filename, ".gotyno"));
 
-    var split_iterator = mem.split(filename, ".gotyno");
+    var split_iterator = mem.split(u8, filename, ".gotyno");
     const before_extension = split_iterator.next().?;
 
     const only_filename = if (mem.lastIndexOf(u8, before_extension, "/")) |index|
@@ -54,13 +54,13 @@ pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const 
 }
 
 pub fn compileDefinitions(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     definitions: []const Definition,
     filename: []const u8,
 ) ![]const u8 {
     debug.assert(mem.endsWith(u8, filename, ".fs"));
 
-    var split_iterator = mem.split(filename, ".fs");
+    var split_iterator = mem.split(u8, filename, ".fs");
     const before_extension = split_iterator.next().?;
 
     const only_filename = if (mem.lastIndexOf(u8, before_extension, "/")) |index|
@@ -87,14 +87,14 @@ pub fn compileDefinitions(
 
     const prelude_definitions = 2;
 
-    for (definitions_without_imports.items) |definition, i| {
+    for (definitions_without_imports.items, 0..) |definition, i| {
         outputs[i + prelude_definitions] = try outputDefinition(allocator, definition);
     }
 
     return try mem.join(allocator, "\n\n", outputs);
 }
 
-fn outputDefinition(allocator: *mem.Allocator, definition: Definition) ![]const u8 {
+fn outputDefinition(allocator: mem.Allocator, definition: Definition) ![]const u8 {
     return switch (definition) {
         .structure => |structure| switch (structure) {
             .plain => |plain| try outputPlainStructure(allocator, plain),
@@ -107,11 +107,11 @@ fn outputDefinition(allocator: *mem.Allocator, definition: Definition) ![]const 
         },
         .enumeration => |enumeration| try outputEnumeration(allocator, enumeration),
         .untagged_union => |u| try outputUntaggedUnion(allocator, u),
-        .import => |i| try outputImport(allocator, i),
+        .import => try outputImport(allocator),
     };
 }
 
-fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
+fn outputPlainStructure(allocator: mem.Allocator, s: PlainStructure) ![]const u8 {
     const fields_output = try outputStructureFields(allocator, &[_][]const u8{}, s.fields);
     defer allocator.free(fields_output);
 
@@ -140,22 +140,22 @@ fn outputPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u
 }
 
 fn outputStructureFields(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     structure_open_names: []const []const u8,
     fields: []const Field,
 ) ![]const u8 {
     var field_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, field_outputs);
 
-    for (fields) |f, i| {
+    for (fields, 0..) |f, i| {
         field_outputs[i] = try outputStructureField(allocator, structure_open_names, f);
     }
 
     return try mem.join(allocator, "\n", field_outputs);
 }
 
-fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
-    var decoder_output = try outputDecodersForFields(allocator, s.fields, &[_][]const u8{}, 16);
+fn outputDecoderForPlainStructure(allocator: mem.Allocator, s: PlainStructure) ![]const u8 {
+    const decoder_output = try outputDecodersForFields(allocator, s.fields, &[_][]const u8{}, 16);
     defer allocator.free(decoder_output);
 
     const format =
@@ -171,22 +171,22 @@ fn outputDecoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
 }
 
 fn outputDecodersForFields(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     fields: []const Field,
     open_names: []const []const u8,
     comptime indentation_size: u32,
 ) ![]const u8 {
-    var decoder_outputs = try allocator.alloc([]const u8, fields.len);
+    const decoder_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, decoder_outputs);
 
-    for (decoder_outputs) |*o, i| {
+    for (decoder_outputs, 0..) |*o, i| {
         o.* = try outputDecoderForField(allocator, fields[i], open_names, indentation_size);
     }
 
     return try mem.join(allocator, "\n", decoder_outputs);
 }
 
-fn outputDecoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]const u8 {
+fn outputDecoderForGenericStructure(allocator: mem.Allocator, s: GenericStructure) ![]const u8 {
     var decoder_outputs = try allocator.alloc([]const u8, s.fields.len);
     defer utilities.freeStringArray(allocator, decoder_outputs);
 
@@ -196,13 +196,13 @@ fn outputDecoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructu
     const joined_type_variables = try mem.join(allocator, ", ", type_variables);
     defer allocator.free(joined_type_variables);
 
-    var open_name_decoders = try allocator.alloc([]const u8, s.open_names.len);
+    const open_name_decoders = try allocator.alloc([]const u8, s.open_names.len);
     defer utilities.freeStringArray(allocator, open_name_decoders);
-    for (open_name_decoders) |*d, i| {
+    for (open_name_decoders, 0..) |*d, i| {
         d.* = try fmt.allocPrint(allocator, "decode{s}", .{s.open_names[i]});
     }
 
-    for (s.fields) |f, i| {
+    for (s.fields, 0..) |f, i| {
         decoder_outputs[i] = try outputDecoderForField(allocator, f, s.open_names, 16);
     }
 
@@ -232,7 +232,7 @@ fn isKeyword(string: []const u8) bool {
     return utilities.isStringEqualToOneOf(string, &[_][]const u8{ "type", "private" });
 }
 
-fn maybeEscapeName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+fn maybeEscapeName(allocator: mem.Allocator, name: []const u8) ![]const u8 {
     return if (isKeyword(name))
         try fmt.allocPrint(allocator, "``{s}``", .{name})
     else
@@ -240,11 +240,12 @@ fn maybeEscapeName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
 }
 
 fn outputDecoderForField(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     f: Field,
     open_names: []const []const u8,
     comptime indentation_size: u32,
 ) ![]const u8 {
+    _ = open_names;
     const name = try maybeEscapeName(allocator, f.name);
     defer allocator.free(name);
     const indentation = [_]u8{' '} ** indentation_size;
@@ -252,10 +253,10 @@ fn outputDecoderForField(
     const format = "{s}{s} = get.Required.Field \"{s}\" {s}";
     const format_for_optional = "{s}{s} = get.Optional.Field \"{s}\" {s}";
 
-    if (isOptionalType(f.@"type")) {
+    if (isOptionalType(f.type)) {
         const decoder_for_nested_type = try decoderForType(
             allocator,
-            seeThroughOptional(f.@"type").?,
+            seeThroughOptional(f.type).?,
         );
         defer allocator.free(decoder_for_nested_type);
 
@@ -265,7 +266,7 @@ fn outputDecoderForField(
             .{ indentation, name, f.name, decoder_for_nested_type },
         );
     } else {
-        const decoder = try decoderForType(allocator, f.@"type");
+        const decoder = try decoderForType(allocator, f.type);
         defer allocator.free(decoder);
 
         return try fmt.allocPrint(
@@ -279,41 +280,41 @@ fn outputDecoderForField(
 fn isOptionalType(t: Type) bool {
     return switch (t) {
         .optional => true,
-        .pointer => |p| isOptionalType(p.@"type".*),
+        .pointer => |p| isOptionalType(p.type.*),
         else => false,
     };
 }
 
 fn seeThroughOptional(t: Type) ?Type {
     return switch (t) {
-        .optional => |d| seeThroughOptional(d.@"type".*),
-        .pointer => |d| seeThroughOptional(d.@"type".*),
+        .optional => |d| seeThroughOptional(d.type.*),
+        .pointer => |d| seeThroughOptional(d.type.*),
         else => t,
     };
 }
 
-fn decoderForType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
+fn decoderForType(allocator: mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "(Decode.list {s})";
     const string_format = "(GotynoCoders.decodeLiteralString \"{s}\")";
 
     return switch (t) {
         .string => |s| try fmt.allocPrint(allocator, string_format, .{s}),
         .reference => |d| try decoderForTypeReference(allocator, d),
-        .pointer => |d| try decoderForType(allocator, d.@"type".*),
+        .pointer => |d| try decoderForType(allocator, d.type.*),
         .array => |d| o: {
-            const nested_type_output = try decoderForType(allocator, d.@"type".*);
+            const nested_type_output = try decoderForType(allocator, d.type.*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .slice => |d| o: {
-            const nested_type_output = try decoderForType(allocator, d.@"type".*);
+            const nested_type_output = try decoderForType(allocator, d.type.*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .optional => |d| o: {
-            const nested_type_output = try decoderForType(allocator, d.@"type".*);
+            const nested_type_output = try decoderForType(allocator, d.type.*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, "(Decode.option {s})", .{nested_type_output});
@@ -323,13 +324,13 @@ fn decoderForType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const
 }
 
 fn openNameDecoders(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     names: []const []const u8,
     open_names: []const []const u8,
 ) ![]const []const u8 {
     var decoders = try allocator.alloc([]const u8, names.len);
 
-    for (names) |name, i| {
+    for (names, 0..) |name, i| {
         decoders[i] = try translatedDecoderName(allocator, name, open_names);
     }
 
@@ -337,7 +338,7 @@ fn openNameDecoders(
 }
 
 fn translatedDecoderName(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     name: []const u8,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -378,13 +379,13 @@ fn translatedDecoderName(
 }
 
 fn openNameEncoders(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     names: []const []const u8,
     open_names: []const []const u8,
 ) ![]const []const u8 {
     var encoders = try allocator.alloc([]const u8, names.len);
 
-    for (names) |name, i| {
+    for (names, 0..) |name, i| {
         encoders[i] = try translatedEncoderName(allocator, name, open_names);
     }
 
@@ -392,7 +393,7 @@ fn openNameEncoders(
 }
 
 fn translatedEncoderName(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     name: []const u8,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -433,7 +434,7 @@ fn translatedEncoderName(
 }
 
 fn decoderForTypeReference(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     r: TypeReference,
 ) error{OutOfMemory}![]const u8 {
     return switch (r) {
@@ -478,19 +479,19 @@ fn decoderForTypeReference(
 }
 
 fn appliedOpenNameDecoders(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     applied_open_names: []const AppliedOpenName,
 ) error{OutOfMemory}![]const []const u8 {
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
-    for (applied_open_names) |name, i| {
+    for (applied_open_names, 0..) |name, i| {
         outputs[i] = try decoderForType(allocator, name.reference);
     }
 
     return outputs;
 }
 
-fn decoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
+fn decoderForBuiltin(allocator: mem.Allocator, b: Builtin) ![]const u8 {
     return try allocator.dupe(u8, switch (b) {
         .String => "Decode.string",
         .Boolean => "Decode.bool",
@@ -510,13 +511,13 @@ fn decoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
     });
 }
 
-fn decoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
+fn decoderForDefinition(allocator: mem.Allocator, d: Definition) ![]const u8 {
     const name = d.name().value;
 
     return try fmt.allocPrint(allocator, "{s}.Decoder", .{name});
 }
 
-fn outputEncoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) ![]const u8 {
+fn outputEncoderForPlainStructure(allocator: mem.Allocator, s: PlainStructure) ![]const u8 {
     const encoders_output = try outputEncodersForFields(
         allocator,
         s.fields,
@@ -537,7 +538,7 @@ fn outputEncoderForPlainStructure(allocator: *mem.Allocator, s: PlainStructure) 
     return try fmt.allocPrint(allocator, format, .{encoders_output});
 }
 
-fn outputEncoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]const u8 {
+fn outputEncoderForGenericStructure(allocator: mem.Allocator, s: GenericStructure) ![]const u8 {
     const encoders_output = try outputEncodersForFields(
         allocator,
         s.fields,
@@ -547,9 +548,9 @@ fn outputEncoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructu
     );
     defer allocator.free(encoders_output);
 
-    var open_name_encoders = try allocator.alloc([]const u8, s.open_names.len);
+    const open_name_encoders = try allocator.alloc([]const u8, s.open_names.len);
     defer utilities.freeStringArray(allocator, open_name_encoders);
-    for (open_name_encoders) |*e, i| {
+    for (open_name_encoders, 0..) |*e, i| {
         e.* = try fmt.allocPrint(allocator, "encode{s}", .{s.open_names[i]});
     }
 
@@ -568,7 +569,7 @@ fn outputEncoderForGenericStructure(allocator: *mem.Allocator, s: GenericStructu
 }
 
 fn outputEncodersForFields(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     fields: []const Field,
     comptime indentation: usize,
     comptime value_name: []const u8,
@@ -577,7 +578,7 @@ fn outputEncodersForFields(
     var encoder_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, encoder_outputs);
 
-    for (fields) |f, i| {
+    for (fields, 0..) |f, i| {
         encoder_outputs[i] = try outputEncoderForField(
             allocator,
             f,
@@ -596,15 +597,16 @@ const SurroundPair = struct {
 };
 
 fn outputEncoderForField(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     f: Field,
     comptime indentation: usize,
     comptime value_name: []const u8,
     open_names: []const []const u8,
 ) ![]const u8 {
-    var indentation_buffer = [_]u8{' '} ** indentation;
+    _ = open_names;
+    const indentation_buffer = [_]u8{' '} ** indentation;
 
-    const encoder = try encoderForType(allocator, f.@"type", f.name, value_name, false);
+    const encoder = try encoderForType(allocator, f.type, f.name, value_name, false);
     defer allocator.free(encoder);
 
     const format = "{s}\"{s}\", {s}";
@@ -613,7 +615,7 @@ fn outputEncoderForField(
 }
 
 fn encoderForType(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     t: Type,
     field_name: ?[]const u8,
     comptime value_name: ?[]const u8,
@@ -635,8 +637,7 @@ fn encoderForType(
             " {s}.{s}",
             .{ value_name.?, escaped_field_name },
         );
-    } else
-        try allocator.dupe(u8, "");
+    } else try allocator.dupe(u8, "");
     defer allocator.free(value_field_output);
 
     return switch (t) {
@@ -655,7 +656,7 @@ fn encoderForType(
 
         .pointer => |d| try encoderForType(
             allocator,
-            d.@"type".*,
+            d.type.*,
             field_name,
             value_name,
             // technically this is "nested", but we see through pointers so it doesn't matter(?)
@@ -665,7 +666,7 @@ fn encoderForType(
         .array => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
-                d.@"type".*,
+                d.type.*,
                 null,
                 null,
                 true,
@@ -682,7 +683,7 @@ fn encoderForType(
         .slice => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
-                d.@"type".*,
+                d.type.*,
                 null,
                 null,
                 true,
@@ -699,7 +700,7 @@ fn encoderForType(
         .optional => |d| o: {
             const nested_type_output = try encoderForType(
                 allocator,
-                d.@"type".*,
+                d.type.*,
                 null,
                 null,
                 true,
@@ -720,7 +721,7 @@ fn encoderForType(
 }
 
 fn encoderForTypeReference(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     r: TypeReference,
 ) error{OutOfMemory}![]const u8 {
     return switch (r) {
@@ -761,19 +762,19 @@ fn encoderForTypeReference(
 }
 
 fn appliedOpenNameEncoders(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     applied_open_names: []const AppliedOpenName,
 ) error{OutOfMemory}![]const []const u8 {
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
-    for (applied_open_names) |name, i| {
+    for (applied_open_names, 0..) |name, i| {
         outputs[i] = try encoderForType(allocator, name.reference, null, null, false);
     }
 
     return outputs;
 }
 
-fn encoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
+fn encoderForBuiltin(allocator: mem.Allocator, b: Builtin) ![]const u8 {
     return try allocator.dupe(u8, switch (b) {
         .String => "Encode.string",
         .Boolean => "Encode.bool",
@@ -793,18 +794,19 @@ fn encoderForBuiltin(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
     });
 }
 
-fn encoderForDefinition(allocator: *mem.Allocator, d: Definition) ![]const u8 {
+fn encoderForDefinition(allocator: mem.Allocator, d: Definition) ![]const u8 {
     const name = d.name().value;
 
     return try fmt.allocPrint(allocator, "{s}.Encoder", .{name});
 }
 
 fn outputStructureField(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     structure_open_names: []const []const u8,
     field: Field,
 ) ![]const u8 {
-    const type_output = try outputType(allocator, field.@"type");
+    _ = structure_open_names;
+    const type_output = try outputType(allocator, field.type);
     defer allocator.free(type_output);
 
     const format = "        {s}: {s}";
@@ -815,29 +817,30 @@ fn outputStructureField(
     return try fmt.allocPrint(allocator, format, .{ name, type_output });
 }
 
-fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
+fn outputType(allocator: mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "list<{s}>";
     const optional_format = "option<{s}>";
     const applied_name_format = "{s}<{s}>";
+    _ = applied_name_format;
 
     return switch (t) {
         .string => try allocator.dupe(u8, "string"),
         .reference => |d| try outputTypeReference(allocator, d),
-        .pointer => |d| try outputType(allocator, d.@"type".*),
+        .pointer => |d| try outputType(allocator, d.type.*),
         .array => |d| o: {
-            const nested_type_output = try outputType(allocator, d.@"type".*);
+            const nested_type_output = try outputType(allocator, d.type.*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .slice => |d| o: {
-            const nested_type_output = try outputType(allocator, d.@"type".*);
+            const nested_type_output = try outputType(allocator, d.type.*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, array_format, .{nested_type_output});
         },
         .optional => |d| o: {
-            const nested_type_output = try outputType(allocator, d.@"type".*);
+            const nested_type_output = try outputType(allocator, d.type.*);
             defer allocator.free(nested_type_output);
 
             break :o try fmt.allocPrint(allocator, optional_format, .{nested_type_output});
@@ -847,7 +850,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 
 }
 
 fn outputTypeReference(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     r: TypeReference,
 ) error{OutOfMemory}![]const u8 {
     return switch (r) {
@@ -878,7 +881,7 @@ fn outputTypeReference(
 }
 
 fn outputOpenNames(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     names: []const []const u8,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -887,7 +890,7 @@ fn outputOpenNames(
     );
     defer utilities.freeStringArray(allocator, translated_names);
 
-    for (names) |name, i| {
+    for (names, 0..) |name, i| {
         const added = if (utilities.isStringEqualToOneOf(name, open_names))
             try makeFSharpTypeVariable(allocator, name)
         else
@@ -903,13 +906,13 @@ fn outputOpenNames(
 }
 
 fn outputAppliedOpenNames(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     applied_open_names: []const AppliedOpenName,
 ) error{OutOfMemory}![]const u8 {
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
     defer utilities.freeStringArray(allocator, outputs);
 
-    for (applied_open_names) |name, i| {
+    for (applied_open_names, 0..) |name, i| {
         outputs[i] = try outputType(allocator, name.reference);
     }
 
@@ -985,7 +988,7 @@ fn translateReference(reference: TypeReference) []const u8 {
     };
 }
 
-fn outputBuiltinReference(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
+fn outputBuiltinReference(allocator: mem.Allocator, b: Builtin) ![]const u8 {
     return switch (b) {
         .String => try allocator.dupe(u8, "string"),
         .Boolean => try allocator.dupe(u8, "bool"),
@@ -1005,7 +1008,7 @@ fn outputBuiltinReference(allocator: *mem.Allocator, b: Builtin) ![]const u8 {
     };
 }
 
-fn outputLooseReference(allocator: *mem.Allocator, l: LooseReference) ![]const u8 {
+fn outputLooseReference(allocator: mem.Allocator, l: LooseReference) ![]const u8 {
     return if (l.open_names.len == 0)
         try allocator.dupe(u8, l.name)
     else o: {
@@ -1016,7 +1019,7 @@ fn outputLooseReference(allocator: *mem.Allocator, l: LooseReference) ![]const u
     };
 }
 
-fn outputGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]const u8 {
+fn outputGenericStructure(allocator: mem.Allocator, s: GenericStructure) ![]const u8 {
     const type_variables = try openNamesAsFSharpTypeVariables(allocator, s.open_names);
     defer utilities.freeStringArray(allocator, type_variables);
 
@@ -1051,39 +1054,39 @@ fn outputGenericStructure(allocator: *mem.Allocator, s: GenericStructure) ![]con
 }
 
 fn openNamesAsFSharpTypeVariables(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     open_names: []const []const u8,
 ) ![]const []const u8 {
     const type_variables = try allocator.alloc([]const u8, open_names.len);
 
-    for (type_variables) |*v, i| {
+    for (type_variables, 0..) |*v, i| {
         v.* = try makeFSharpTypeVariable(allocator, open_names[i]);
     }
 
     return type_variables;
 }
 
-fn makeFSharpTypeVariable(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+fn makeFSharpTypeVariable(allocator: mem.Allocator, name: []const u8) ![]const u8 {
     const lowercased_name = try utilities.camelCaseWord(allocator, name);
     defer allocator.free(lowercased_name);
 
     return try fmt.allocPrint(allocator, "'{s}", .{lowercased_name});
 }
 
-fn outputPlainUnion(allocator: *mem.Allocator, s: PlainUnion) ![]const u8 {
+fn outputPlainUnion(allocator: mem.Allocator, s: PlainUnion) ![]const u8 {
     var constructor_outputs = try allocator.alloc([]const u8, s.constructors.len);
     defer utilities.freeStringArray(allocator, constructor_outputs);
 
-    var titlecased_tags = try allocator.alloc([]const u8, s.constructors.len);
+    const titlecased_tags = try allocator.alloc([]const u8, s.constructors.len);
     defer allocator.free(titlecased_tags);
     defer for (titlecased_tags) |t| {
         allocator.free(t);
     };
-    for (titlecased_tags) |*t, i| {
+    for (titlecased_tags, 0..) |*t, i| {
         t.* = try utilities.titleCaseWord(allocator, s.constructors[i].tag);
     }
 
-    for (s.constructors) |c, i| {
+    for (s.constructors, 0..) |c, i| {
         constructor_outputs[i] = try outputConstructor(
             allocator,
             titlecased_tags[i],
@@ -1130,7 +1133,7 @@ fn outputPlainUnion(allocator: *mem.Allocator, s: PlainUnion) ![]const u8 {
 }
 
 fn outputConstructor(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     name: []const u8,
     union_open_names: []const []const u8,
     parameter: Type,
@@ -1146,10 +1149,11 @@ fn outputConstructor(
 }
 
 fn outputConstructorParameter(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_open_names: []const []const u8,
     p: Type,
 ) ![]const u8 {
+    _ = union_open_names;
     return switch (p) {
         .empty => try allocator.dupe(u8, ""),
         else => o: {
@@ -1162,7 +1166,7 @@ fn outputConstructorParameter(
 }
 
 fn outputDecoderForUnion(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     tags: []const []const u8,
     constructors: []const Constructor,
@@ -1173,7 +1177,7 @@ fn outputDecoderForUnion(
     var tag_decoder_pairs = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, tag_decoder_pairs);
 
-    for (constructors) |c, i| {
+    for (constructors, 0..) |c, i| {
         const format =
             \\    static member {s}Decoder: Decoder<{s}> =
             \\        Decode.object (fun get -> {s}(get.Required.Field "data" {s}))
@@ -1250,7 +1254,7 @@ fn outputDecoderForUnion(
 }
 
 fn outputEncoderForUnion(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     tags: []const []const u8,
     constructors: []const Constructor,
     tag_field: []const u8,
@@ -1258,7 +1262,7 @@ fn outputEncoderForUnion(
     var encoder_clauses = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, encoder_clauses);
 
-    for (constructors) |c, i| {
+    for (constructors, 0..) |c, i| {
         const indentation = "        ";
         const format =
             \\{s}| {s} payload ->
@@ -1320,16 +1324,16 @@ fn outputEncoderForUnion(
     return try fmt.allocPrint(allocator, format, .{joined_encoder_clauses});
 }
 
-fn outputGenericUnion(allocator: *mem.Allocator, u: GenericUnion) ![]const u8 {
-    var type_variables = try openNamesAsFSharpTypeVariables(allocator, u.open_names);
+fn outputGenericUnion(allocator: mem.Allocator, u: GenericUnion) ![]const u8 {
+    const type_variables = try openNamesAsFSharpTypeVariables(allocator, u.open_names);
     defer utilities.freeStringArray(allocator, type_variables);
 
     const joined_type_variables = try mem.join(allocator, ", ", type_variables);
     defer allocator.free(joined_type_variables);
 
-    var constructors = try allocator.alloc([]const u8, u.constructors.len);
+    const constructors = try allocator.alloc([]const u8, u.constructors.len);
     defer utilities.freeStringArray(allocator, constructors);
-    for (constructors) |*c, i| {
+    for (constructors, 0..) |*c, i| {
         c.* = try outputConstructor(
             allocator,
             u.constructors[i].tag,
@@ -1340,9 +1344,9 @@ fn outputGenericUnion(allocator: *mem.Allocator, u: GenericUnion) ![]const u8 {
     const joined_constructors = try mem.join(allocator, "\n", constructors);
     defer allocator.free(joined_constructors);
 
-    var titlecased_tags = try allocator.alloc([]const u8, u.constructors.len);
+    const titlecased_tags = try allocator.alloc([]const u8, u.constructors.len);
     defer utilities.freeStringArray(allocator, titlecased_tags);
-    for (titlecased_tags) |*t, i| {
+    for (titlecased_tags, 0..) |*t, i| {
         t.* = try utilities.titleCaseWord(allocator, u.constructors[i].tag);
     }
 
@@ -1374,7 +1378,7 @@ fn outputGenericUnion(allocator: *mem.Allocator, u: GenericUnion) ![]const u8 {
     );
 }
 
-fn outputDecoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags: []const []const u8) ![]const u8 {
+fn outputDecoderForGenericUnion(allocator: mem.Allocator, u: GenericUnion, tags: []const []const u8) ![]const u8 {
     const union_name = u.name.value;
 
     const type_variables = try openNamesAsFSharpTypeVariables(allocator, u.open_names);
@@ -1389,15 +1393,15 @@ fn outputDecoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
     const constructor_decoders = try allocator.alloc([]const u8, u.constructors.len);
     defer utilities.freeStringArray(allocator, constructor_decoders);
 
-    var union_open_name_decoders = try allocator.alloc([]const u8, u.open_names.len);
+    const union_open_name_decoders = try allocator.alloc([]const u8, u.open_names.len);
     defer utilities.freeStringArray(allocator, union_open_name_decoders);
-    for (union_open_name_decoders) |*d, i| {
+    for (union_open_name_decoders, 0..) |*d, i| {
         d.* = try fmt.allocPrint(allocator, "decode{s}", .{u.open_names[i]});
     }
     const joined_union_open_name_decoders = try mem.join(allocator, " ", union_open_name_decoders);
     defer allocator.free(joined_union_open_name_decoders);
 
-    for (tag_decoder_pairs) |*p, i| {
+    for (tag_decoder_pairs, 0..) |*p, i| {
         const c = u.constructors[i];
 
         const open_names_for_constructor = try general.openNamesFromType(
@@ -1406,9 +1410,9 @@ fn outputDecoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
             u.open_names,
         );
         defer utilities.freeStringList(open_names_for_constructor);
-        var open_name_decoders = try allocator.alloc([]const u8, open_names_for_constructor.items.len);
+        const open_name_decoders = try allocator.alloc([]const u8, open_names_for_constructor.items.len);
         defer utilities.freeStringArray(allocator, open_name_decoders);
-        for (open_name_decoders) |*d, di| {
+        for (open_name_decoders, 0..) |*d, di| {
             d.* = try fmt.allocPrint(allocator, "decode{s}", .{open_names_for_constructor.items[di]});
         }
 
@@ -1503,8 +1507,9 @@ fn outputDecoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
     );
 }
 
-fn outputEncoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags: []const []const u8) ![]const u8 {
+fn outputEncoderForGenericUnion(allocator: mem.Allocator, u: GenericUnion, tags: []const []const u8) ![]const u8 {
     const union_name = u.name.value;
+    _ = union_name;
 
     const type_variables = try openNamesAsFSharpTypeVariables(allocator, u.open_names);
     defer utilities.freeStringArray(allocator, type_variables);
@@ -1515,15 +1520,15 @@ fn outputEncoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
     const constructor_encoders = try allocator.alloc([]const u8, u.constructors.len);
     defer utilities.freeStringArray(allocator, constructor_encoders);
 
-    var union_open_name_encoders = try allocator.alloc([]const u8, u.open_names.len);
+    const union_open_name_encoders = try allocator.alloc([]const u8, u.open_names.len);
     defer utilities.freeStringArray(allocator, union_open_name_encoders);
-    for (union_open_name_encoders) |*d, i| {
+    for (union_open_name_encoders, 0..) |*d, i| {
         d.* = try fmt.allocPrint(allocator, "encode{s}", .{u.open_names[i]});
     }
     const joined_union_open_name_encoders = try mem.join(allocator, " ", union_open_name_encoders);
     defer allocator.free(joined_union_open_name_encoders);
 
-    for (constructor_encoders) |*e, i| {
+    for (constructor_encoders, 0..) |*e, i| {
         const c = u.constructors[i];
 
         const open_names_for_constructor = try general.openNamesFromType(
@@ -1597,7 +1602,7 @@ fn outputEncoderForGenericUnion(allocator: *mem.Allocator, u: GenericUnion, tags
     );
 }
 
-fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 {
+fn outputEmbeddedUnion(allocator: mem.Allocator, s: EmbeddedUnion) ![]const u8 {
     var constructor_outputs = try allocator.alloc([]const u8, s.constructors.len);
     defer utilities.freeStringArray(allocator, constructor_outputs);
 
@@ -1610,7 +1615,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     var constructor_decoders = try allocator.alloc([]const u8, s.constructors.len);
     defer utilities.freeStringArray(allocator, constructor_decoders);
 
-    for (s.constructors) |c, i| {
+    for (s.constructors, 0..) |c, i| {
         const format_with_payload = "    | {s} of {s}";
         const format_without_payload = "    | {s}";
         const titlecased_tag = try utilities.titleCaseWord(allocator, c.tag);
@@ -1630,7 +1635,7 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
             defer allocator.free(fields_with_type_field);
             fields_with_type_field[0] = Field{
                 .name = s.tag_field,
-                .@"type" = Type{ .string = c.tag },
+                .type = Type{ .string = c.tag },
             };
             mem.copy(Field, fields_with_type_field[1..], fields);
 
@@ -1783,20 +1788,20 @@ fn outputEmbeddedUnion(allocator: *mem.Allocator, s: EmbeddedUnion) ![]const u8 
     );
 }
 
-fn outputEnumeration(allocator: *mem.Allocator, e: Enumeration) ![]const u8 {
-    var titlecased_tags = try allocator.alloc([]const u8, e.fields.len);
+fn outputEnumeration(allocator: mem.Allocator, e: Enumeration) ![]const u8 {
+    const titlecased_tags = try allocator.alloc([]const u8, e.fields.len);
     defer allocator.free(titlecased_tags);
 
-    for (titlecased_tags) |*t, i| {
+    for (titlecased_tags, 0..) |*t, i| {
         t.* = try utilities.titleCaseWord(allocator, e.fields[i].tag);
     }
     defer for (titlecased_tags) |t| {
         allocator.free(t);
     };
 
-    var enumeration_tags = try allocator.alloc([]const u8, e.fields.len);
+    const enumeration_tags = try allocator.alloc([]const u8, e.fields.len);
     defer allocator.free(enumeration_tags);
-    for (enumeration_tags) |*t, i| {
+    for (enumeration_tags, 0..) |*t, i| {
         t.* = try fmt.allocPrint(allocator, "    | {s}", .{titlecased_tags[i]});
     }
     defer for (enumeration_tags) |t| {
@@ -1806,9 +1811,9 @@ fn outputEnumeration(allocator: *mem.Allocator, e: Enumeration) ![]const u8 {
     const joined_enumeration_tags = try mem.join(allocator, "\n", enumeration_tags);
     defer allocator.free(joined_enumeration_tags);
 
-    var value_constructors = try allocator.alloc([]const u8, e.fields.len);
+    const value_constructors = try allocator.alloc([]const u8, e.fields.len);
     defer allocator.free(value_constructors);
-    for (value_constructors) |*vc, i| {
+    for (value_constructors, 0..) |*vc, i| {
         const value_as_string = try e.fields[i].value.toString(allocator);
         defer allocator.free(value_as_string);
 
@@ -1847,9 +1852,9 @@ fn outputEnumeration(allocator: *mem.Allocator, e: Enumeration) ![]const u8 {
         .unsigned_integer => "Encode.uint32",
     };
 
-    var constructor_encoders = try allocator.alloc([]const u8, e.fields.len);
+    const constructor_encoders = try allocator.alloc([]const u8, e.fields.len);
     defer allocator.free(constructor_encoders);
-    for (constructor_encoders) |*constructor_encoder, i| {
+    for (constructor_encoders, 0..) |*constructor_encoder, i| {
         const value_as_string = try e.fields[i].value.toString(allocator);
         defer allocator.free(value_as_string);
 
@@ -1893,11 +1898,11 @@ fn outputEnumeration(allocator: *mem.Allocator, e: Enumeration) ![]const u8 {
     );
 }
 
-fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+fn outputUntaggedUnion(allocator: mem.Allocator, u: UntaggedUnion) ![]const u8 {
     var constructors = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, constructors);
 
-    var constructor_names = try allocator.alloc([]const u8, u.values.len);
+    const constructor_names = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, constructor_names);
 
     var constructor_decoders = try allocator.alloc([]const u8, u.values.len);
@@ -1906,10 +1911,10 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     var constructor_decoder_one_of_entries = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, constructor_decoder_one_of_entries);
 
-    var constructor_encoders = try allocator.alloc([]const u8, u.values.len);
+    const constructor_encoders = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, constructor_encoders);
 
-    for (constructor_names) |*n, i| {
+    for (constructor_names, 0..) |*n, i| {
         const value_type_name = try u.values[i].toString(allocator);
         defer allocator.free(value_type_name);
 
@@ -1982,7 +1987,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
         \\            {s} payload
     ;
 
-    for (constructor_encoders) |*e, i| {
+    for (constructor_encoders, 0..) |*e, i| {
         const reference_encoder = try encoderForTypeReference(allocator, u.values[i].reference);
         defer allocator.free(reference_encoder);
         e.* = try fmt.allocPrint(
@@ -2019,7 +2024,7 @@ fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 
     );
 }
 
-fn outputImport(allocator: *mem.Allocator, s: Import) ![]const u8 {
+fn outputImport(allocator: mem.Allocator) ![]const u8 {
     return try allocator.dupe(u8, "");
 }
 
@@ -2932,11 +2937,12 @@ test "Parsing an imported reference works even with nested ones" {
 
     const maybe_module1 = modules.get(module1_name);
     testing.expect(maybe_module1 != null);
-    var module1 = maybe_module1.?;
+    const module1 = maybe_module1.?;
+    _ = module1;
 
     const maybe_module2 = modules.get(module2_name);
     testing.expect(maybe_module2 != null);
-    var module2 = maybe_module2.?;
+    const module2 = maybe_module2.?;
 
     const expected_two_output =
         \\type Two =

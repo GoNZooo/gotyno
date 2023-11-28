@@ -3,12 +3,12 @@ const mem = std.mem;
 const testing = std.testing;
 const debug = std.debug;
 
-const parser = @import("./parser.zig");
-const tokenizer = @import("./tokenizer.zig");
-const utilities = @import("./utilities.zig");
-const testing_utilities = @import("./testing_utilities.zig");
-const parser_testing_utilities = @import("./parser_testing_utilities.zig");
-const type_examples = @import("./type_examples.zig");
+const parser = @import("parser.zig");
+const tokenizer = @import("tokenizer.zig");
+const utilities = @import("utilities.zig");
+const testing_utilities = @import("testing_utilities.zig");
+const parser_testing_utilities = @import("parser_testing_utilities.zig");
+const type_examples = @import("type_examples.zig");
 
 const Definition = parser.Definition;
 const ImportedDefinition = parser.ImportedDefinition;
@@ -68,42 +68,42 @@ test "Parsing `Person` structure" {
                     .location = Location{ .filename = "test.gotyno", .line = 1, .column = 8 },
                 },
                 .fields = &[_]Field{
-                    .{ .name = "type", .@"type" = Type{ .string = "Person" } },
+                    .{ .name = "type", .type = Type{ .string = "Person" } },
                     .{
                         .name = "name",
-                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+                        .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
                     },
                     .{
                         .name = "age",
-                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.U8 } },
+                        .type = Type{ .reference = TypeReference{ .builtin = Builtin.U8 } },
                     },
                     .{
                         .name = "efficiency",
-                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
+                        .type = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
                     },
                     .{
                         .name = "on_vacation",
-                        .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.Boolean } },
+                        .type = Type{ .reference = TypeReference{ .builtin = Builtin.Boolean } },
                     },
                     .{
                         .name = "hobbies",
-                        .@"type" = Type{ .slice = Slice{ .@"type" = &hobbies_slice_type } },
+                        .type = Type{ .slice = Slice{ .type = &hobbies_slice_type } },
                     },
                     .{
                         .name = "last_fifteen_comments",
-                        .@"type" = Type{
+                        .type = Type{
                             .array = Array{
                                 .size = 15,
-                                .@"type" = &comments_array_type,
+                                .type = &comments_array_type,
                             },
                         },
                     },
                     .{
                         .name = "recruiter",
-                        .@"type" = Type{
+                        .type = Type{
                             .optional = Optional{
-                                .@"type" = &Type{
-                                    .pointer = Pointer{ .@"type" = &recruiter_pointer_type },
+                                .type = &Type{
+                                    .pointer = Pointer{ .type = &recruiter_pointer_type },
                                 },
                             },
                         },
@@ -135,7 +135,7 @@ test "Parsing basic generic structure" {
     var fields = [_]Field{
         .{
             .name = "data",
-            .@"type" = Type{ .reference = TypeReference{ .open = "T" } },
+            .type = Type{ .reference = TypeReference{ .open = "T" } },
         },
     };
 
@@ -174,11 +174,11 @@ test "Parsing basic plain union" {
     var login_data_fields = [_]Field{
         .{
             .name = "username",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
         .{
             .name = "password",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
     };
     const login_data_structure = Definition{
@@ -196,7 +196,7 @@ test "Parsing basic plain union" {
     var userid_fields = [_]Field{
         .{
             .name = "value",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
     };
     const userid_structure = Definition{
@@ -214,11 +214,11 @@ test "Parsing basic plain union" {
     var channel_fields = [_]Field{
         .{
             .name = "name",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
         .{
             .name = "private",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.Boolean } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.Boolean } },
         },
     };
     const channel_structure = Definition{
@@ -236,7 +236,7 @@ test "Parsing basic plain union" {
     var email_fields = [_]Field{
         .{
             .name = "value",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
     };
     const email_structure = Definition{
@@ -264,11 +264,11 @@ test "Parsing basic plain union" {
         },
         .{
             .tag = "JoinChannels",
-            .parameter = Type{ .slice = Slice{ .@"type" = &channels_slice_type } },
+            .parameter = Type{ .slice = Slice{ .type = &channels_slice_type } },
         },
         .{
             .tag = "SetEmails",
-            .parameter = Type{ .array = Array{ .@"type" = &set_emails_array_type, .size = 5 } },
+            .parameter = Type{ .array = Array{ .type = &set_emails_array_type, .size = 5 } },
         },
     };
 
@@ -415,7 +415,7 @@ test "Parsing `List` union" {
         .{ .tag = "Empty", .parameter = Type.empty },
         .{
             .tag = "Cons",
-            .parameter = Type{ .pointer = Pointer{ .@"type" = &applied_pointer_type } },
+            .parameter = Type{ .pointer = Pointer{ .type = &applied_pointer_type } },
         },
     };
 
@@ -496,7 +496,7 @@ test "Parsing untagged union" {
     var allocator = TestingAllocator{};
 
     var known_for_show_fields = [_]Field{
-        .{ .name = "f", .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } } },
+        .{ .name = "f", .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } } },
     };
 
     const known_for_show = Definition{
@@ -512,7 +512,7 @@ test "Parsing untagged union" {
     };
 
     var known_for_movie_fields = [_]Field{
-        .{ .name = "f", .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.U32 } } },
+        .{ .name = "f", .type = Type{ .reference = TypeReference{ .builtin = Builtin.U32 } } },
     };
 
     const known_for_movie = Definition{
@@ -594,7 +594,7 @@ test "Parsing unions with options" {
     var value_fields = [_]Field{
         .{
             .name = "value",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
     };
 
@@ -666,7 +666,7 @@ test "Defining a union with embedded type tags referencing unknown payloads retu
     ;
 
     var parsing_error: ParsingError = undefined;
-    var definitions = parser.parse(
+    const definitions = parser.parse(
         &allocator.allocator,
         &allocator.allocator,
         "test.gotyno",
@@ -743,7 +743,7 @@ test "Parsing same definition twice results in error" {
     var recruiter_fields = [_]Field{
         .{
             .name = "name",
-            .@"type" = Type{
+            .type = Type{
                 .reference = TypeReference{ .builtin = Builtin.String },
             },
         },
@@ -764,7 +764,7 @@ test "Parsing same definition twice results in error" {
     var new_recruiter_fields = [_]Field{
         .{
             .name = "n",
-            .@"type" = Type{
+            .type = Type{
                 .reference = TypeReference{ .builtin = Builtin.String },
             },
         },
@@ -832,13 +832,13 @@ test "Parsing union with embedded type tag" {
     var expected_struct_one_fields = [_]Field{
         .{
             .name = "field1",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
     };
     var expected_struct_two_fields = [_]Field{
         .{
             .name = "field2",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
         },
     };
 
@@ -923,13 +923,13 @@ test "Parsing union with embedded type tag and lowercase tags" {
     var expected_struct_one_fields = [_]Field{
         .{
             .name = "field1",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.String } },
         },
     };
     var expected_struct_two_fields = [_]Field{
         .{
             .name = "field2",
-            .@"type" = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
+            .type = Type{ .reference = TypeReference{ .builtin = Builtin.F32 } },
         },
     };
 
@@ -1042,7 +1042,7 @@ test "Parsing an import reference leads to two identical definitions in definiti
     const module2 = maybe_module2.?;
 
     const module1_definition = module1.definitions[0];
-    const module2_field_reference = module2.definitions[1].structure.plain.fields[0].@"type".reference.imported_definition.definition;
+    const module2_field_reference = module2.definitions[1].structure.plain.fields[0].type.reference.imported_definition.definition;
 
     parser_testing_utilities.expectEqualDefinitions(
         &[_]Definition{module1_definition},
@@ -1086,7 +1086,7 @@ test "Parsing an imported reference works even with nested ones" {
         \\}
     ;
 
-    var plain_struct_applied_name = AppliedOpenName{
+    const plain_struct_applied_name = AppliedOpenName{
         .reference = Type{
             .reference = TypeReference{
                 .definition = Definition{
@@ -1103,7 +1103,7 @@ test "Parsing an imported reference works even with nested ones" {
                             .fields = &[_]Field{
                                 .{
                                     .name = "normalField",
-                                    .@"type" = Type{
+                                    .type = Type{
                                         .reference = TypeReference{ .builtin = Builtin.String },
                                     },
                                 },
@@ -1115,7 +1115,7 @@ test "Parsing an imported reference works even with nested ones" {
         },
     };
 
-    var string_applied_name = AppliedOpenName{
+    const string_applied_name = AppliedOpenName{
         .reference = Type{
             .reference = TypeReference{ .builtin = Builtin.String },
         },
@@ -1157,7 +1157,7 @@ test "Parsing an imported reference works even with nested ones" {
         },
     };
 
-    var either_applied_name = AppliedOpenName{
+    const either_applied_name = AppliedOpenName{
         .reference = Type{
             .reference = TypeReference{
                 .applied_name = AppliedName{
@@ -1202,7 +1202,7 @@ test "Parsing an imported reference works even with nested ones" {
         },
     };
 
-    var maybe_applied_name = AppliedOpenName{
+    const maybe_applied_name = AppliedOpenName{
         .reference = Type{
             .reference = TypeReference{
                 .applied_name = AppliedName{
@@ -1229,7 +1229,7 @@ test "Parsing an imported reference works even with nested ones" {
                     .fields = &[_]Field{
                         .{
                             .name = "holdingField",
-                            .@"type" = Type{
+                            .type = Type{
                                 .reference = TypeReference{ .open = "T" },
                             },
                         },
@@ -1239,7 +1239,7 @@ test "Parsing an imported reference works even with nested ones" {
         },
     };
 
-    var holds_something_applied_name = AppliedName{
+    const holds_something_applied_name = AppliedName{
         .reference = &holds_something_reference,
         .open_names = &[_]AppliedOpenName{maybe_applied_name},
     };
@@ -1258,7 +1258,7 @@ test "Parsing an imported reference works even with nested ones" {
                 .fields = &[_]Field{
                     .{
                         .name = "fieldHolding",
-                        .@"type" = Type{
+                        .type = Type{
                             .reference = TypeReference{
                                 .applied_name = holds_something_applied_name,
                             },
@@ -1283,11 +1283,10 @@ test "Parsing an imported reference works even with nested ones" {
 
     const maybe_module1 = compiled_modules.get(module1_name);
     testing.expect(maybe_module1 != null);
-    var module1 = maybe_module1.?;
 
     const maybe_module2 = compiled_modules.get(module2_name);
     testing.expect(maybe_module2 != null);
-    var module2 = maybe_module2.?;
+    const module2 = maybe_module2.?;
 
     const parsed_two_struct = module2.definitions[3];
 
@@ -1301,7 +1300,6 @@ test "Parsing an imported definition without importing it errors out" {
     var allocator = TestingAllocator{};
 
     const module1_filename = "module1.gotyno";
-    const module1_name = "module1";
     const module1_buffer =
         \\struct Plain {
         \\    name: String
@@ -1310,6 +1308,7 @@ test "Parsing an imported definition without importing it errors out" {
 
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
+    _ = module2_name;
     const module2_buffer =
         \\struct HasMaybe {
         \\    field: module1.Plain
@@ -1323,7 +1322,7 @@ test "Parsing an imported definition without importing it errors out" {
 
     var parsing_error: ParsingError = undefined;
 
-    var modules = parser.parseModules(
+    const modules = parser.parseModules(
         &allocator.allocator,
         &allocator.allocator,
         &buffers,
@@ -1347,6 +1346,7 @@ test "Parsing a slice type of an imported definition without importing it errors
 
     const module1_filename = "module1.gotyno";
     const module1_name = "module1";
+    _ = module1_name;
     const module1_buffer =
         \\struct Plain {
         \\    name: String
@@ -1355,6 +1355,7 @@ test "Parsing a slice type of an imported definition without importing it errors
 
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
+    _ = module2_name;
     const module2_buffer =
         \\union Maybe <T>{
         \\    Nothing
@@ -1373,7 +1374,7 @@ test "Parsing a slice type of an imported definition without importing it errors
 
     var parsing_error: ParsingError = undefined;
 
-    var modules = parser.parseModules(
+    const modules = parser.parseModules(
         &allocator.allocator,
         &allocator.allocator,
         &buffers,
@@ -1397,6 +1398,7 @@ test "Parsing a slice type of an imported definition in an already imported appl
 
     const module1_filename = "module1.gotyno";
     const module1_name = "module1";
+    _ = module1_name;
     const module1_buffer =
         \\union Maybe <T>{
         \\    Nothing
@@ -1411,6 +1413,7 @@ test "Parsing a slice type of an imported definition in an already imported appl
 
     const module2_filename = "module2.gotyno";
     const module2_name = "module2";
+    _ = module2_name;
     const module2_buffer =
         \\import module1
         \\
@@ -1434,7 +1437,7 @@ test "Parsing a slice type of an imported definition in an already imported appl
 
     var parsing_error: ParsingError = undefined;
 
-    var modules = parser.parseModules(
+    const modules = parser.parseModules(
         &allocator.allocator,
         &allocator.allocator,
         &buffers,
@@ -1458,6 +1461,7 @@ test "Using an applied name with less open names than it requires errors out" {
 
     const module1_filename = "module1.gotyno";
     const module1_name = "module1";
+    _ = module1_name;
     const module1_buffer =
         \\union Either <L, R>{
         \\    Left: L
@@ -1475,7 +1479,7 @@ test "Using an applied name with less open names than it requires errors out" {
 
     var parsing_error: ParsingError = undefined;
 
-    var modules = parser.parseModules(
+    const modules = parser.parseModules(
         &allocator.allocator,
         &allocator.allocator,
         &buffers,
@@ -1497,6 +1501,7 @@ test "Using an imported applied name with less open names than it requires error
 
     const module1_filename = "module1.gotyno";
     const module1_name = "module1";
+    _ = module1_name;
     const module1_buffer =
         \\union Either <L, R>{
         \\    Left: L
@@ -1505,7 +1510,6 @@ test "Using an imported applied name with less open names than it requires error
     ;
 
     const module2_filename = "module2.gotyno";
-    const module2_name = "module2";
     const module2_buffer =
         \\import module1
         \\
@@ -1521,7 +1525,7 @@ test "Using an imported applied name with less open names than it requires error
 
     var parsing_error: ParsingError = undefined;
 
-    var modules = parser.parseModules(
+    const modules = parser.parseModules(
         &allocator.allocator,
         &allocator.allocator,
         &buffers,
@@ -1546,7 +1550,6 @@ test "Parsing an applied name that doesn't exist gives correct error" {
     var parsing_error: ParsingError = undefined;
 
     const module1_filename = "module1.gotyno";
-    const module1_name = "module1";
     const module1_buffer =
         \\struct One {
         \\    field1: Either<String, F32>
@@ -1581,7 +1584,6 @@ test "Parsing an imported applied name that doesn't exist gives correct error" {
     var parsing_error: ParsingError = undefined;
 
     const module1_filename = "module1.gotyno";
-    const module1_name = "module1";
     const module1_buffer =
         \\union Either <L, R>{
         \\    Left: L
@@ -1590,7 +1592,6 @@ test "Parsing an imported applied name that doesn't exist gives correct error" {
     ;
 
     const module2_filename = "module2.gotyno";
-    const module2_name = "module2";
     const module2_buffer =
         \\import module1
         \\

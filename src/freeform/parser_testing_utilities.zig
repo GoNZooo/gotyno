@@ -2,8 +2,8 @@ const std = @import("std");
 const debug = std.debug;
 const mem = std.mem;
 
-const parser = @import("./parser.zig");
-const testing_utilities = @import("./testing_utilities.zig");
+const parser = @import("parser.zig");
+const testing_utilities = @import("testing_utilities.zig");
 
 const Definition = parser.Definition;
 const DefinitionName = parser.DefinitionName;
@@ -45,7 +45,7 @@ pub fn expectEqualDefinitions(as: []const Definition, bs: []const Definition) vo
         );
     }
 
-    for (as) |a, i| {
+    for (as, 0..) |a, i| {
         const b = bs[i];
 
         if (!a.isEqual(b)) {
@@ -158,7 +158,7 @@ fn expectEqualFields(as: []const Field, bs: []const Field) void {
         );
     }
 
-    for (as) |a, i| {
+    for (as, 0..) |a, i| {
         if (!a.isEqual(bs[i])) {
             testing_utilities.testPanic(
                 "Different field at index {}:\nExpected:\n\t{}\nGot:\n\t{}\n",
@@ -176,7 +176,7 @@ fn expectEqualOpenNames(as: []const []const u8, bs: []const []const u8) void {
         );
     }
 
-    for (as) |a, i| {
+    for (as, 0..) |a, i| {
         if (!mem.eql(u8, a, bs[i])) {
             testing_utilities.testPanic(
                 "Different open name at index {}:\n\tExpected: {}\n\tGot: {}\n",
@@ -194,7 +194,7 @@ fn expectEqualConstructors(as: []const Constructor, bs: []const Constructor) voi
         );
     }
 
-    for (as) |a, i| {
+    for (as, 0..) |a, i| {
         const b = bs[i];
         if (!a.isEqual(b)) {
             testing_utilities.testPanic(
@@ -209,7 +209,7 @@ fn expectEqualEmbeddedConstructors(
     as: []const ConstructorWithEmbeddedTypeTag,
     bs: []const ConstructorWithEmbeddedTypeTag,
 ) void {
-    for (as) |a, i| {
+    for (as, 0..) |a, i| {
         const b = bs[i];
         if (!a.isEqual(b)) {
             if (!mem.eql(u8, a.tag, b.tag)) {
@@ -229,7 +229,7 @@ fn expectEqualEmbeddedConstructors(
                     );
                 }
             } else {
-                if (b.parameter) |b_parameter| {
+                if (b.parameter) {
                     testing_utilities.testPanic(
                         "Embedded constructor {} ({}) has parameter whereas {} does not\n",
                         .{ i, b.tag, a.tag },
@@ -260,7 +260,7 @@ fn expectEqualEnumerations(a: Enumeration, b: Enumeration) void {
         );
     }
 
-    for (a.fields) |field, i| {
+    for (a.fields, 0..) |field, i| {
         if (!field.isEqual(b.fields[i])) {
             debug.print("Field at index {} is different:\n", .{i});
             debug.print("\tExpected: {}\n", .{field});
@@ -284,7 +284,7 @@ fn expectEqualUntaggedUnions(a: UntaggedUnion, b: UntaggedUnion) void {
         );
     }
 
-    for (a.values) |field, i| {
+    for (a.values, 0..) |field, i| {
         if (!field.isEqual(b.values[i])) {
             debug.print("Value at index {} is different:\n", .{i});
             debug.print("\tExpected: {}\n", .{field});

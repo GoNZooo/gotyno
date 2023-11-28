@@ -3,12 +3,12 @@ const mem = std.mem;
 const testing = std.testing;
 const debug = std.debug;
 
-const parser = @import("./freeform/parser.zig");
-const tokenizer = @import("./freeform/tokenizer.zig");
-const utilities = @import("./freeform/utilities.zig");
-const testing_utilities = @import("./freeform/testing_utilities.zig");
-const type_examples = @import("./freeform/type_examples.zig");
-const typescript = @import("./typescript.zig");
+const parser = @import("freeform/parser.zig");
+const tokenizer = @import("freeform/tokenizer.zig");
+const utilities = @import("freeform/utilities.zig");
+const testing_utilities = @import("freeform/testing_utilities.zig");
+const type_examples = @import("freeform/type_examples.zig");
+const typescript = @import("typescript.zig");
 
 const Definition = parser.Definition;
 const ImportedDefinition = parser.ImportedDefinition;
@@ -1416,11 +1416,10 @@ test "Parsing an imported reference works even with nested ones" {
 
     const maybe_module1 = modules.get(module1_name);
     testing.expect(maybe_module1 != null);
-    var module1 = maybe_module1.?;
 
     const maybe_module2 = modules.get(module2_name);
     testing.expect(maybe_module2 != null);
-    var module2 = maybe_module2.?;
+    const module2 = maybe_module2.?;
 
     const expected_two_output =
         \\export type Two = {
@@ -1483,7 +1482,7 @@ test "Parsing a slice type as an applied name works output correctly" {
 
     const maybe_module1 = modules.get(module1_name);
     testing.expect(maybe_module1 != null);
-    var module1 = maybe_module1.?;
+    const module1 = maybe_module1.?;
 
     const expected_output =
         \\export type HasMaybe = {
@@ -1553,11 +1552,10 @@ test "Parsing a slice type of an imported definition as an applied name works ou
 
     const maybe_module1 = modules.get(module1_name);
     testing.expect(maybe_module1 != null);
-    var module1 = maybe_module1.?;
 
     const maybe_module2 = modules.get(module2_name);
     testing.expect(maybe_module2 != null);
-    var module2 = maybe_module2.?;
+    const module2 = maybe_module2.?;
 
     const expected_output =
         \\export type HasMaybe = {

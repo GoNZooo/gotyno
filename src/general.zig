@@ -1,6 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
-const parser = @import("./freeform/parser.zig");
+const parser = @import("freeform/parser.zig");
 
 const Type = parser.Type;
 const Definition = parser.Definition;
@@ -9,15 +9,15 @@ const AppliedOpenName = parser.AppliedOpenName;
 const ArrayList = std.ArrayList;
 
 pub fn openNamesFromType(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     t: Type,
     open_names: []const []const u8,
 ) error{OutOfMemory}!ArrayList([]const u8) {
     return switch (t) {
-        .pointer => |p| try openNamesFromType(allocator, p.@"type".*, open_names),
-        .array => |a| try openNamesFromType(allocator, a.@"type".*, open_names),
-        .slice => |s| try openNamesFromType(allocator, s.@"type".*, open_names),
-        .optional => |o| try openNamesFromType(allocator, o.@"type".*, open_names),
+        .pointer => |p| try openNamesFromType(allocator, p.type.*, open_names),
+        .array => |a| try openNamesFromType(allocator, a.type.*, open_names),
+        .slice => |s| try openNamesFromType(allocator, s.type.*, open_names),
+        .optional => |o| try openNamesFromType(allocator, o.type.*, open_names),
 
         .reference => |r| reference: {
             var open_name_list = ArrayList([]const u8).init(allocator);
@@ -25,7 +25,7 @@ pub fn openNamesFromType(
             switch (r) {
                 .builtin => {},
                 .imported_definition => |id| try open_name_list.appendSlice(
-                    try openNamesFromDefinition(allocator, id.definition),
+                    try openNamesFromDefinition(id.definition),
                 ),
                 .applied_name => |applied| break :reference try commonOpenNames(
                     allocator,
@@ -34,7 +34,7 @@ pub fn openNamesFromType(
                 ),
 
                 .definition => |d| try open_name_list.appendSlice(
-                    try openNamesFromDefinition(allocator, d),
+                    try openNamesFromDefinition(d),
                 ),
                 .loose => |l| try open_name_list.appendSlice(
                     try allocator.dupe([]const u8, l.open_names),
@@ -50,7 +50,6 @@ pub fn openNamesFromType(
 }
 
 fn openNamesFromDefinition(
-    allocator: *mem.Allocator,
     d: Definition,
 ) ![]const []const u8 {
     return switch (d) {
@@ -67,7 +66,7 @@ fn openNamesFromDefinition(
 }
 
 pub fn commonOpenNames(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     as: []const []const u8,
     applied_open_names: []const AppliedOpenName,
 ) !ArrayList([]const u8) {

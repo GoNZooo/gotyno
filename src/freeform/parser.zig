@@ -6,8 +6,8 @@ const testing = std.testing;
 const fmt = std.fmt;
 const meta = std.meta;
 
-const tokenizer = @import("./tokenizer.zig");
-const utilities = @import("./utilities.zig");
+const tokenizer = @import("tokenizer.zig");
+const utilities = @import("utilities.zig");
 
 const Token = tokenizer.Token;
 const TokenTag = tokenizer.TokenTag;
@@ -83,6 +83,8 @@ pub const DefinitionName = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         try fmt.format(
             writer,
             "{s}({}:{})",
@@ -100,7 +102,7 @@ pub const Definition = union(enum) {
     untagged_union: UntaggedUnion,
     import: Import,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: *Self, allocator: mem.Allocator) void {
         switch (self.*) {
             .structure => |*s| s.free(allocator),
             .@"union" => |*u| u.free(allocator),
@@ -152,6 +154,8 @@ pub const Definition = union(enum) {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         return switch (self) {
             .structure => |s| try fmt.format(writer, "{}", .{s}),
             .@"union" => |u| try fmt.format(writer, "{}", .{u}),
@@ -174,6 +178,8 @@ pub const ImportedDefinition = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         try fmt.format(writer, "{s}.{}", .{ self.import_name, self.definition });
     }
 };
@@ -184,7 +190,7 @@ pub const Import = struct {
     name: DefinitionName,
     alias: []const u8,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         // Check if the alias is the same string as the value, in which case we free one instance
         if (self.name.value.ptr == self.alias.ptr) {
             allocator.free(self.name.value);
@@ -205,7 +211,7 @@ pub const UntaggedUnion = struct {
     name: DefinitionName,
     values: []const UntaggedUnionValue,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name.value);
         for (self.values) |*value| value.free(allocator);
         allocator.free(self.values);
@@ -216,7 +222,7 @@ pub const UntaggedUnion = struct {
 
         if (self.values.len != other.values.len) return false;
 
-        for (self.values) |value, i| {
+        for (self.values, 0..) |value, i| {
             if (!value.isEqual(other.values[i])) return false;
         }
 
@@ -229,11 +235,11 @@ pub const UntaggedUnionValue = union(enum) {
 
     reference: TypeReference,
 
-    pub fn toString(self: Self, allocator: *mem.Allocator) ![]const u8 {
+    pub fn toString(self: Self, allocator: mem.Allocator) ![]const u8 {
         return try self.reference.toString(allocator);
     }
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         self.reference.free(allocator);
     }
 
@@ -250,7 +256,7 @@ pub const Enumeration = struct {
     name: DefinitionName,
     fields: []const EnumerationField,
 
-    pub fn free(self: *Self, allocator: *mem.Allocator) void {
+    pub fn free(self: *Self, allocator: mem.Allocator) void {
         allocator.free(self.name.value);
         for (self.fields) |*field| field.free(allocator);
         allocator.free(self.fields);
@@ -261,7 +267,7 @@ pub const Enumeration = struct {
 
         if (self.fields.len != other.fields.len) return false;
 
-        for (self.fields) |field, i| {
+        for (self.fields, 0..) |field, i| {
             if (!field.isEqual(other.fields[i])) return false;
         }
 
@@ -275,7 +281,7 @@ pub const EnumerationField = struct {
     tag: []const u8,
     value: EnumerationValue,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.tag);
         self.value.free(allocator);
     }
@@ -291,14 +297,14 @@ pub const EnumerationValue = union(enum) {
     string: []const u8,
     unsigned_integer: u64,
 
-    pub fn toString(self: Self, allocator: *mem.Allocator) ![]const u8 {
+    pub fn toString(self: Self, allocator: mem.Allocator) ![]const u8 {
         return switch (self) {
             .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
             .unsigned_integer => |ui| try fmt.allocPrint(allocator, "{}", .{ui}),
         };
     }
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         switch (self) {
             .string => |s| allocator.free(s),
             .unsigned_integer => {},
@@ -320,7 +326,7 @@ pub const Structure = union(enum) {
     plain: PlainStructure,
     generic: GenericStructure,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         switch (self) {
             .plain => |p| p.free(allocator),
             .generic => |g| g.free(allocator),
@@ -351,6 +357,8 @@ pub const Structure = union(enum) {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         return switch (self) {
             .plain => |p| try fmt.format(writer, "{}", .{p}),
             .generic => |g| try fmt.format(writer, "{}", .{g}),
@@ -364,7 +372,7 @@ pub const PlainStructure = struct {
     name: DefinitionName,
     fields: []const Field,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name.value);
         for (self.fields) |f| f.free(allocator);
         allocator.free(self.fields);
@@ -374,7 +382,7 @@ pub const PlainStructure = struct {
         if (!self.name.isEqual(other.name))
             return false
         else {
-            for (self.fields) |sf, i| {
+            for (self.fields, 0..) |sf, i| {
                 if (!sf.isEqual(other.fields[i])) return false;
             }
 
@@ -388,6 +396,8 @@ pub const PlainStructure = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         try fmt.format(writer, "{}{{ ", .{self.name});
         for (self.fields) |f| {
             try fmt.format(writer, "{}", .{f});
@@ -403,7 +413,7 @@ pub const GenericStructure = struct {
     fields: []const Field,
     open_names: []const []const u8,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name.value);
         for (self.fields) |f| f.free(allocator);
         allocator.free(self.fields);
@@ -415,11 +425,11 @@ pub const GenericStructure = struct {
         if (!self.name.isEqual(other.name))
             return false
         else {
-            for (self.open_names) |name, i| {
+            for (self.open_names, 0..) |name, i| {
                 if (!mem.eql(u8, name, other.open_names[i])) return false;
             }
 
-            for (self.fields) |field, i| {
+            for (self.fields, 0..) |field, i| {
                 if (!field.isEqual(other.fields[i])) return false;
             }
 
@@ -433,6 +443,8 @@ pub const GenericStructure = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         if (self.fields.len > 0) {
             try fmt.format(writer, "{}{{ {}", .{ self.name, self.fields[0] });
             for (self.fields[1..]) |f| {
@@ -449,15 +461,15 @@ pub const Field = struct {
     const Self = @This();
 
     name: []const u8,
-    @"type": Type,
+    type: Type,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name);
-        self.@"type".free(allocator);
+        self.type.free(allocator);
     }
 
     pub fn isEqual(self: Self, other: Self) bool {
-        return self.@"type".isEqual(other.@"type") and mem.eql(u8, self.name, other.name);
+        return self.type.isEqual(other.type) and mem.eql(u8, self.name, other.name);
     }
 
     pub fn format(
@@ -466,7 +478,9 @@ pub const Field = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        try fmt.format(writer, "{s}: {}", .{ self.name, self.@"type" });
+        _ = options;
+        _ = format_string;
+        try fmt.format(writer, "{s}: {}", .{ self.name, self.type });
     }
 };
 
@@ -481,24 +495,24 @@ pub const Type = union(enum) {
     pointer: Pointer,
     optional: Optional,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         switch (self) {
             .string => |s| allocator.free(s),
             .array => |*a| {
-                a.*.@"type".free(allocator);
-                allocator.destroy(a.*.@"type");
+                a.*.type.free(allocator);
+                allocator.destroy(a.*.type);
             },
             .slice => |*s| {
-                s.*.@"type".free(allocator);
-                allocator.destroy(s.*.@"type");
+                s.*.type.free(allocator);
+                allocator.destroy(s.*.type);
             },
             .optional => |*o| {
-                o.*.@"type".free(allocator);
-                allocator.destroy(o.*.@"type");
+                o.*.type.free(allocator);
+                allocator.destroy(o.*.type);
             },
             .pointer => |*p| {
-                p.*.@"type".free(allocator);
-                allocator.destroy(p.*.@"type");
+                p.*.type.free(allocator);
+                allocator.destroy(p.*.type);
             },
             .reference => |*r| r.free(allocator),
             .empty => {},
@@ -526,14 +540,16 @@ pub const Type = union(enum) {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         return switch (self) {
             .empty => try fmt.format(writer, ".empty", .{}),
             .reference => |r| fmt.format(writer, "{}", .{r}),
             .string => |s| fmt.format(writer, "{s}", .{s}),
-            .array => |array| fmt.format(writer, "[{}]{}", .{ array.size, array.@"type" }),
-            .slice => |slice| fmt.format(writer, "[]{}", .{slice.@"type"}),
-            .pointer => |pointer| fmt.format(writer, "*{}", .{pointer.@"type"}),
-            .optional => |optional| fmt.format(writer, "?{}", .{optional.@"type"}),
+            .array => |array| fmt.format(writer, "[{}]{}", .{ array.size, array.type }),
+            .slice => |slice| fmt.format(writer, "[]{}", .{slice.type}),
+            .pointer => |pointer| fmt.format(writer, "*{}", .{pointer.type}),
+            .optional => |optional| fmt.format(writer, "?{}", .{optional.type}),
         };
     }
 
@@ -542,10 +558,10 @@ pub const Type = union(enum) {
             .empty => &[_][]const u8{},
             .string => &[_][]const u8{},
             .reference => |r| r.openNames(),
-            .array => |array| array.@"type".openNames(),
-            .slice => |slice| slice.@"type".openNames(),
-            .pointer => |pointer| pointer.@"type".openNames(),
-            .optional => |optional| optional.@"type".openNames(),
+            .array => |array| array.type.openNames(),
+            .slice => |slice| slice.type.openNames(),
+            .pointer => |pointer| pointer.type.openNames(),
+            .optional => |optional| optional.type.openNames(),
         };
     }
 };
@@ -560,7 +576,7 @@ pub const TypeReference = union(enum) {
     open: []const u8,
     applied_name: AppliedName,
 
-    pub fn toString(self: Self, allocator: *mem.Allocator) ![]const u8 {
+    pub fn toString(self: Self, allocator: mem.Allocator) ![]const u8 {
         return switch (self) {
             .builtin => |b| try allocator.dupe(u8, b.toString()),
             .definition => |d| try allocator.dupe(u8, d.name().value),
@@ -586,7 +602,7 @@ pub const TypeReference = union(enum) {
         };
     }
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         switch (self) {
             .loose => |*l| l.free(allocator),
             .open => |n| allocator.free(n),
@@ -638,6 +654,8 @@ pub const TypeReference = union(enum) {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         return switch (self) {
             .builtin => |b| try fmt.format(writer, "{s}", .{b.toString()}),
             .definition => |d| try fmt.format(writer, "{}", .{d}),
@@ -731,7 +749,7 @@ pub const LooseReference = struct {
     name: []const u8,
     open_names: []const []const u8,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name);
         for (self.open_names) |n| allocator.free(n);
         allocator.free(self.open_names);
@@ -740,7 +758,7 @@ pub const LooseReference = struct {
     pub fn isEqual(self: Self, other: Self) bool {
         if (!mem.eql(u8, self.name, other.name)) return false;
 
-        for (self.open_names) |name, i| {
+        for (self.open_names, 0..) |name, i| {
             if (!mem.eql(u8, name, other.open_names[i])) return false;
         }
 
@@ -753,6 +771,8 @@ pub const LooseReference = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         if (self.open_names.len > 0) {
             try fmt.format(writer, "(LOOSE){s}(<{s}", .{ self.name, self.open_names[0] });
 
@@ -771,40 +791,40 @@ pub const Array = struct {
     const Self = @This();
 
     size: usize,
-    @"type": *Type,
+    type: *Type,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        return self.size == other.size and self.@"type".isEqual(other.@"type".*);
+        return self.size == other.size and self.type.isEqual(other.type.*);
     }
 };
 
 pub const Slice = struct {
     const Self = @This();
 
-    @"type": *Type,
+    type: *Type,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        return self.@"type".isEqual(other.@"type".*);
+        return self.type.isEqual(other.type.*);
     }
 };
 
 pub const Pointer = struct {
     const Self = @This();
 
-    @"type": *Type,
+    type: *Type,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        return self.@"type".isEqual(other.@"type".*);
+        return self.type.isEqual(other.type.*);
     }
 };
 
 pub const Optional = struct {
     const Self = @This();
 
-    @"type": *Type,
+    type: *Type,
 
     pub fn isEqual(self: Self, other: Self) bool {
-        return self.@"type".isEqual(other.@"type".*);
+        return self.type.isEqual(other.type.*);
     }
 };
 
@@ -819,7 +839,7 @@ pub const AppliedName = struct {
 
         if (self.open_names.len != other.open_names.len) return false;
 
-        for (self.open_names) |open_name, i| {
+        for (self.open_names, 0..) |open_name, i| {
             const result = open_name.isEqual(other.open_names[i]);
 
             if (!result) return false;
@@ -834,6 +854,8 @@ pub const AppliedName = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         if (self.open_names.len > 0) {
             try fmt.format(writer, "{}<{}>", .{ self.reference, self.open_names[0] });
             for (self.open_names[1..]) |n| {
@@ -850,7 +872,7 @@ pub const AppliedOpenName = struct {
 
     reference: Type,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         self.reference.free(allocator);
     }
 
@@ -864,6 +886,8 @@ pub const AppliedOpenName = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         return try fmt.format(writer, "{}", .{self.reference});
     }
 };
@@ -875,7 +899,7 @@ pub const Union = union(enum) {
     generic: GenericUnion,
     embedded: EmbeddedUnion,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         switch (self) {
             .plain => |p| p.free(allocator),
             .generic => |g| g.free(allocator),
@@ -905,6 +929,8 @@ pub const Union = union(enum) {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         return switch (self) {
             .plain => |p| try fmt.format(writer, "{}", .{p}),
             .generic => |g| try fmt.format(writer, "{}", .{g}),
@@ -925,7 +951,7 @@ pub const PlainUnion = struct {
     constructors: []const Constructor,
     tag_field: []const u8,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name.value);
         for (self.constructors) |c| c.free(allocator);
         allocator.free(self.constructors);
@@ -936,7 +962,7 @@ pub const PlainUnion = struct {
         if (!self.name.isEqual(other.name)) return false;
         if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
 
-        for (self.constructors) |constructor, i| {
+        for (self.constructors, 0..) |constructor, i| {
             if (!constructor.isEqual(other.constructors[i])) return false;
         }
 
@@ -952,7 +978,7 @@ pub const GenericUnion = struct {
     open_names: []const []const u8,
     tag_field: []const u8,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name.value);
         for (self.constructors) |c| c.free(allocator);
         allocator.free(self.constructors);
@@ -965,11 +991,11 @@ pub const GenericUnion = struct {
         if (!self.name.isEqual(other.name)) return false;
         if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
 
-        for (self.constructors) |constructor, i| {
+        for (self.constructors, 0..) |constructor, i| {
             if (!constructor.isEqual(other.constructors[i])) return false;
         }
 
-        for (self.open_names) |open_name, i| {
+        for (self.open_names, 0..) |open_name, i| {
             if (!mem.eql(u8, open_name, other.open_names[i])) return false;
         }
 
@@ -982,6 +1008,8 @@ pub const GenericUnion = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         if (self.constructors.len > 0) {
             try fmt.format(writer, "{}<{s}>{{ {}", .{ self.name, self.open_names, self.constructors[0] });
             for (self.constructors[1..]) |c| {
@@ -1002,7 +1030,7 @@ pub const EmbeddedUnion = struct {
     open_names: []const []const u8,
     tag_field: []const u8,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.name.value);
         allocator.free(self.tag_field);
         for (self.constructors) |*c| c.free(allocator);
@@ -1014,11 +1042,11 @@ pub const EmbeddedUnion = struct {
         if (!mem.eql(u8, self.name.value, other.name.value)) return false;
         if (!mem.eql(u8, self.tag_field, other.tag_field)) return false;
 
-        for (self.constructors) |constructor, i| {
+        for (self.constructors, 0..) |constructor, i| {
             if (!constructor.isEqual(other.constructors[i])) return false;
         }
 
-        for (self.open_names) |open_name, i| {
+        for (self.open_names, 0..) |open_name, i| {
             if (!mem.eql(u8, open_name, other.open_names[i])) return false;
         }
 
@@ -1032,7 +1060,7 @@ pub const ConstructorWithEmbeddedTypeTag = struct {
     tag: []const u8,
     parameter: ?Structure,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.tag);
     }
 
@@ -1053,7 +1081,7 @@ pub const Constructor = struct {
     tag: []const u8,
     parameter: Type,
 
-    pub fn free(self: Self, allocator: *mem.Allocator) void {
+    pub fn free(self: Self, allocator: mem.Allocator) void {
         allocator.free(self.tag);
         self.parameter.free(allocator);
     }
@@ -1068,6 +1096,8 @@ pub const Constructor = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
+        _ = options;
+        _ = format_string;
         try fmt.format(writer, "{s}: {}", .{ self.tag, self.parameter });
     }
 };
@@ -1079,7 +1109,7 @@ pub const Module = struct {
     filename: []const u8,
     definitions: []const Definition,
     definition_iterator: DefinitionIterator,
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.filename);
@@ -1089,16 +1119,17 @@ pub const Module = struct {
 };
 
 pub fn parse(
-    allocator: *mem.Allocator,
-    error_allocator: *mem.Allocator,
+    allocator: mem.Allocator,
+    error_allocator: mem.Allocator,
     filename: []const u8,
     buffer: []const u8,
     modules: ?ModuleMap,
     parsing_error: *ParsingError,
 ) !Module {
+    _ = error_allocator;
     debug.assert(mem.endsWith(u8, filename, ".gotyno"));
 
-    var split_iterator = mem.split(filename, ".gotyno");
+    var split_iterator = mem.split(u8, filename, ".gotyno");
     const before_extension = split_iterator.next().?;
 
     const only_filename = if (mem.lastIndexOf(u8, before_extension, "/")) |index|
@@ -1134,15 +1165,15 @@ pub fn parse(
     return Module{
         .name = module_name,
         .filename = copied_filename,
-        .definitions = definitions.toOwnedSlice(),
+        .definitions = try definitions.toOwnedSlice(),
         .definition_iterator = definition_iterator,
         .allocator = allocator,
     };
 }
 
 pub fn parseWithDescribedError(
-    allocator: *mem.Allocator,
-    error_allocator: *mem.Allocator,
+    allocator: mem.Allocator,
+    error_allocator: mem.Allocator,
     filename: []const u8,
     buffer: []const u8,
     modules: ?ModuleMap,
@@ -1261,8 +1292,8 @@ pub fn parseWithDescribedError(
 }
 
 pub fn parseModules(
-    allocator: *mem.Allocator,
-    error_allocator: *mem.Allocator,
+    allocator: mem.Allocator,
+    error_allocator: mem.Allocator,
     buffers: []const BufferData,
     parsing_error: *ParsingError,
 ) !ModuleMap {
@@ -1288,8 +1319,8 @@ pub fn parseModules(
 }
 
 pub fn parseModulesWithDescribedError(
-    allocator: *mem.Allocator,
-    error_allocator: *mem.Allocator,
+    allocator: mem.Allocator,
+    error_allocator: mem.Allocator,
     buffers: []const BufferData,
     parsing_error: *ParsingError,
 ) !ModuleMap {
@@ -1319,7 +1350,7 @@ const ModuleMap = struct {
 
     modules: std.StringHashMap(Module),
 
-    pub fn init(allocator: *mem.Allocator) Self {
+    pub fn init(allocator: mem.Allocator) Self {
         return Self{ .modules = std.StringHashMap(Module).init(allocator) };
     }
 
@@ -1351,7 +1382,7 @@ pub const DefinitionIterator = struct {
     const Self = @This();
 
     token_iterator: TokenIterator,
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     parsing_error: *ParsingError,
     expect_error: *ExpectError,
 
@@ -1367,14 +1398,14 @@ pub const DefinitionIterator = struct {
     imports: ArrayList(Import),
 
     pub fn init(
-        allocator: *mem.Allocator,
+        allocator: mem.Allocator,
         filename: []const u8,
         buffer: []const u8,
         modules: ModuleMap,
         parsing_error: *ParsingError,
         expect_error: *ExpectError,
     ) Self {
-        var token_iterator = tokenizer.TokenIterator.init(filename, buffer);
+        const token_iterator = tokenizer.TokenIterator.init(filename, buffer);
 
         return DefinitionIterator{
             .token_iterator = token_iterator,
@@ -1652,7 +1683,7 @@ pub const DefinitionIterator = struct {
             }
         }
 
-        return UntaggedUnion{ .name = name, .values = values.toOwnedSlice() };
+        return UntaggedUnion{ .name = name, .values = try values.toOwnedSlice() };
     }
 
     fn parseEnumerationDefinition(self: *Self) !Enumeration {
@@ -1753,7 +1784,7 @@ pub const DefinitionIterator = struct {
         }
         _ = try tokens.expect(Token.right_brace, self.expect_error);
 
-        return PlainStructure{ .name = definition_name, .fields = fields.toOwnedSlice() };
+        return PlainStructure{ .name = definition_name, .fields = try fields.toOwnedSlice() };
     }
 
     fn parseOpenNames(self: *Self) ![][]const u8 {
@@ -1780,7 +1811,7 @@ pub const DefinitionIterator = struct {
             }
         }
 
-        return open_names.toOwnedSlice();
+        return try open_names.toOwnedSlice();
     }
 
     fn parseGenericStructureDefinition(
@@ -1981,7 +2012,7 @@ pub const DefinitionIterator = struct {
     ) !GenericUnion {
         const tokens = &self.token_iterator;
         var constructors = ArrayList(Constructor).init(self.allocator);
-        var open_names = try self.parseOpenNames();
+        const open_names = try self.parseOpenNames();
 
         _ = try tokens.expect(Token.left_brace, self.expect_error);
         try self.expectNewline();
@@ -2003,7 +2034,7 @@ pub const DefinitionIterator = struct {
 
         return GenericUnion{
             .name = definition_name,
-            .constructors = constructors.toOwnedSlice(),
+            .constructors = try constructors.toOwnedSlice(),
             .open_names = open_names,
             .tag_field = tag_field,
         };
@@ -2067,7 +2098,7 @@ pub const DefinitionIterator = struct {
 
         const field_type = try self.parseFieldType(definition_name, open_names);
 
-        return Field{ .name = field_name, .@"type" = field_type };
+        return Field{ .name = field_name, .type = field_type };
     }
 
     fn parseMaybeAppliedName(
@@ -2110,8 +2141,8 @@ pub const DefinitionIterator = struct {
                         return try self.returnAppliedNameCountError(
                             ?AppliedName,
                             name,
-                            @intCast(u32, expected_applied_name_count),
-                            @intCast(u32, applied_name_count),
+                            @as(u32, @intCast(expected_applied_name_count)),
+                            @as(u32, @intCast(applied_name_count)),
                             start_location,
                         );
                     }
@@ -2182,8 +2213,8 @@ pub const DefinitionIterator = struct {
                         return try source_definitions.returnAppliedNameCountError(
                             ?AppliedName,
                             name,
-                            @intCast(u32, expected_applied_name_count),
-                            @intCast(u32, applied_name_count),
+                            @as(u32, @intCast(expected_applied_name_count)),
+                            @as(u32, @intCast(applied_name_count)),
                             start_location,
                         );
                     }
@@ -2243,7 +2274,7 @@ pub const DefinitionIterator = struct {
             }
         }
 
-        return applied_open_names.toOwnedSlice();
+        return try applied_open_names.toOwnedSlice();
     }
 
     const ParseTypeError = error{
@@ -2314,7 +2345,8 @@ pub const DefinitionIterator = struct {
                 };
 
                 if (self.getModule(module_name)) |*module| {
-                    if (try module.definition_iterator.parseImportedMaybeAppliedName(
+                    var definition_iterator = module.definition_iterator;
+                    if (try definition_iterator.parseImportedMaybeAppliedName(
                         tokens,
                         self,
                         definition_name,
@@ -2358,17 +2390,17 @@ pub const DefinitionIterator = struct {
 
                 switch (right_bracket_or_number) {
                     .right_bracket => {
-                        var slice_type = try self.allocator.create(Type);
+                        const slice_type = try self.allocator.create(Type);
                         slice_type.* = try self.parseType(definition_name, open_names);
 
-                        break :result Type{ .slice = Slice{ .@"type" = slice_type } };
+                        break :result Type{ .slice = Slice{ .type = slice_type } };
                     },
                     .unsigned_integer => |ui| {
                         _ = try tokens.expect(Token.right_bracket, self.expect_error);
-                        var array_type = try self.allocator.create(Type);
+                        const array_type = try self.allocator.create(Type);
                         array_type.* = try self.parseType(definition_name, open_names);
 
-                        break :result Type{ .array = Array{ .@"type" = array_type, .size = ui } };
+                        break :result Type{ .array = Array{ .type = array_type, .size = ui } };
                     },
                     else => {
                         debug.panic(
@@ -2380,17 +2412,17 @@ pub const DefinitionIterator = struct {
             },
 
             .asterisk => result: {
-                var pointer_type = try self.allocator.create(Type);
+                const pointer_type = try self.allocator.create(Type);
                 pointer_type.* = try self.parseType(definition_name, open_names);
 
-                break :result Type{ .pointer = Pointer{ .@"type" = pointer_type } };
+                break :result Type{ .pointer = Pointer{ .type = pointer_type } };
             },
 
             .question_mark => result: {
-                var optional_type = try self.allocator.create(Type);
+                const optional_type = try self.allocator.create(Type);
                 optional_type.* = try self.parseType(definition_name, open_names);
 
-                break :result Type{ .optional = Optional{ .@"type" = optional_type } };
+                break :result Type{ .optional = Optional{ .type = optional_type } };
             },
 
             else => {
@@ -2408,7 +2440,8 @@ pub const DefinitionIterator = struct {
         // parsed, it doesn't have a reference to the other module in the output.
         // Ideally this would be automatic from imported modules, but that's more work than I care
         // to put into that particular part right now.
-        for (self.imports.items) |import, i| {
+        for (self.imports.items, 0..) |import, i| {
+            _ = i;
             if (mem.eql(u8, import.name.value, import_name)) {
                 return true;
             }
@@ -2433,14 +2466,14 @@ pub const DefinitionIterator = struct {
         const result = try self.named_definitions.getOrPut(name.value);
 
         if (result.found_existing)
-            try self.returnDuplicateDefinition(void, name, definition, result.entry.*.value)
+            try self.returnDuplicateDefinition(void, name, definition, result.value_ptr.*)
         else
-            result.entry.*.value = definition;
+            result.value_ptr.* = definition;
     }
 
     pub fn getDefinition(self: Self, name: []const u8) ?Definition {
         return if (self.named_definitions.getEntry(name)) |definition|
-            definition.value
+            definition.value_ptr.*
         else
             null;
     }
@@ -2478,6 +2511,7 @@ pub const DefinitionIterator = struct {
         name_location: Location,
         import_name: []const u8,
     ) !TypeReference {
+        _ = source_definitions;
         return if (self.getDefinition(name)) |found_definition|
             TypeReference{
                 .imported_definition = ImportedDefinition{
@@ -2586,7 +2620,7 @@ fn isBuiltin(name: []const u8) bool {
     });
 }
 
-test "" {
-    const parser_tests = @import("./parser_tests.zig");
+test {
+    const parser_tests = @import("parser_tests.zig");
     std.testing.refAllDecls(parser_tests);
 }

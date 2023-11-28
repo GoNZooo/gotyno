@@ -6,7 +6,7 @@ const fs = std.fs;
 const debug = std.debug;
 const builtin = std.builtin;
 
-const freeform = @import("./freeform.zig");
+const freeform = @import("freeform.zig");
 
 const ArrayList = std.ArrayList;
 const StringMap = std.StringHashMap;
@@ -21,25 +21,25 @@ const CompilationOptions = struct {
     outputs: OutputLanguages,
     verbose: bool,
 
-    pub fn fromArguments(allocator: *mem.Allocator, argument_iterator: *process.ArgIterator) !Self {
+    pub fn fromArguments(allocator: mem.Allocator, argument_iterator: *process.ArgIterator) !Self {
         _ = argument_iterator.skip();
         var inputs = ArrayList([]const u8).init(allocator);
         var outputs = OutputLanguages{};
         var verbose = false;
 
-        while (argument_iterator.next(allocator)) |a| {
-            if (mem.eql(u8, try a, "-ts") or mem.eql(u8, try a, "--typescript")) {
-                if (argument_iterator.next(allocator)) |path| {
-                    outputs.typescript = try OutputPath.fromString(allocator, try path);
+        while (argument_iterator.next()) |a| {
+            if (mem.eql(u8, a, "-ts") or mem.eql(u8, a, "--typescript")) {
+                if (argument_iterator.next()) |path| {
+                    outputs.typescript = try OutputPath.fromString(allocator, path);
                 }
-            } else if (mem.eql(u8, try a, "-fs") or mem.eql(u8, try a, "--fsharp")) {
-                if (argument_iterator.next(allocator)) |path| {
-                    outputs.fsharp = try OutputPath.fromString(allocator, try path);
+            } else if (mem.eql(u8, a, "-fs") or mem.eql(u8, a, "--fsharp")) {
+                if (argument_iterator.next()) |path| {
+                    outputs.fsharp = try OutputPath.fromString(allocator, path);
                 }
-            } else if (mem.eql(u8, try a, "-v") or mem.eql(u8, try a, "--verbose")) {
+            } else if (mem.eql(u8, a, "-v") or mem.eql(u8, a, "--verbose")) {
                 verbose = true;
             } else {
-                try inputs.append(try a);
+                try inputs.append(a);
             }
         }
 
@@ -63,7 +63,7 @@ const CompilationOptions = struct {
 const InputMap = StringMap([]const u8);
 
 fn compileInputs(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     files: []const []const u8,
     output_languages: OutputLanguages,
     verbose: bool,

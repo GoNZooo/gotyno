@@ -7,12 +7,12 @@ const testing = std.testing;
 
 const ArrayList = std.ArrayList;
 
-const parser = @import("./freeform/parser.zig");
-const general = @import("./general.zig");
-const tokenizer = @import("./freeform/tokenizer.zig");
-const type_examples = @import("./freeform/type_examples.zig");
-const utilities = @import("./freeform/utilities.zig");
-const testing_utilities = @import("./freeform/testing_utilities.zig");
+const parser = @import("freeform/parser.zig");
+const general = @import("general.zig");
+const tokenizer = @import("freeform/tokenizer.zig");
+const type_examples = @import("freeform/type_examples.zig");
+const utilities = @import("freeform/utilities.zig");
+const testing_utilities = @import("freeform/testing_utilities.zig");
 
 const Definition = parser.Definition;
 const Import = parser.Import;
@@ -36,10 +36,10 @@ const AppliedOpenName = parser.AppliedOpenName;
 
 const TestingAllocator = testing_utilities.TestingAllocator;
 
-pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const u8 {
+pub fn outputFilename(allocator: mem.Allocator, filename: []const u8) ![]const u8 {
     debug.assert(mem.endsWith(u8, filename, ".gotyno"));
 
-    var split_iterator = mem.split(filename, ".gotyno");
+    var split_iterator = mem.split(u8, filename, ".gotyno");
     const before_extension = split_iterator.next().?;
 
     const only_filename = if (mem.lastIndexOf(u8, before_extension, "/")) |index|
@@ -50,14 +50,14 @@ pub fn outputFilename(allocator: *mem.Allocator, filename: []const u8) ![]const 
     return mem.join(allocator, "", &[_][]const u8{ only_filename, ".ts" });
 }
 
-pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []const Definition) ![]const u8 {
+pub fn compileDefinitions(allocator: mem.Allocator, definitions: []const Definition) ![]const u8 {
     var outputs = try allocator.alloc([]const u8, definitions.len + 1);
     defer utilities.freeStringArray(allocator, outputs);
 
     outputs[0] = try allocator.dupe(u8, "import * as svt from \"simple-validation-tools\";");
     const prelude_definitions = 1;
 
-    for (definitions) |definition, i| {
+    for (definitions, 0..) |definition, i| {
         outputs[i + prelude_definitions] = switch (definition) {
             .structure => |structure| switch (structure) {
                 .plain => |plain| try outputPlainStructure(allocator, plain),
@@ -77,7 +77,7 @@ pub fn compileDefinitions(allocator: *mem.Allocator, definitions: []const Defini
     return try mem.join(allocator, "\n\n", outputs);
 }
 
-pub fn outputImport(allocator: *mem.Allocator, i: Import) ![]const u8 {
+pub fn outputImport(allocator: mem.Allocator, i: Import) ![]const u8 {
     return try fmt.allocPrint(
         allocator,
         "import * as {s} from \"./{s}\";",
@@ -85,11 +85,11 @@ pub fn outputImport(allocator: *mem.Allocator, i: Import) ![]const u8 {
     );
 }
 
-pub fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+pub fn outputUntaggedUnion(allocator: mem.Allocator, u: UntaggedUnion) ![]const u8 {
     var value_union_outputs = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, value_union_outputs);
 
-    for (u.values) |value, i| {
+    for (u.values, 0..) |value, i| {
         value_union_outputs[i] = try translateReference(allocator, value.reference);
     }
 
@@ -117,13 +117,13 @@ pub fn outputUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const
     );
 }
 
-fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+fn outputTypeGuardForUntaggedUnion(allocator: mem.Allocator, u: UntaggedUnion) ![]const u8 {
     const name = u.name.value;
 
     var predicate_outputs = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, predicate_outputs);
 
-    for (u.values) |value, i| {
+    for (u.values, 0..) |value, i| {
         predicate_outputs[i] = try translatedTypeGuardReference(allocator, value.reference);
     }
 
@@ -139,13 +139,13 @@ fn outputTypeGuardForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     return try fmt.allocPrint(allocator, format, .{ name, name, predicates_output });
 }
 
-fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) ![]const u8 {
+fn outputValidatorForUntaggedUnion(allocator: mem.Allocator, u: UntaggedUnion) ![]const u8 {
     const name = u.name.value;
 
     var validator_outputs = try allocator.alloc([]const u8, u.values.len);
     defer utilities.freeStringArray(allocator, validator_outputs);
 
-    for (u.values) |value, i| {
+    for (u.values, 0..) |value, i| {
         validator_outputs[i] = try translatedValidatorReference(allocator, value.reference);
     }
 
@@ -161,13 +161,13 @@ fn outputValidatorForUntaggedUnion(allocator: *mem.Allocator, u: UntaggedUnion) 
     return try fmt.allocPrint(allocator, format, .{ name, name, name, validators_output });
 }
 
-pub fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![]const u8 {
+pub fn outputEnumeration(allocator: mem.Allocator, enumeration: Enumeration) ![]const u8 {
     const name = enumeration.name.value;
 
     var field_outputs = try allocator.alloc([]const u8, enumeration.fields.len);
     defer utilities.freeStringArray(allocator, field_outputs);
 
-    for (enumeration.fields) |field, i| {
+    for (enumeration.fields, 0..) |field, i| {
         field_outputs[i] = try outputEnumerationField(allocator, field);
     }
 
@@ -198,14 +198,14 @@ pub fn outputEnumeration(allocator: *mem.Allocator, enumeration: Enumeration) ![
 }
 
 fn outputEnumerationTypeGuard(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     name: []const u8,
     fields: []const EnumerationField,
 ) ![]const u8 {
     var tag_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, tag_outputs);
 
-    for (fields) |field, i| {
+    for (fields, 0..) |field, i| {
         tag_outputs[i] = try fmt.allocPrint(allocator, "{s}.{s}", .{ name, field.tag });
     }
 
@@ -222,14 +222,14 @@ fn outputEnumerationTypeGuard(
 }
 
 fn outputEnumerationValidator(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     name: []const u8,
     fields: []const EnumerationField,
 ) ![]const u8 {
     var tag_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, tag_outputs);
 
-    for (fields) |field, i| {
+    for (fields, 0..) |field, i| {
         tag_outputs[i] = try fmt.allocPrint(allocator, "{s}.{s}", .{ name, field.tag });
     }
 
@@ -245,7 +245,7 @@ fn outputEnumerationValidator(
     return try fmt.allocPrint(allocator, format, .{ name, name, name, tags_output });
 }
 
-fn outputEnumerationField(allocator: *mem.Allocator, field: EnumerationField) ![]const u8 {
+fn outputEnumerationField(allocator: mem.Allocator, field: EnumerationField) ![]const u8 {
     const value_output = switch (field.value) {
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .unsigned_integer => |ui| try fmt.allocPrint(allocator, "{}", .{ui}),
@@ -258,7 +258,7 @@ fn outputEnumerationField(allocator: *mem.Allocator, field: EnumerationField) ![
 }
 
 pub fn outputPlainStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     plain_structure: PlainStructure,
 ) ![]const u8 {
     const name = plain_structure.name.value;
@@ -290,7 +290,7 @@ pub fn outputPlainStructure(
 }
 
 pub fn outputGenericStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     generic_structure: GenericStructure,
 ) ![]const u8 {
     const name = generic_structure.name.value;
@@ -330,27 +330,26 @@ pub fn outputGenericStructure(
     );
 }
 
-fn outputStructureFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
+fn outputStructureFields(allocator: mem.Allocator, fields: []const Field) ![]const u8 {
     var lines = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, lines);
 
-    for (fields) |field, i| {
-        if (try outputType(allocator, field.@"type")) |output| {
+    for (fields, 0..) |field, i| {
+        if (try outputType(allocator, field.type)) |output| {
             defer allocator.free(output);
             lines[i] = try fmt.allocPrint(allocator, "    {s}: {s};", .{ field.name, output });
-        } else
-            debug.panic("Empty type is not valid for struct field\n", .{});
+        } else debug.panic("Empty type is not valid for struct field\n", .{});
     }
 
     return try mem.join(allocator, "\n", lines);
 }
 
-pub fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]const u8 {
+pub fn outputPlainUnion(allocator: mem.Allocator, plain_union: PlainUnion) ![]const u8 {
     const name = plain_union.name.value;
 
     var constructor_names = try allocator.alloc([]const u8, plain_union.constructors.len);
     defer allocator.free(constructor_names);
-    for (plain_union.constructors) |constructor, i| {
+    for (plain_union.constructors, 0..) |constructor, i| {
         constructor_names[i] = constructor.tag;
     }
 
@@ -440,19 +439,19 @@ pub fn outputPlainUnion(allocator: *mem.Allocator, plain_union: PlainUnion) ![]c
     );
 }
 
-pub fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) ![]const u8 {
+pub fn outputEmbeddedUnion(allocator: mem.Allocator, embedded: EmbeddedUnion) ![]const u8 {
     const name = embedded.name.value;
 
-    const ConstructorData = struct {
-        tag: []const u8,
-        fields: []Field,
-        structure: ?Structure,
-    };
+    // const ConstructorData = struct {
+    //     tag: []const u8,
+    //     fields: []Field,
+    //     structure: ?Structure,
+    // };
 
     var constructor_names = try allocator.alloc([]const u8, embedded.constructors.len);
     defer allocator.free(constructor_names);
     defer for (constructor_names) |n| allocator.free(n);
-    for (embedded.constructors) |constructor, i| {
+    for (embedded.constructors, 0..) |constructor, i| {
         constructor_names[i] = try allocator.dupe(u8, constructor.tag);
     }
 
@@ -485,7 +484,7 @@ pub fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) !
     var validator_outputs = try allocator.alloc([]const u8, embedded.constructors.len);
     defer utilities.freeStringArray(allocator, validator_outputs);
 
-    for (embedded.constructors) |constructor, i| {
+    for (embedded.constructors, 0..) |constructor, i| {
         const fields_in_structure = if (constructor.parameter) |parameter| fields: {
             switch (parameter) {
                 .plain => |p| break :fields try allocator.dupe(Field, p.fields),
@@ -629,7 +628,7 @@ pub fn outputEmbeddedUnion(allocator: *mem.Allocator, embedded: EmbeddedUnion) !
 }
 
 fn outputConstructorWithEmbeddedTag(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     parameter: ?Structure,
     tag: []const u8,
     tag_field: []const u8,
@@ -661,8 +660,8 @@ fn outputConstructorWithEmbeddedTag(
 }
 
 fn outputTaggedStructureForConstructorWithEmbeddedTag(
-    allocator: *mem.Allocator,
-    fields_in_structure: []Field,
+    allocator: mem.Allocator,
+    fields_in_structure: []const Field,
     tag_field: []const u8,
     tag: []const u8,
     enumeration_tag: []const u8,
@@ -698,14 +697,14 @@ fn outputTaggedStructureForConstructorWithEmbeddedTag(
 
 fn outputUnionTagEnumerationForConstructors(
     comptime T: type,
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     name: []const u8,
     constructors: []const T,
 ) ![]const u8 {
     var enumeration_tag_outputs = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, enumeration_tag_outputs);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         enumeration_tag_outputs[i] = try fmt.allocPrint(
             allocator,
             "    {s} = \"{s}\",",
@@ -725,10 +724,10 @@ fn outputUnionTagEnumerationForConstructors(
     return try fmt.allocPrint(allocator, format, .{ name, enumeration_tag_output });
 }
 
-fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
+fn outputTypeGuardForPlainUnion(allocator: mem.Allocator, plain: PlainUnion) ![]const u8 {
     const name = plain.name.value;
 
-    var predicate_outputs = try predicatesFromConstructors(
+    const predicate_outputs = try predicatesFromConstructors(
         allocator,
         plain.constructors,
         &[_][]const u8{},
@@ -747,7 +746,7 @@ fn outputTypeGuardForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
     return try fmt.allocPrint(allocator, format, .{ name, name, predicates_output });
 }
 
-fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![]const u8 {
+fn outputValidatorForPlainUnion(allocator: mem.Allocator, plain: PlainUnion) ![]const u8 {
     const name = plain.name.value;
 
     const validator_specification_output = try outputValidatorSpecification(
@@ -772,7 +771,7 @@ fn outputValidatorForPlainUnion(allocator: *mem.Allocator, plain: PlainUnion) ![
 }
 
 fn outputValidatorSpecification(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     name: []const u8,
     constructors: []const Constructor,
     open_names: []const []const u8,
@@ -780,7 +779,7 @@ fn outputValidatorSpecification(
     var entries = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, entries);
 
-    for (constructors) |c, i| {
+    for (constructors, 0..) |c, i| {
         const enumeration_tag = try outputEnumerationTag(allocator, name, c.tag);
         defer allocator.free(enumeration_tag);
 
@@ -803,14 +802,15 @@ fn outputValidatorSpecification(
 }
 
 fn outputValidatorSpecificationForEmbeddedUnion(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     e: EmbeddedUnion,
     open_names: []const []const u8,
 ) ![]const u8 {
+    _ = open_names;
     var entries = try allocator.alloc([]const u8, e.constructors.len);
     defer utilities.freeStringArray(allocator, entries);
 
-    for (e.constructors) |c, i| {
+    for (e.constructors, 0..) |c, i| {
         const enumeration_tag = try outputEnumerationTag(allocator, e.name.value, c.tag);
         defer allocator.free(enumeration_tag);
 
@@ -832,7 +832,7 @@ fn outputValidatorSpecificationForEmbeddedUnion(
     return try fmt.allocPrint(allocator, "{{{s}}}", .{joined_validators});
 }
 
-pub fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion) ![]const u8 {
+pub fn outputGenericUnion(allocator: mem.Allocator, generic_union: GenericUnion) ![]const u8 {
     const name = generic_union.name.value;
 
     const open_names = try outputOpenNames(allocator, generic_union.open_names);
@@ -841,7 +841,7 @@ pub fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion
     var constructor_names = try allocator.alloc([]const u8, generic_union.constructors.len);
     defer allocator.free(constructor_names);
     defer for (constructor_names) |n| allocator.free(n);
-    for (generic_union.constructors) |constructor, i| {
+    for (generic_union.constructors, 0..) |constructor, i| {
         const maybe_names = try outputOpenNamesFromType(
             allocator,
             constructor.parameter,
@@ -946,7 +946,7 @@ pub fn outputGenericUnion(allocator: *mem.Allocator, generic_union: GenericUnion
 }
 
 fn outputTypeGuardForPlainStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     plain_structure: PlainStructure,
 ) ![]const u8 {
     const name = plain_structure.name.value;
@@ -967,16 +967,16 @@ fn outputTypeGuardForPlainStructure(
     );
 }
 
-fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
+fn outputTypeGuardForGenericUnion(allocator: mem.Allocator, generic: GenericUnion) ![]const u8 {
     const name = generic.name.value;
 
     const open_names_predicates = try openNamePredicates(allocator, generic.open_names);
     defer utilities.freeStringArray(allocator, open_names_predicates);
 
-    var open_name_predicate_types = try allocator.alloc([]const u8, generic.open_names.len);
+    const open_name_predicate_types = try allocator.alloc([]const u8, generic.open_names.len);
     defer allocator.free(open_name_predicate_types);
     defer for (open_name_predicate_types) |t| allocator.free(t);
-    for (open_name_predicate_types) |*t, i| {
+    for (open_name_predicate_types, 0..) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
             "svt.TypePredicate<{s}>",
@@ -984,10 +984,10 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
         );
     }
 
-    var parameter_outputs = try allocator.alloc([]const u8, generic.open_names.len);
+    const parameter_outputs = try allocator.alloc([]const u8, generic.open_names.len);
     defer allocator.free(parameter_outputs);
     defer for (parameter_outputs) |o| allocator.free(o);
-    for (parameter_outputs) |*o, i| {
+    for (parameter_outputs, 0..) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
             "{s}: {s}",
@@ -1001,7 +1001,7 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
     const open_names_output = try mem.join(allocator, ", ", generic.open_names);
     defer allocator.free(open_names_output);
 
-    var predicate_list_outputs = try predicatesFromConstructors(
+    const predicate_list_outputs = try predicatesFromConstructors(
         allocator,
         generic.constructors,
         generic.open_names,
@@ -1041,13 +1041,13 @@ fn outputTypeGuardForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
 }
 
 fn predicatesFromConstructors(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     constructors: []const Constructor,
     open_names: []const []const u8,
 ) ![]const []const u8 {
     var predicate_list_outputs = try allocator.alloc([]const u8, constructors.len);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         const constructor_open_names = try general.openNamesFromType(
             allocator,
             constructor.parameter,
@@ -1086,16 +1086,16 @@ fn predicatesFromConstructors(
     return predicate_list_outputs;
 }
 
-fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUnion) ![]const u8 {
+fn outputValidatorForGenericUnion(allocator: mem.Allocator, generic: GenericUnion) ![]const u8 {
     const name = generic.name.value;
 
     const open_name_validators = try openNameValidators(allocator, generic.open_names);
     defer utilities.freeStringArray(allocator, open_name_validators);
 
-    var open_name_validator_types = try allocator.alloc([]const u8, generic.open_names.len);
+    const open_name_validator_types = try allocator.alloc([]const u8, generic.open_names.len);
     defer allocator.free(open_name_validator_types);
     defer for (open_name_validator_types) |t| allocator.free(t);
-    for (open_name_validator_types) |*t, i| {
+    for (open_name_validator_types, 0..) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
             "svt.Validator<{s}>",
@@ -1103,10 +1103,10 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
         );
     }
 
-    var parameter_outputs = try allocator.alloc([]const u8, generic.open_names.len);
+    const parameter_outputs = try allocator.alloc([]const u8, generic.open_names.len);
     defer allocator.free(parameter_outputs);
     defer for (parameter_outputs) |o| allocator.free(o);
-    for (parameter_outputs) |*o, i| {
+    for (parameter_outputs, 0..) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
             "{s}: {s}",
@@ -1164,13 +1164,13 @@ fn outputValidatorForGenericUnion(allocator: *mem.Allocator, generic: GenericUni
 }
 
 fn validatorsFromConstructors(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     constructors: []const Constructor,
     open_names: []const []const u8,
 ) ![]const []const u8 {
     var outputs = try allocator.alloc([]const u8, constructors.len);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         outputs[i] = try validatorFromConstructor(allocator, constructor, open_names);
     }
 
@@ -1178,7 +1178,7 @@ fn validatorsFromConstructors(
 }
 
 fn validatorFromConstructor(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -1214,7 +1214,7 @@ fn validatorFromConstructor(
 }
 
 fn outputTypeGuardForGenericStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     generic: GenericStructure,
 ) ![]const u8 {
     const name = generic.name.value;
@@ -1234,17 +1234,17 @@ fn outputTypeGuardForGenericStructure(
     const open_names_predicates_output = try mem.join(allocator, ", ", open_names_predicates);
     defer allocator.free(open_names_predicates_output);
 
-    var open_name_predicate_types = try allocator.alloc([]const u8, open_names.items.len);
+    const open_name_predicate_types = try allocator.alloc([]const u8, open_names.items.len);
     defer allocator.free(open_name_predicate_types);
     defer for (open_name_predicate_types) |t| allocator.free(t);
-    for (open_name_predicate_types) |*t, i| {
+    for (open_name_predicate_types, 0..) |*t, i| {
         t.* = try fmt.allocPrint(allocator, "svt.TypePredicate<{s}>", .{open_names.items[i]});
     }
 
-    var parameter_outputs = try allocator.alloc([]const u8, open_names.items.len);
+    const parameter_outputs = try allocator.alloc([]const u8, open_names.items.len);
     defer allocator.free(parameter_outputs);
     defer for (parameter_outputs) |o| allocator.free(o);
-    for (parameter_outputs) |*o, i| {
+    for (parameter_outputs, 0..) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
             "{s}: {s}",
@@ -1287,7 +1287,7 @@ fn outputTypeGuardForGenericStructure(
 }
 
 fn outputValidatorForGenericStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     generic: GenericStructure,
 ) ![]const u8 {
     const name = generic.name.value;
@@ -1307,17 +1307,17 @@ fn outputValidatorForGenericStructure(
     const open_names_predicates_output = try mem.join(allocator, ", ", open_names_validators);
     defer allocator.free(open_names_predicates_output);
 
-    var open_name_validator_types = try allocator.alloc([]const u8, open_names.items.len);
+    const open_name_validator_types = try allocator.alloc([]const u8, open_names.items.len);
     defer allocator.free(open_name_validator_types);
     defer for (open_name_validator_types) |t| allocator.free(t);
-    for (open_name_validator_types) |*t, i| {
+    for (open_name_validator_types, 0..) |*t, i| {
         t.* = try fmt.allocPrint(allocator, "svt.Validator<{s}>", .{open_names.items[i]});
     }
 
-    var parameter_outputs = try allocator.alloc([]const u8, open_names.items.len);
+    const parameter_outputs = try allocator.alloc([]const u8, open_names.items.len);
     defer allocator.free(parameter_outputs);
     defer for (parameter_outputs) |o| allocator.free(o);
-    for (parameter_outputs) |*o, i| {
+    for (parameter_outputs, 0..) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
             "{s}: {s}",
@@ -1359,20 +1359,20 @@ fn outputValidatorForGenericStructure(
     );
 }
 
-fn openNamePredicates(allocator: *mem.Allocator, names: []const []const u8) ![]const []const u8 {
+fn openNamePredicates(allocator: mem.Allocator, names: []const []const u8) ![]const []const u8 {
     var predicates = try allocator.alloc([]const u8, names.len);
 
-    for (names) |name, i| {
+    for (names, 0..) |name, i| {
         predicates[i] = try translatedTypeGuardName(allocator, name);
     }
 
     return predicates;
 }
 
-fn openNameValidators(allocator: *mem.Allocator, names: []const []const u8) ![]const []const u8 {
+fn openNameValidators(allocator: mem.Allocator, names: []const []const u8) ![]const []const u8 {
     var validators = try allocator.alloc([]const u8, names.len);
 
-    for (names) |name, i| {
+    for (names, 0..) |name, i| {
         validators[i] = try translatedValidatorName(allocator, name);
     }
 
@@ -1380,7 +1380,7 @@ fn openNameValidators(allocator: *mem.Allocator, names: []const []const u8) ![]c
 }
 
 fn outputValidatorForPlainStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     plain_structure: PlainStructure,
 ) ![]const u8 {
     const name = plain_structure.name.value;
@@ -1401,12 +1401,12 @@ fn outputValidatorForPlainStructure(
     );
 }
 
-fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
+fn getTypeGuardsFromFields(allocator: mem.Allocator, fields: []const Field) ![]const u8 {
     var fields_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, fields_outputs);
 
-    for (fields) |field, i| {
-        const type_guard = try getTypeGuardFromType(allocator, field.@"type");
+    for (fields, 0..) |field, i| {
+        const type_guard = try getTypeGuardFromType(allocator, field.type);
         defer allocator.free(type_guard);
 
         fields_outputs[i] = try fmt.allocPrint(allocator, "{s}: {s}", .{ field.name, type_guard });
@@ -1415,12 +1415,12 @@ fn getTypeGuardsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]
     return try mem.join(allocator, ", ", fields_outputs);
 }
 
-fn getValidatorsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]const u8 {
+fn getValidatorsFromFields(allocator: mem.Allocator, fields: []const Field) ![]const u8 {
     var fields_outputs = try allocator.alloc([]const u8, fields.len);
     defer utilities.freeStringArray(allocator, fields_outputs);
 
-    for (fields) |field, i| {
-        const validator = try getValidatorFromType(allocator, field.@"type");
+    for (fields, 0..) |field, i| {
+        const validator = try getValidatorFromType(allocator, field.type);
         defer allocator.free(validator);
 
         fields_outputs[i] = try fmt.allocPrint(allocator, "{s}: {s}", .{ field.name, validator });
@@ -1429,7 +1429,7 @@ fn getValidatorsFromFields(allocator: *mem.Allocator, fields: []const Field) ![]
     return try mem.join(allocator, ", ", fields_outputs);
 }
 
-fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
+fn getTypeGuardFromType(allocator: mem.Allocator, t: Type) ![]const u8 {
     const array_format = "svt.arrayOf({s})";
     const optional_format = "svt.optional({s})";
 
@@ -1437,20 +1437,20 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedTypeGuardReference(allocator, r),
         .array => |a| output: {
-            const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
+            const nested_validator = try getNestedTypeGuardFromType(allocator, a.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
         .slice => |s| output: {
-            const nested_validator = try getNestedTypeGuardFromType(allocator, s.@"type".*);
+            const nested_validator = try getNestedTypeGuardFromType(allocator, s.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
-        .pointer => |p| try getNestedTypeGuardFromType(allocator, p.@"type".*),
+        .pointer => |p| try getNestedTypeGuardFromType(allocator, p.type.*),
         .optional => |o| output: {
-            const nested_validator = try getNestedTypeGuardFromType(allocator, o.@"type".*);
+            const nested_validator = try getNestedTypeGuardFromType(allocator, o.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
@@ -1460,7 +1460,7 @@ fn getTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     };
 }
 
-fn getValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
+fn getValidatorFromType(allocator: mem.Allocator, t: Type) ![]const u8 {
     const array_format = "svt.validateArray({s})";
     const optional_format = "svt.validateOptional({s})";
 
@@ -1468,20 +1468,20 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedValidatorReference(allocator, r),
         .array => |a| output: {
-            const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
+            const nested_validator = try getNestedValidatorFromType(allocator, a.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
         .slice => |s| output: {
-            const nested_validator = try getNestedValidatorFromType(allocator, s.@"type".*);
+            const nested_validator = try getNestedValidatorFromType(allocator, s.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
-        .pointer => |p| try getNestedValidatorFromType(allocator, p.@"type".*),
+        .pointer => |p| try getNestedValidatorFromType(allocator, p.type.*),
         .optional => |o| output: {
-            const nested_validator = try getNestedValidatorFromType(allocator, o.@"type".*);
+            const nested_validator = try getNestedValidatorFromType(allocator, o.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
@@ -1491,7 +1491,7 @@ fn getValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 }
 
 fn outputConstructors(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructors: []const Constructor,
     tag_field: []const u8,
@@ -1499,7 +1499,7 @@ fn outputConstructors(
     var constructor_outputs = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, constructor_outputs);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         constructor_outputs[i] = try outputConstructor(
             allocator,
             union_name,
@@ -1513,7 +1513,7 @@ fn outputConstructors(
 }
 
 fn outputTypeGuardsForConstructors(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructors: []const Constructor,
     open_names: []const []const u8,
@@ -1522,7 +1522,7 @@ fn outputTypeGuardsForConstructors(
     var type_guards = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, type_guards);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         type_guards[i] = try outputTypeGuardForConstructor(
             allocator,
             union_name,
@@ -1536,7 +1536,7 @@ fn outputTypeGuardsForConstructors(
 }
 
 fn outputValidatorsForConstructors(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructors: []const Constructor,
     open_names: []const []const u8,
@@ -1545,7 +1545,7 @@ fn outputValidatorsForConstructors(
     var validators = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, validators);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         validators[i] = try outputValidatorForConstructor(
             allocator,
             union_name,
@@ -1559,7 +1559,7 @@ fn outputValidatorsForConstructors(
 }
 
 fn outputConstructor(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
@@ -1619,7 +1619,7 @@ fn outputConstructor(
 }
 
 fn outputEnumerationTag(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     tag: []const u8,
 ) ![]const u8 {
@@ -1627,7 +1627,7 @@ fn outputEnumerationTag(
 }
 
 fn outputConstructorName(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     constructor: Constructor,
     open_names: []const []const u8,
 ) ![]const u8 {
@@ -1642,8 +1642,8 @@ fn outputConstructorName(
 }
 
 fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
-    allocator: *mem.Allocator,
-    fields_in_structure: []Field,
+    allocator: mem.Allocator,
+    fields_in_structure: []const Field,
     tag: []const u8,
     tag_field: []const u8,
     enumeration_tag: []const u8,
@@ -1651,9 +1651,9 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
     var field_type_guard_specifications = try allocator.alloc([]const u8, fields_in_structure.len);
     defer utilities.freeStringArray(allocator, field_type_guard_specifications);
 
-    for (fields_in_structure) |f, i| {
+    for (fields_in_structure, 0..) |f, i| {
         const specification_format = "{s}: {s}";
-        const nested = try getNestedTypeGuardFromType(allocator, f.@"type");
+        const nested = try getNestedTypeGuardFromType(allocator, f.type);
         defer allocator.free(nested);
 
         field_type_guard_specifications[i] =
@@ -1709,8 +1709,8 @@ fn outputTypeGuardForConstructorWithEmbeddedTypeTag(
 }
 
 fn outputValidatorForConstructorWithEmbeddedTypeTag(
-    allocator: *mem.Allocator,
-    fields_in_structure: []Field,
+    allocator: mem.Allocator,
+    fields_in_structure: []const Field,
     tag: []const u8,
     tag_field: []const u8,
     enumeration_tag: []const u8,
@@ -1718,9 +1718,9 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
     var field_validator_specifications = try allocator.alloc([]const u8, fields_in_structure.len);
     defer utilities.freeStringArray(allocator, field_validator_specifications);
 
-    for (fields_in_structure) |f, i| {
+    for (fields_in_structure, 0..) |f, i| {
         const specification_format = "{s}: {s}";
-        const nested = try getNestedValidatorFromType(allocator, f.@"type");
+        const nested = try getNestedValidatorFromType(allocator, f.type);
         defer allocator.free(nested);
 
         field_validator_specifications[i] =
@@ -1776,7 +1776,7 @@ fn outputValidatorForConstructorWithEmbeddedTypeTag(
 }
 
 fn outputTypeGuardForConstructor(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
@@ -1801,13 +1801,13 @@ fn outputTypeGuardForConstructor(
     const open_names_predicates = try openNamePredicates(allocator, constructor_open_names.items);
     defer utilities.freeStringArray(allocator, open_names_predicates);
 
-    var open_name_predicate_types = try allocator.alloc(
+    const open_name_predicate_types = try allocator.alloc(
         []const u8,
         constructor_open_names.items.len,
     );
     defer allocator.free(open_name_predicate_types);
     defer for (open_name_predicate_types) |t| allocator.free(t);
-    for (open_name_predicate_types) |*t, i| {
+    for (open_name_predicate_types, 0..) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
             "svt.TypePredicate<{s}>",
@@ -1815,10 +1815,10 @@ fn outputTypeGuardForConstructor(
         );
     }
 
-    var parameter_outputs = try allocator.alloc([]const u8, constructor_open_names.items.len);
+    const parameter_outputs = try allocator.alloc([]const u8, constructor_open_names.items.len);
     defer allocator.free(parameter_outputs);
     defer for (parameter_outputs) |o| allocator.free(o);
-    for (parameter_outputs) |*o, i| {
+    for (parameter_outputs, 0..) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
             "{s}: {s}",
@@ -1885,7 +1885,7 @@ fn outputTypeGuardForConstructor(
 }
 
 fn outputValidatorForConstructor(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
@@ -1912,13 +1912,13 @@ fn outputValidatorForConstructor(
     const joined_open_names = try mem.join(allocator, "", constructor_open_names.items);
     defer allocator.free(joined_open_names);
 
-    var open_name_validator_types = try allocator.alloc(
+    const open_name_validator_types = try allocator.alloc(
         []const u8,
         constructor_open_names.items.len,
     );
     defer allocator.free(open_name_validator_types);
     defer for (open_name_validator_types) |t| allocator.free(t);
-    for (open_name_validator_types) |*t, i| {
+    for (open_name_validator_types, 0..) |*t, i| {
         t.* = try fmt.allocPrint(
             allocator,
             "svt.Validator<{s}>",
@@ -1926,10 +1926,10 @@ fn outputValidatorForConstructor(
         );
     }
 
-    var parameter_outputs = try allocator.alloc([]const u8, constructor_open_names.items.len);
+    const parameter_outputs = try allocator.alloc([]const u8, constructor_open_names.items.len);
     defer allocator.free(parameter_outputs);
     defer for (parameter_outputs) |o| allocator.free(o);
-    for (parameter_outputs) |*o, i| {
+    for (parameter_outputs, 0..) |*o, i| {
         o.* = try fmt.allocPrint(
             allocator,
             "{s}: {s}",
@@ -1993,10 +1993,11 @@ fn outputValidatorForConstructor(
 }
 
 fn getDataSpecificationFromType(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     t: Type,
     open_names: []const []const u8,
 ) !?[]const u8 {
+    _ = open_names;
     const bare_format = "{s}";
     const array_format = "{s}[]";
     const optional_format = "{s} | null | undefined";
@@ -2006,25 +2007,25 @@ fn getDataSpecificationFromType(
         .string => |s| try fmt.allocPrint(allocator, bare_format, .{s}),
         .reference => |r| try translateReference(allocator, r),
         .array => |a| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, a.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, a.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested});
         },
         .slice => |s| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, s.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, s.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested});
         },
         .pointer => |p| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, p.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, p.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, bare_format, .{nested});
         },
         .optional => |o| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, o.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, o.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested});
@@ -2032,10 +2033,11 @@ fn getDataSpecificationFromType(
     };
 }
 
-fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
+fn getDataTypeGuardFromType(allocator: mem.Allocator, t: Type) ![]const u8 {
     const bare_format = ", data: {s}";
     const type_guard_format = ", data: {s}";
     const builtin_type_guard_format = ", data: svt.is{s}";
+    _ = builtin_type_guard_format;
     const array_format = ", data: svt.arrayOf({s})";
     const optional_format = ", data: svt.optional({s})";
 
@@ -2053,25 +2055,25 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             );
         },
         .array => |a| output: {
-            const nested = try getNestedTypeGuardFromType(allocator, a.@"type".*);
+            const nested = try getNestedTypeGuardFromType(allocator, a.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested});
         },
         .slice => |s| output: {
-            const nested = try getNestedTypeGuardFromType(allocator, s.@"type".*);
+            const nested = try getNestedTypeGuardFromType(allocator, s.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested});
         },
         .pointer => |p| output: {
-            const nested = try getNestedTypeGuardFromType(allocator, p.@"type".*);
+            const nested = try getNestedTypeGuardFromType(allocator, p.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, type_guard_format, .{nested});
         },
         .optional => |o| output: {
-            const nested = try getNestedTypeGuardFromType(allocator, o.@"type".*);
+            const nested = try getNestedTypeGuardFromType(allocator, o.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested});
@@ -2079,10 +2081,11 @@ fn getDataTypeGuardFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
     };
 }
 
-fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
+fn getDataValidatorFromType(allocator: mem.Allocator, t: Type) ![]const u8 {
     const bare_format = ", data: {s}";
     const validator_format = ", data: {s}";
     const builtin_type_guard_format = ", data: svt.validate{s}";
+    _ = builtin_type_guard_format;
     const array_format = ", data: svt.validateArray({s})";
     const optional_format = ", data: svt.validateOptional({s})";
 
@@ -2096,25 +2099,25 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
             break :output try fmt.allocPrint(allocator, validator_format, .{validator});
         },
         .array => |a| output: {
-            const validator = try getNestedValidatorFromType(allocator, a.@"type".*);
+            const validator = try getNestedValidatorFromType(allocator, a.type.*);
             defer allocator.free(validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{validator});
         },
         .slice => |s| output: {
-            const validator = try getNestedValidatorFromType(allocator, s.@"type".*);
+            const validator = try getNestedValidatorFromType(allocator, s.type.*);
             defer allocator.free(validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{validator});
         },
         .pointer => |p| output: {
-            const validator = try getNestedValidatorFromType(allocator, p.@"type".*);
+            const validator = try getNestedValidatorFromType(allocator, p.type.*);
             defer allocator.free(validator);
 
             break :output try fmt.allocPrint(allocator, validator_format, .{validator});
         },
         .optional => |o| output: {
-            const validator = try getNestedValidatorFromType(allocator, o.@"type".*);
+            const validator = try getNestedValidatorFromType(allocator, o.type.*);
             defer allocator.free(validator);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{validator});
@@ -2123,7 +2126,7 @@ fn getDataValidatorFromType(allocator: *mem.Allocator, t: Type) ![]const u8 {
 }
 
 fn getNestedDataSpecificationFromType(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     t: Type,
 ) error{OutOfMemory}![]const u8 {
     const array_format = "{s}[]";
@@ -2134,25 +2137,25 @@ fn getNestedDataSpecificationFromType(
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translateReference(allocator, r),
         .array => |a| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, a.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, a.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested});
         },
         .slice => |s| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, s.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, s.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested});
         },
         .pointer => |p| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, p.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, p.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, "is{s}", .{nested});
         },
         .optional => |o| output: {
-            const nested = try getNestedDataSpecificationFromType(allocator, o.@"type".*);
+            const nested = try getNestedDataSpecificationFromType(allocator, o.type.*);
             defer allocator.free(nested);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested});
@@ -2160,7 +2163,7 @@ fn getNestedDataSpecificationFromType(
     };
 }
 
-fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
+fn getNestedTypeGuardFromType(allocator: mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "svt.arrayOf({s})";
     const optional_format = "svt.optional({s})";
 
@@ -2169,24 +2172,24 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedTypeGuardReference(allocator, r),
         .array => |a| output: {
-            const nested_validator = try getNestedTypeGuardFromType(allocator, a.@"type".*);
+            const nested_validator = try getNestedTypeGuardFromType(allocator, a.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
         .slice => |s| output: {
-            const nested_validator = try getNestedTypeGuardFromType(allocator, s.@"type".*);
+            const nested_validator = try getNestedTypeGuardFromType(allocator, s.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
         .pointer => |p| output: {
-            const nested_validator = try getNestedTypeGuardFromType(allocator, p.@"type".*);
+            const nested_validator = try getNestedTypeGuardFromType(allocator, p.type.*);
 
             break :output nested_validator;
         },
         .optional => |o| output: {
-            const nested_validator = try getNestedTypeGuardFromType(allocator, o.@"type".*);
+            const nested_validator = try getNestedTypeGuardFromType(allocator, o.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
@@ -2194,7 +2197,7 @@ fn getNestedTypeGuardFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
     };
 }
 
-fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
+fn getNestedValidatorFromType(allocator: mem.Allocator, t: Type) error{OutOfMemory}![]const u8 {
     const array_format = "svt.validateArray({s})";
     const optional_format = "svt.validateOptional({s})";
 
@@ -2203,24 +2206,24 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translatedValidatorReference(allocator, r),
         .array => |a| output: {
-            const nested_validator = try getNestedValidatorFromType(allocator, a.@"type".*);
+            const nested_validator = try getNestedValidatorFromType(allocator, a.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
         .slice => |s| output: {
-            const nested_validator = try getNestedValidatorFromType(allocator, s.@"type".*);
+            const nested_validator = try getNestedValidatorFromType(allocator, s.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, array_format, .{nested_validator});
         },
         .pointer => |p| output: {
-            const nested_validator = try getNestedValidatorFromType(allocator, p.@"type".*);
+            const nested_validator = try getNestedValidatorFromType(allocator, p.type.*);
 
             break :output nested_validator;
         },
         .optional => |o| output: {
-            const nested_validator = try getNestedValidatorFromType(allocator, o.@"type".*);
+            const nested_validator = try getNestedValidatorFromType(allocator, o.type.*);
             defer allocator.free(nested_validator);
 
             break :output try fmt.allocPrint(allocator, optional_format, .{nested_validator});
@@ -2229,11 +2232,11 @@ fn getNestedValidatorFromType(allocator: *mem.Allocator, t: Type) error{OutOfMem
 }
 
 fn outputCommonOpenNames(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     as: []const []const u8,
     bs: []const []const u8,
 ) ![]const u8 {
-    const common_names = try commonOpenNames(allocator, as, bs);
+    const common_names = try general.commonOpenNames(allocator, as, bs);
     defer common_names.deinit();
 
     return if (common_names.items.len == 0)
@@ -2243,7 +2246,7 @@ fn outputCommonOpenNames(
 }
 
 fn outputTaggedStructures(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructors: []const Constructor,
     tag_field: []const u8,
@@ -2251,7 +2254,7 @@ fn outputTaggedStructures(
     var tagged_structures_outputs = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, tagged_structures_outputs);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         tagged_structures_outputs[i] = try outputTaggedStructure(
             allocator,
             union_name,
@@ -2264,7 +2267,7 @@ fn outputTaggedStructures(
 }
 
 fn outputTaggedMaybeGenericStructures(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructors: []const Constructor,
     open_names: []const []const u8,
@@ -2273,7 +2276,7 @@ fn outputTaggedMaybeGenericStructures(
     var tagged_structures_outputs = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, tagged_structures_outputs);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         tagged_structures_outputs[i] =
             try outputTaggedMaybeGenericStructure(
             allocator,
@@ -2288,7 +2291,7 @@ fn outputTaggedMaybeGenericStructures(
 }
 
 fn outputGenericConstructors(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructors: []const Constructor,
     open_names: []const []const u8,
@@ -2297,7 +2300,7 @@ fn outputGenericConstructors(
     var constructor_outputs = try allocator.alloc([]const u8, constructors.len);
     defer utilities.freeStringArray(allocator, constructor_outputs);
 
-    for (constructors) |constructor, i| {
+    for (constructors, 0..) |constructor, i| {
         constructor_outputs[i] = try outputConstructor(
             allocator,
             union_name,
@@ -2311,7 +2314,7 @@ fn outputGenericConstructors(
 }
 
 fn outputTaggedStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructor: Constructor,
     tag_field: []const u8,
@@ -2350,7 +2353,7 @@ fn outputTaggedStructure(
 }
 
 fn outputTaggedMaybeGenericStructure(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     union_name: []const u8,
     constructor: Constructor,
     open_names: []const []const u8,
@@ -2392,7 +2395,7 @@ fn outputTaggedMaybeGenericStructure(
 }
 
 fn outputOpenNamesFromType(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     t: Type,
     open_names: []const []const u8,
 ) error{OutOfMemory}![]const u8 {
@@ -2408,17 +2411,17 @@ fn outputOpenNamesFromType(
         try fmt.allocPrint(allocator, "<{s}>", .{joined_open_names});
 }
 
-fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}!?[]const u8 {
+fn outputType(allocator: mem.Allocator, t: Type) error{OutOfMemory}!?[]const u8 {
     return switch (t) {
         .empty => null,
         .string => |s| try fmt.allocPrint(allocator, "\"{s}\"", .{s}),
         .reference => |r| try translateReference(allocator, r),
 
         .array => |d| output: {
-            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+            if (try outputType(allocator, d.type.*)) |embedded_type| {
                 defer allocator.free(embedded_type);
 
-                switch (d.@"type".*) {
+                switch (d.type.*) {
                     .optional => break :output try fmt.allocPrint(
                         allocator,
                         "({s})[]",
@@ -2432,11 +2435,11 @@ fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}!?[]const u8
         },
 
         .slice => |d| output: {
-            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+            if (try outputType(allocator, d.type.*)) |embedded_type| {
                 defer allocator.free(embedded_type);
 
-                switch (d.@"type".*) {
-                    .optional => |o| break :output try fmt.allocPrint(
+                switch (d.type.*) {
+                    .optional => break :output try fmt.allocPrint(
                         allocator,
                         "({s})[]",
                         .{embedded_type},
@@ -2449,7 +2452,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}!?[]const u8
         },
 
         .pointer => |d| output: {
-            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+            if (try outputType(allocator, d.type.*)) |embedded_type| {
                 break :output embedded_type;
             } else {
                 debug.panic("Invalid empty type in optional type\n", .{});
@@ -2457,7 +2460,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}!?[]const u8
         },
 
         .optional => |d| output: {
-            if (try outputType(allocator, d.@"type".*)) |embedded_type| {
+            if (try outputType(allocator, d.type.*)) |embedded_type| {
                 defer allocator.free(embedded_type);
 
                 break :output try fmt.allocPrint(
@@ -2474,7 +2477,7 @@ fn outputType(allocator: *mem.Allocator, t: Type) error{OutOfMemory}!?[]const u8
 
 /// Returns all actual open names for a list of names. This means they're not translated and so
 /// won't be assumed to be concrete type arguments.
-fn actualOpenNames(allocator: *mem.Allocator, names: []const []const u8) !ArrayList([]const u8) {
+fn actualOpenNames(allocator: mem.Allocator, names: []const []const u8) !ArrayList([]const u8) {
     var open_names = ArrayList([]const u8).init(allocator);
 
     for (names) |name| {
@@ -2484,11 +2487,11 @@ fn actualOpenNames(allocator: *mem.Allocator, names: []const []const u8) !ArrayL
     return open_names;
 }
 
-fn outputOpenNames(allocator: *mem.Allocator, names: []const []const u8) ![]const u8 {
+fn outputOpenNames(allocator: mem.Allocator, names: []const []const u8) ![]const u8 {
     var translated_names = try allocator.alloc([]const u8, names.len);
     defer utilities.freeStringArray(allocator, translated_names);
 
-    for (names) |name, i| translated_names[i] = try allocator.dupe(u8, translateName(name));
+    for (names, 0..) |name, i| translated_names[i] = try allocator.dupe(u8, translateName(name));
 
     const joined_names = try mem.join(allocator, ", ", translated_names);
     defer allocator.free(joined_names);
@@ -2508,7 +2511,7 @@ fn translateName(name: []const u8) []const u8 {
 }
 
 fn translateReference(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     reference: TypeReference,
 ) error{OutOfMemory}![]const u8 {
     return switch (reference) {
@@ -2533,6 +2536,7 @@ fn translateReference(
         .definition => |d| try allocator.dupe(u8, d.name().value),
         .imported_definition => |id| id: {
             const name = id.definition.name().value;
+            _ = name;
 
             break :id try fmt.allocPrint(
                 allocator,
@@ -2565,13 +2569,13 @@ fn translateReference(
 }
 
 fn outputAppliedOpenNames(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     applied_open_names: []const AppliedOpenName,
 ) error{OutOfMemory}![]const u8 {
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
     defer utilities.freeStringArray(allocator, outputs);
 
-    for (applied_open_names) |name, i| {
+    for (applied_open_names, 0..) |name, i| {
         outputs[i] = (try outputType(allocator, name.reference)).?;
     }
 
@@ -2581,7 +2585,7 @@ fn outputAppliedOpenNames(
     return try fmt.allocPrint(allocator, "<{s}>", .{joined_outputs});
 }
 
-fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+fn translatedTypeGuardName(allocator: mem.Allocator, name: []const u8) ![]const u8 {
     return if (mem.eql(u8, name, "String"))
         try allocator.dupe(u8, "svt.isString")
     else if (general.isNumberType(name))
@@ -2593,7 +2597,7 @@ fn translatedTypeGuardName(allocator: *mem.Allocator, name: []const u8) ![]const
 }
 
 fn translatedTypeGuardReference(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     reference: TypeReference,
 ) error{OutOfMemory}![]const u8 {
     return switch (reference) {
@@ -2650,19 +2654,19 @@ fn translatedTypeGuardReference(
 }
 
 fn appliedOpenNamePredicates(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     applied_open_names: []const AppliedOpenName,
 ) error{OutOfMemory}![]const []const u8 {
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
-    for (applied_open_names) |name, i| {
+    for (applied_open_names, 0..) |name, i| {
         outputs[i] = try getTypeGuardFromType(allocator, name.reference);
     }
 
     return outputs;
 }
 
-fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const u8 {
+fn translatedValidatorName(allocator: mem.Allocator, name: []const u8) ![]const u8 {
     return if (mem.eql(u8, name, "String"))
         try allocator.dupe(u8, "svt.validateString")
     else if (general.isNumberType(name))
@@ -2674,7 +2678,7 @@ fn translatedValidatorName(allocator: *mem.Allocator, name: []const u8) ![]const
 }
 
 fn translatedValidatorReference(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     reference: TypeReference,
 ) error{OutOfMemory}![]const u8 {
     const format = "validate{s}";
@@ -2733,20 +2737,20 @@ fn translatedValidatorReference(
 }
 
 fn appliedOpenNameValidators(
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
     applied_open_names: []const AppliedOpenName,
 ) error{OutOfMemory}![]const []const u8 {
     var outputs = try allocator.alloc([]const u8, applied_open_names.len);
 
-    for (applied_open_names) |name, i| {
+    for (applied_open_names, 0..) |name, i| {
         outputs[i] = try getValidatorFromType(allocator, name.reference);
     }
 
     return outputs;
 }
 
-test "" {
-    const typescript_tests = @import("./typescript_tests.zig");
+test {
+    const typescript_tests = @import("typescript_tests.zig");
 
     std.testing.refAllDecls(typescript_tests);
 }
